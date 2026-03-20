@@ -1,0 +1,65 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Ticket {
+  id                String    @id @default(cuid())
+  title             String
+  status            String
+  pinned            Boolean   @default(false)
+  invitedManagerNames String[]
+  assignedManagerId String?
+  assignedManagerName String?
+  lastResolvedByManagerId String?
+  lastResolvedByManagerName String?
+  priority          String?
+  clientId          String?
+  orderId           String?
+  productId         String?
+  firstResponseStartedAt DateTime?
+  firstResponseAt   DateTime?
+  firstResponseTime Int?
+  firstResponseBreached Boolean @default(false)
+  resolutionTime    Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  closedAt          DateTime?
+
+  messages          Message[]
+  supplierRequests  SupplierRequest[]
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderType String
+  status     String   @default("sent")
+  ticketId   String
+  createdAt  DateTime @default(now())
+
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model SupplierRequest {
+  id                 String   @id @default(cuid())
+  ticketId           String
+  supplierId         String?
+  supplierName       String
+  requestText        String
+  status             String   @default("pending")
+  slaMinutes         Int?
+  createdByManagerId String?
+  responseStartedAt  DateTime?
+  firstResponseAt    DateTime?
+  responseTime       Int?
+  responseBreached   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  closedAt           DateTime?
+
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}

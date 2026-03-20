@@ -8,9 +8,22 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const vercelPreviewPattern = /^https:\/\/touchspace-chat-[a-z0-9-]+\.vercel\.app$/i;
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+    },
   });
 
   await app.listen(process.env.PORT ?? 3001, '0.0.0.0');

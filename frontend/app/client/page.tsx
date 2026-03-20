@@ -774,7 +774,9 @@ export default function ClientPage() {
                 </div>
 
                 <button
-                  onClick={handleSendMessage}
+                  onClick={() => {
+                    void handleSendMessage();
+                  }}
                   disabled={
                     !draftText.trim() || isCreatingTicket || isSendingMessage || isResolved
                   }

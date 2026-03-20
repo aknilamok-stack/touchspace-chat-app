@@ -1471,6 +1471,7 @@ export default function Home() {
   const nowForSla = currentTimeMs ?? Date.now();
   const isResolveHighlighted =
     Boolean(activeChat?.id) &&
+    resolvedHighlight !== null &&
     resolvedHighlight?.ticketId === activeChat?.id &&
     resolvedHighlight.until > nowForSla;
   const managerSla = buildSlaVisual({

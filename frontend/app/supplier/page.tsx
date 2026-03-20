@@ -490,10 +490,10 @@ export default function SupplierPage() {
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [selectedInvitedManagerId, setSelectedInvitedManagerId] = useState(
+  const [selectedInvitedManagerId, setSelectedInvitedManagerId] = useState<string>(
     managerAccounts[0]?.id ?? ""
   );
-  const [selectedTransferManagerId, setSelectedTransferManagerId] = useState(
+  const [selectedTransferManagerId, setSelectedTransferManagerId] = useState<string>(
     managerAccounts[0]?.id ?? ""
   );
   const [searchQuery, setSearchQuery] = useState("");

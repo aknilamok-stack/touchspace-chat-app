@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api";
 import {
   clearAuthSession,
   managerAccounts,
@@ -289,7 +290,7 @@ const buildSupplierRequestCards = (
 const fetchTicketMessagesSnapshot = async (
   ticketId: string
 ): Promise<TicketMessage[]> => {
-  const response = await fetch(`http://localhost:3001/tickets/${ticketId}/messages`);
+  const response = await fetch(apiUrl(`/tickets/${ticketId}/messages`));
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить сообщения тикета");
@@ -311,7 +312,7 @@ const fetchMessagesMapForRequests = async (requests: SupplierRequest[]) => {
 };
 
 const fetchTicketsMap = async () => {
-  const response = await fetch("http://localhost:3001/tickets");
+  const response = await fetch(apiUrl("/tickets"));
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить тикеты");
@@ -675,16 +676,14 @@ export default function SupplierPage() {
 
   const fetchSupplierRequests = async (): Promise<SupplierRequest[]> => {
     const response = await fetch(
-      `http://localhost:3001/supplier-requests?supplierName=${encodeURIComponent(
-        supplierName
-      )}`
+      apiUrl(`/supplier-requests?supplierName=${encodeURIComponent(supplierName)}`)
     );
 
     if (response.ok) {
       return response.json();
     }
 
-    const ticketsResponse = await fetch("http://localhost:3001/tickets");
+    const ticketsResponse = await fetch(apiUrl("/tickets"));
 
     if (!ticketsResponse.ok) {
       throw new Error("Не удалось загрузить запросы поставщику");
@@ -694,7 +693,7 @@ export default function SupplierPage() {
     const supplierRequestsByTicket = await Promise.all(
       tickets.map(async (ticket) => {
         const ticketRequestsResponse = await fetch(
-          `http://localhost:3001/tickets/${ticket.id}/supplier-requests`
+          apiUrl(`/tickets/${ticket.id}/supplier-requests`)
         );
 
         if (!ticketRequestsResponse.ok) {
@@ -720,7 +719,7 @@ export default function SupplierPage() {
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
-      `http://localhost:3001/tickets/${ticketId}/messages?viewerType=supplier&markAsRead=true`
+      apiUrl(`/tickets/${ticketId}/messages?viewerType=supplier&markAsRead=true`)
     );
 
     if (!response.ok) {
@@ -1004,7 +1003,7 @@ export default function SupplierPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:3001/tickets/${selectedRequest.ticketId}/invite-manager`,
+        apiUrl(`/tickets/${selectedRequest.ticketId}/invite-manager`),
         {
           method: "PATCH",
           headers: {
@@ -1054,7 +1053,7 @@ export default function SupplierPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:3001/tickets/${selectedRequest.ticketId}/assign-manager`,
+        apiUrl(`/tickets/${selectedRequest.ticketId}/assign-manager`),
         {
           method: "PATCH",
           headers: {
@@ -1093,19 +1092,19 @@ export default function SupplierPage() {
     setIsResolvingTicket(true);
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/tickets/${selectedRequest.ticketId}/resolve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: selectedRequest.createdByManagerId ?? selectedTicket?.assignedManagerId ?? "manager_anna",
-            managerName: selectedManagerName,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/tickets/${selectedRequest.ticketId}/resolve`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId:
+            selectedRequest.createdByManagerId ??
+            selectedTicket?.assignedManagerId ??
+            "manager_anna",
+          managerName: selectedManagerName,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось отметить диалог как решённый");
@@ -1137,7 +1136,7 @@ export default function SupplierPage() {
     setReplyError("");
 
     try {
-      const response = await fetch("http://localhost:3001/messages", {
+      const response = await fetch(apiUrl("/messages"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

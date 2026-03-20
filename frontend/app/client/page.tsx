@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
 const widgetFontFamily = "Montserrat, ui-sans-serif, system-ui, sans-serif";
@@ -60,7 +61,7 @@ export default function ClientPage() {
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draftText, setDraftText] = useState("");
-  const [isWidgetOpen, setIsWidgetOpen] = useState(false);
+  const [isWidgetOpen, setIsWidgetOpen] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachmentName, setAttachmentName] = useState("");
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
@@ -83,7 +84,7 @@ export default function ClientPage() {
   const showQuickActions = !hasMessages && !activeTicket;
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
-    const response = await fetch("http://localhost:3001/tickets");
+    const response = await fetch(apiUrl("/tickets"));
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить список обращений");
@@ -94,7 +95,7 @@ export default function ClientPage() {
   };
 
   const sendTyping = async (ticketId: string) => {
-    await fetch(`http://localhost:3001/tickets/${ticketId}/typing`, {
+    await fetch(apiUrl(`/tickets/${ticketId}/typing`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -153,7 +154,7 @@ export default function ClientPage() {
 
     try {
       const messagesResponse = await fetch(
-        `http://localhost:3001/tickets/${ticket.id}/messages?viewerType=client&markAsRead=true`
+        apiUrl(`/tickets/${ticket.id}/messages?viewerType=client&markAsRead=true`)
       );
 
       if (!messagesResponse.ok) {
@@ -301,7 +302,7 @@ export default function ClientPage() {
       const derivedTitle =
         firstMessage.trim().slice(0, 48) || "Новое обращение клиента";
 
-      const ticketResponse = await fetch("http://localhost:3001/tickets", {
+      const ticketResponse = await fetch(apiUrl("/tickets"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -317,7 +318,7 @@ export default function ClientPage() {
 
       const newTicket = (await ticketResponse.json()) as Ticket;
 
-      const messageResponse = await fetch("http://localhost:3001/messages", {
+      const messageResponse = await fetch(apiUrl("/messages"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -367,7 +368,7 @@ export default function ClientPage() {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:3001/messages", {
+      const response = await fetch(apiUrl("/messages"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { apiUrl } from "@/lib/api";
 import {
   clearAuthSession,
   type ManagerPresence,
@@ -599,7 +600,9 @@ export default function Home() {
     markAsRead = false
   ): Promise<ApiMessage[]> => {
     const response = await fetch(
-      `http://localhost:3001/tickets/${ticketId}/messages?viewerType=manager&markAsRead=${markAsRead ? "true" : "false"}`
+      apiUrl(
+        `/tickets/${ticketId}/messages?viewerType=manager&markAsRead=${markAsRead ? "true" : "false"}`
+      )
     );
     if (!response.ok) {
       throw new Error("Не удалось загрузить сообщения");
@@ -608,7 +611,7 @@ export default function Home() {
   };
 
   const fetchTickets = async (): Promise<ApiTicket[]> => {
-    const response = await fetch("http://localhost:3001/tickets");
+    const response = await fetch(apiUrl("/tickets"));
     if (!response.ok) {
       throw new Error("Не удалось загрузить тикеты");
     }
@@ -676,9 +679,7 @@ export default function Home() {
   const fetchSupplierRequests = async (
     ticketId: string
   ): Promise<ApiSupplierRequest[]> => {
-    const response = await fetch(
-      `http://localhost:3001/tickets/${ticketId}/supplier-requests`
-    );
+    const response = await fetch(apiUrl(`/tickets/${ticketId}/supplier-requests`));
     if (!response.ok) {
       throw new Error("Не удалось загрузить запросы поставщику");
     }
@@ -688,7 +689,7 @@ export default function Home() {
   const fetchTyping = async (
     ticketId: string
   ): Promise<{ clientTyping: boolean }> => {
-    const response = await fetch(`http://localhost:3001/tickets/${ticketId}/typing`);
+    const response = await fetch(apiUrl(`/tickets/${ticketId}/typing`));
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить typing-состояние");
@@ -1091,7 +1092,7 @@ export default function Home() {
     if (!messageText.trim() || !activeChatId) return;
 
     try {
-      const response = await fetch("http://localhost:3001/messages", {
+      const response = await fetch(apiUrl("/messages"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1156,7 +1157,7 @@ export default function Home() {
     setCreateSupplierRequestError("");
 
     try {
-      const response = await fetch("http://localhost:3001/supplier-requests", {
+      const response = await fetch(apiUrl("/supplier-requests"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1231,7 +1232,7 @@ export default function Home() {
     setIsTogglingPinned(true);
 
     try {
-      const response = await fetch(`http://localhost:3001/tickets/${activeChatId}/pin`, {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/pin`), {
         method: "PATCH",
       });
 
@@ -1277,19 +1278,16 @@ export default function Home() {
     setIsResolvingTicket(true);
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/tickets/${activeChatId}/resolve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: currentManagerId,
-            managerName: currentManagerName,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/resolve`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось отметить диалог как решённый");
@@ -1322,19 +1320,16 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/tickets/${activeChatId}/reopen`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: currentManagerId,
-            managerName: currentManagerName,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/reopen`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось снова открыть диалог");
@@ -1375,19 +1370,16 @@ export default function Home() {
     setInviteManagerError("");
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/tickets/${activeChatId}/invite-manager`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: selectedManager.id,
-            managerName: selectedManager.name,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/invite-manager`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: selectedManager.id,
+          managerName: selectedManager.name,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось пригласить оператора");
@@ -1424,19 +1416,16 @@ export default function Home() {
     setTransferDialogError("");
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/tickets/${activeChatId}/assign-manager`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: selectedManager.id,
-            managerName: selectedManager.name,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/assign-manager`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: selectedManager.id,
+          managerName: selectedManager.name,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось передать диалог");

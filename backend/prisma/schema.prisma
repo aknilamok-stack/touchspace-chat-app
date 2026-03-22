@@ -6,60 +6,175 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Profile {
+  id                      String            @id
+  authUserId              String?           @unique
+  email                   String?           @unique
+  authLogin               String?           @unique
+  passwordHash            String?
+  passwordChangeRequired  Boolean           @default(false)
+  passwordIssuedAt        DateTime?
+  fullName                String
+  role                    String
+  status                  String            @default("active")
+  approvalStatus          String            @default("approved")
+  companyName             String?
+  companyId               String?
+  supplierId              String?
+  managerStatus           String?
+  managerPresenceHeartbeatAt DateTime?
+  approvalComment         String?
+  lastLoginAt             DateTime?
+  createdByAdminId        String?
+  isActive                Boolean           @default(true)
+  notificationPushEnabled Boolean           @default(true)
+  notifyClientChats       Boolean           @default(true)
+  notifySupplierChats     Boolean           @default(true)
+  notifySupplierRequests  Boolean           @default(true)
+  notifyAiHandoffs        Boolean           @default(true)
+  notifyAdminAlerts       Boolean           @default(true)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  clientTickets           Ticket[]          @relation("TicketClient")
+  assignedManagerTickets  Ticket[]          @relation("TicketAssignedManager")
+  supplierTickets         Ticket[]          @relation("TicketSupplier")
+  resolvedTickets         Ticket[]          @relation("TicketResolvedByManager")
+  sentMessages            Message[]         @relation("MessageSender")
+  createdSupplierRequests SupplierRequest[] @relation("SupplierRequestCreatedByManager")
+  supplierRequests        SupplierRequest[] @relation("SupplierRequestSupplier")
+  reviewedRegistrations   RegistrationRequest[] @relation("RegistrationReviewedByAdmin")
+  registrationRequests    RegistrationRequest[] @relation("RegistrationLinkedProfile")
+  pushSubscriptions       PushSubscription[]
+}
+
 model Ticket {
-  id                String    @id @default(cuid())
-  title             String
-  status            String
-  pinned            Boolean   @default(false)
+  id                       String    @id @default(cuid())
+  title                    String
+  status                   String
+  conversationMode         String    @default("manager")
+  currentHandlerType       String    @default("manager")
+  aiEnabled                Boolean   @default(false)
+  aiActivatedAt            DateTime?
+  aiDeactivatedAt          DateTime?
+  handedToManagerAt        DateTime?
+  aiResolved               Boolean   @default(false)
+  pinned                   Boolean   @default(false)
+  invitedManagerIds        String[]  @default([])
   invitedManagerNames String[]
-  assignedManagerId String?
+  assignedManagerId        String?
   assignedManagerName String?
   lastResolvedByManagerId String?
   lastResolvedByManagerName String?
-  priority          String?
-  clientId          String?
-  orderId           String?
-  productId         String?
+  clientId                 String?
+  clientName               String?
+  supplierId               String?
+  supplierName             String?
+  priority                 String?
+  orderId                  String?
+  productId                String?
   firstResponseStartedAt DateTime?
-  firstResponseAt   DateTime?
-  firstResponseTime Int?
+  firstResponseAt          DateTime?
+  firstResponseTime        Int?
   firstResponseBreached Boolean @default(false)
-  resolutionTime    Int?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  closedAt          DateTime?
+  resolutionTime           Int?
+  lastMessageAt            DateTime?
+  resolvedAt               DateTime?
+  slaBreached              Boolean   @default(false)
+  supplierEscalatedAt      DateTime?
+  topicCategory            String?
+  sentiment                String?
+  aiSummary                String?
+  aiTags                   String[]  @default([])
+  insightFlags             String[]  @default([])
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  closedAt                 DateTime?
 
-  messages          Message[]
-  supplierRequests  SupplierRequest[]
+  clientProfile           Profile?          @relation("TicketClient", fields: [clientId], references: [id], onDelete: SetNull)
+  assignedManagerProfile  Profile?          @relation("TicketAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  supplierProfile         Profile?          @relation("TicketSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  resolvedByManagerProfile Profile?         @relation("TicketResolvedByManager", fields: [lastResolvedByManagerId], references: [id], onDelete: SetNull)
+  messages                Message[]
+  supplierRequests        SupplierRequest[]
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  content    String
-  senderType String
-  status     String   @default("sent")
-  ticketId   String
-  createdAt  DateTime @default(now())
+  id              String    @id @default(cuid())
+  content         String
+  senderType      String
+  senderRole      String?
+  status          String    @default("sent")
+  deliveryStatus  String    @default("sent")
+  messageType     String    @default("text")
+  isInternal      Boolean   @default(false)
+  ticketId        String
+  senderProfileId String?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
 
-  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderProfile  Profile? @relation("MessageSender", fields: [senderProfileId], references: [id], onDelete: SetNull)
 }
 
 model SupplierRequest {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   ticketId           String
   supplierId         String?
   supplierName       String
   requestText        String
-  status             String   @default("pending")
+  status             String    @default("pending")
   slaMinutes         Int?
   createdByManagerId String?
+  requestedAt        DateTime?
   responseStartedAt  DateTime?
   firstResponseAt    DateTime?
+  respondedAt        DateTime?
   responseTime       Int?
-  responseBreached   Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  responseBreached   Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   closedAt           DateTime?
 
-  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  supplierProfile   Profile? @relation("SupplierRequestSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  createdByManager  Profile? @relation("SupplierRequestCreatedByManager", fields: [createdByManagerId], references: [id], onDelete: SetNull)
+}
+
+model RegistrationRequest {
+  id                String    @id @default(cuid())
+  email             String
+  fullName          String
+  companyName       String?
+  role              String
+  status            String    @default("pending")
+  comment           String?
+  profileId         String?
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  profile           Profile?  @relation("RegistrationLinkedProfile", fields: [profileId], references: [id], onDelete: SetNull)
+  reviewedByAdmin   Profile?  @relation("RegistrationReviewedByAdmin", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, role, createdAt])
+}
+
+model PushSubscription {
+  id          String   @id @default(cuid())
+  profileId   String
+  role        String
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  userAgent   String?
+  deviceLabel String?
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, role, isActive])
 }

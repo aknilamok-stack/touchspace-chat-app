@@ -50,12 +50,18 @@ export class SupplierRequestsController {
   }
 
   @Get('supplier-requests')
-  findAll(@Query('supplierName') supplierName?: string) {
-    return this.supplierRequestsService.findAll(supplierName);
+  findAll(
+    @Query('supplierName') supplierName?: string,
+    @Query('supplierId') supplierId?: string,
+  ) {
+    return this.supplierRequestsService.findAll(supplierName, supplierId);
   }
 
   @Get('tickets/:id/supplier-requests')
-  findByTicket(@Param('id') id: string) {
-    return this.supplierRequestsService.findByTicket(id);
+  findByTicket(
+    @Param('id') id: string,
+    @Query('supplierId') supplierId?: string,
+  ) {
+    return this.supplierRequestsService.findByTicket(id, supplierId);
   }
 }

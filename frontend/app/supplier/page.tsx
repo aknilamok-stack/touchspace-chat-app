@@ -9,10 +9,16 @@ import {
   managerAccounts,
   type ManagerPresence,
   readAuthSession,
-  readManagerStatuses,
+  supplierAccounts,
 } from "@/lib/auth";
+import { fetchManagerStatuses } from "@/lib/manager-presence";
 
-const supplierName = "Karelia";
+const defaultSupplierAccount = supplierAccounts[0] ?? {
+  id: "supplier_karelia",
+  name: "Karelia",
+};
+const supplierId = defaultSupplierAccount.id;
+const supplierName = defaultSupplierAccount.name;
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
 const supplierStatusLabels: Record<ManagerPresence, string> = {
@@ -37,6 +43,7 @@ const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", 
 type SupplierRequest = {
   id: string;
   ticketId: string;
+  supplierId?: string | null;
   supplierName: string;
   requestText: string;
   status: string;
@@ -290,7 +297,13 @@ const buildSupplierRequestCards = (
 const fetchTicketMessagesSnapshot = async (
   ticketId: string
 ): Promise<TicketMessage[]> => {
-  const response = await fetch(apiUrl(`/tickets/${ticketId}/messages`));
+  const response = await fetch(
+    apiUrl(
+      `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
+        supplierId
+      )}`
+    )
+  );
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить сообщения тикета");
@@ -312,7 +325,9 @@ const fetchMessagesMapForRequests = async (requests: SupplierRequest[]) => {
 };
 
 const fetchTicketsMap = async () => {
-  const response = await fetch(apiUrl("/tickets"));
+  const response = await fetch(
+    apiUrl(`/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`)
+  );
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить тикеты");
@@ -517,6 +532,9 @@ export default function SupplierPage() {
   const [pinError, setPinError] = useState("");
   const [inviteManagerError, setInviteManagerError] = useState("");
   const [transferDialogError, setTransferDialogError] = useState("");
+  const [deepLinkRequestId, setDeepLinkRequestId] = useState("");
+  const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
+  const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const supplierMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
@@ -532,10 +550,9 @@ export default function SupplierPage() {
       : undefined) ??
     selectedTicket?.assignedManagerName ??
     "Менеджер";
-  const managerStatuses = readManagerStatuses();
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
-    status: managerStatuses[manager.id] ?? "online",
+    status: managerStatuses[manager.id] ?? "offline",
   }));
   const firstOnlineManagerId =
     availableManagers.find((manager) => manager.status === "online")?.id ??
@@ -550,6 +567,40 @@ export default function SupplierPage() {
     pinnedRequestIds,
     ticketsById
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setDeepLinkRequestId(params.get("request") ?? "");
+    setDeepLinkTicketId(params.get("ticket") ?? "");
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    const loadStatuses = async () => {
+      try {
+        const statuses = await fetchManagerStatuses();
+        setManagerStatuses(statuses);
+      } catch (error) {
+        console.error("Ошибка загрузки статусов менеджеров:", error);
+        setManagerStatuses({});
+      }
+    };
+
+    void loadStatuses();
+
+    const intervalId = window.setInterval(() => {
+      void loadStatuses();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady]);
   const selectedRequestCard =
     selectedRequest
       ? supplierRequestCards.find((card) => card.request.id === selectedRequest.id) ?? null
@@ -676,14 +727,22 @@ export default function SupplierPage() {
 
   const fetchSupplierRequests = async (): Promise<SupplierRequest[]> => {
     const response = await fetch(
-      apiUrl(`/supplier-requests?supplierName=${encodeURIComponent(supplierName)}`)
+      apiUrl(
+        `/supplier-requests?supplierName=${encodeURIComponent(
+          supplierName
+        )}&supplierId=${encodeURIComponent(supplierId)}`
+      )
     );
 
     if (response.ok) {
       return response.json();
     }
 
-    const ticketsResponse = await fetch(apiUrl("/tickets"));
+    const ticketsResponse = await fetch(
+      apiUrl(
+        `/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`
+      )
+    );
 
     if (!ticketsResponse.ok) {
       throw new Error("Не удалось загрузить запросы поставщику");
@@ -693,7 +752,11 @@ export default function SupplierPage() {
     const supplierRequestsByTicket = await Promise.all(
       tickets.map(async (ticket) => {
         const ticketRequestsResponse = await fetch(
-          apiUrl(`/tickets/${ticket.id}/supplier-requests`)
+          apiUrl(
+            `/tickets/${ticket.id}/supplier-requests?supplierId=${encodeURIComponent(
+              supplierId
+            )}`
+          )
         );
 
         if (!ticketRequestsResponse.ok) {
@@ -704,7 +767,9 @@ export default function SupplierPage() {
           (await ticketRequestsResponse.json()) as SupplierRequest[];
 
         return ticketRequests.filter(
-          (request) => request.supplierName === supplierName
+          (request) =>
+            request.supplierName === supplierName ||
+            request.supplierId === supplierId
         );
       })
     );
@@ -719,7 +784,11 @@ export default function SupplierPage() {
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
-      apiUrl(`/tickets/${ticketId}/messages?viewerType=supplier&markAsRead=true`)
+      apiUrl(
+        `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
+          supplierId
+        )}&markAsRead=true`
+      )
     );
 
     if (!response.ok) {
@@ -904,6 +973,20 @@ export default function SupplierPage() {
       return supplierRequestCards[0]?.request.id ?? "";
     });
   }, [supplierRequestCards]);
+
+  useEffect(() => {
+    if (deepLinkRequestId && supplierRequestCards.some((card) => card.request.id === deepLinkRequestId)) {
+      setSelectedRequestId(deepLinkRequestId);
+      return;
+    }
+
+    if (deepLinkTicketId) {
+      const linkedRequest = supplierRequestCards.find((card) => card.request.ticketId === deepLinkTicketId);
+      if (linkedRequest) {
+        setSelectedRequestId(linkedRequest.request.id);
+      }
+    }
+  }, [deepLinkRequestId, deepLinkTicketId, supplierRequestCards]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1145,6 +1228,8 @@ export default function SupplierPage() {
           ticketId: selectedRequest.ticketId,
           content: replyText,
           senderType: "supplier",
+          senderId: supplierId,
+          senderName: supplierName,
         }),
       });
 
@@ -1259,6 +1344,16 @@ export default function SupplierPage() {
                     </p>
                   </button>
                 ))}
+
+                <div className="my-2 h-px bg-[#EEF0F4]" />
+
+                <button
+                  onClick={() => router.push("/settings")}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#1E1E1E] transition hover:bg-[#F7F8FB]"
+                >
+                  <span>Настройки уведомлений</span>
+                  <span className="text-xs text-[#8E8E93]">→</span>
+                </button>
 
                 <div className="my-2 h-px bg-[#EEF0F4]" />
 

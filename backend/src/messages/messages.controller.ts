@@ -14,6 +14,8 @@ export class MessagesController {
       senderType: string;
       managerId?: string;
       managerName?: string;
+      senderId?: string;
+      senderName?: string;
     },
   ) {
     return this.messagesService.create(
@@ -22,6 +24,8 @@ export class MessagesController {
       body.senderType,
       body.managerId,
       body.managerName,
+      body.senderId,
+      body.senderName,
     );
   }
 
@@ -30,11 +34,13 @@ export class MessagesController {
     @Param('id') id: string,
     @Query('viewerType') viewerType?: string,
     @Query('markAsRead') markAsRead?: string,
+    @Query('viewerId') viewerId?: string,
   ) {
     return this.messagesService.findByTicket(
       id,
       viewerType,
       markAsRead === 'true',
+      viewerId,
     );
   }
 }

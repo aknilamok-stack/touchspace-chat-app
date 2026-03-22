@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -18,25 +19,49 @@ export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
   @Post()
-  create(@Body() body?: { title?: string }) {
-    return this.ticketsService.create(body?.title);
+  create(@Body() body?: { title?: string; clientId?: string; clientName?: string }) {
+    return this.ticketsService.create(
+      body?.title,
+      body?.clientId,
+      body?.clientName,
+    );
   }
 
   @Post('with-first-message')
   createWithFirstMessage(
     @Body()
-    body: { title: string; firstMessage: string; senderType: string },
+    body: {
+      title: string;
+      firstMessage: string;
+      senderType: string;
+      senderId?: string;
+      senderName?: string;
+      clientId?: string;
+      clientName?: string;
+      aiEnabled?: boolean;
+    },
   ) {
     return this.ticketsService.createWithFirstMessage(
       body.title,
       body.firstMessage,
       body.senderType,
+      body.senderId,
+      body.senderName,
+      body.clientId,
+      body.clientName,
+      body.aiEnabled,
     );
   }
 
   @Get()
-  findAll() {
-    return this.ticketsService.findAll();
+  findAll(
+    @Query('viewerType') viewerType?: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    return this.ticketsService.findAll({
+      viewerType,
+      viewerId,
+    });
   }
 
   @Post(':id/typing')
@@ -102,5 +127,29 @@ export class TicketsController {
     @Body() assignManagerDto: AssignManagerDto,
   ) {
     return this.ticketsService.assignManager(id, assignManagerDto);
+  }
+
+  @Patch(':id/claim')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
+  claimIncoming(
+    @Param('id') id: string,
+    @Body() assignManagerDto: AssignManagerDto,
+  ) {
+    return this.ticketsService.claimIncoming(id, assignManagerDto);
+  }
+
+  @Post(':id/ai/enable')
+  enableAiMode(@Param('id') id: string) {
+    return this.ticketsService.enableAiMode(id);
+  }
+
+  @Post(':id/ai/disable')
+  disableAiMode(@Param('id') id: string) {
+    return this.ticketsService.disableAiMode(id);
   }
 }

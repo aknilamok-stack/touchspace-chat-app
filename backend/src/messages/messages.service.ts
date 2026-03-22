@@ -1,13 +1,95 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TypingService } from '../typing.service';
+import { ProfilesService } from '../profiles.service';
+import { ChatAiService } from '../chat-ai.service';
+import { PushService } from '../push.service';
+
+type MessageViewer = {
+  viewerType?: string;
+  viewerId?: string;
+};
 
 @Injectable()
 export class MessagesService {
   constructor(
-    private prisma: PrismaService,
-    private typingService: TypingService,
+    private readonly prisma: PrismaService,
+    private readonly typingService: TypingService,
+    private readonly profilesService: ProfilesService,
+    private readonly chatAiService: ChatAiService,
+    private readonly pushService: PushService,
   ) {}
+
+  private async createSystemMessage(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    content: string,
+  ) {
+    return tx.message.create({
+      data: {
+        ticketId,
+        content,
+        senderType: 'system',
+        senderRole: 'system',
+        status: 'sent',
+        deliveryStatus: 'sent',
+        messageType: 'system',
+      },
+    });
+  }
+
+  private async assertTicketAccess(ticketId: string, viewer?: MessageViewer) {
+    const viewerType = viewer?.viewerType?.trim();
+    const viewerId = viewer?.viewerId?.trim();
+
+    if (!viewerType || !viewerId) {
+      return;
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        clientId: true,
+        supplierId: true,
+        assignedManagerId: true,
+        invitedManagerIds: true,
+        supplierRequests: {
+          select: {
+            supplierId: true,
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+    }
+
+    if (viewerType === 'client' && ticket.clientId === viewerId) {
+      return;
+    }
+
+    if (
+      viewerType === 'supplier' &&
+      (ticket.supplierId === viewerId ||
+        ticket.supplierRequests.some(
+          (supplierRequest) => supplierRequest.supplierId === viewerId,
+        ))
+    ) {
+      return;
+    }
+
+    if (
+      viewerType === 'manager' &&
+      (ticket.assignedManagerId === null ||
+        ticket.assignedManagerId === viewerId ||
+        ticket.invitedManagerIds.includes(viewerId))
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('No access to this ticket');
+  }
 
   async create(
     ticketId: string,
@@ -15,30 +97,66 @@ export class MessagesService {
     senderType: string,
     managerId?: string,
     managerName?: string,
+    senderId?: string,
+    senderName?: string,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const actorId = senderId ?? managerId;
+    const actorName = senderName ?? managerName;
+
+    if (actorId) {
+      await this.profilesService.ensureProfile({
+        id: actorId,
+        fullName: actorName,
+        role: senderType,
+      });
+    }
+
+    const { message, shouldAiReply, ticketSnapshot } = await this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findUnique({
         where: { id: ticketId },
         select: {
           id: true,
+          title: true,
           status: true,
+          aiEnabled: true,
+          currentHandlerType: true,
+          conversationMode: true,
           firstResponseStartedAt: true,
           firstResponseAt: true,
           assignedManagerId: true,
           assignedManagerName: true,
+          invitedManagerIds: true,
+          clientId: true,
+          clientName: true,
+          supplierId: true,
+          supplierName: true,
         },
       });
 
       if (!ticket) {
-        throw new Error(`Ticket with id "${ticketId}" not found`);
+        throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
       }
 
       if (senderType === 'client' && ticket.status === 'resolved') {
-        await tx.message.create({
+        const reopenedAt = new Date();
+
+        await this.createSystemMessage(tx, ticketId, 'Клиент возобновил диалог');
+
+        await tx.ticket.update({
+          where: { id: ticketId },
           data: {
-            ticketId,
-            content: 'Клиент возобновил диалог',
-            senderType: 'system',
+            assignedManagerId: null,
+            assignedManagerName: null,
+            conversationMode: 'manager',
+            currentHandlerType: 'manager',
+            aiEnabled: false,
+            firstResponseStartedAt: reopenedAt,
+            firstResponseAt: null,
+            firstResponseTime: null,
+            firstResponseBreached: false,
+            resolvedAt: null,
+            closedAt: null,
+            lastMessageAt: reopenedAt,
           },
         });
       }
@@ -48,7 +166,12 @@ export class MessagesService {
           ticketId,
           content,
           senderType,
+          senderRole: senderType,
+          senderProfileId: actorId ?? null,
           status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'text',
+          isInternal: false,
         },
       });
 
@@ -69,43 +192,41 @@ export class MessagesService {
         nextStatus = 'waiting_client';
       }
 
+      if (senderType === 'client' && ticket.aiEnabled) {
+        nextStatus = 'waiting_client';
+      }
+
       if (senderType === 'supplier') {
         nextStatus = 'in_progress';
       }
 
+      const ticketUpdateData: Record<string, unknown> = {
+        lastMessageAt: message.createdAt,
+        closedAt: null,
+      };
+
       if (nextStatus !== ticket.status) {
-        await tx.ticket.update({
-          where: { id: ticketId },
-          data: {
-            status: nextStatus,
-            assignedManagerId:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? null
-                : undefined,
-            assignedManagerName:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? null
-                : undefined,
-            firstResponseStartedAt:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? message.createdAt
-                : undefined,
-            firstResponseAt:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? null
-                : undefined,
-            firstResponseTime:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? null
-                : undefined,
-            firstResponseBreached:
-              senderType === 'client' && ticket.status === 'resolved'
-                ? false
-                : undefined,
-            closedAt: null,
-          },
-        });
+        ticketUpdateData.status = nextStatus;
       }
+
+      if (senderType === 'client') {
+        ticketUpdateData.clientId = actorId ?? ticket.clientId;
+        ticketUpdateData.clientName = actorName ?? ticket.clientName;
+        if (ticket.aiEnabled) {
+          ticketUpdateData.currentHandlerType = 'ai';
+          ticketUpdateData.conversationMode = 'ai';
+        }
+      }
+
+      if (senderType === 'supplier') {
+        ticketUpdateData.supplierId = actorId ?? ticket.supplierId;
+        ticketUpdateData.supplierName = actorName ?? ticket.supplierName;
+      }
+
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: ticketUpdateData,
+      });
 
       if (senderType === 'manager' && !ticket.firstResponseAt) {
         const startedAt = ticket.firstResponseStartedAt ?? new Date();
@@ -166,6 +287,7 @@ export class MessagesService {
             where: { id: activeSupplierRequest.id },
             data: {
               firstResponseAt: message.createdAt,
+              respondedAt: message.createdAt,
               responseTime: durationMs,
               responseBreached: durationMs > 60 * 60 * 1000,
             },
@@ -177,46 +299,119 @@ export class MessagesService {
         this.typingService.clearTyping(ticketId, 'client');
       }
 
-      return message;
+      if (senderType === 'manager' && ticket.aiEnabled) {
+        await this.createSystemMessage(tx, ticketId, 'Менеджер подключился к диалогу');
+        await tx.ticket.update({
+          where: { id: ticketId },
+          data: {
+            aiEnabled: false,
+            currentHandlerType: 'manager',
+            conversationMode: 'manager',
+            aiDeactivatedAt: message.createdAt,
+            handedToManagerAt: message.createdAt,
+            lastMessageAt: message.createdAt,
+          },
+        });
+      }
+
+      return {
+        message,
+        shouldAiReply: senderType === 'client' && ticket.aiEnabled,
+        ticketSnapshot: {
+          id: ticket.id,
+          title: ticket.title ?? 'Диалог TouchSpace',
+          assignedManagerId: ticket.assignedManagerId,
+          invitedManagerIds: ticket.invitedManagerIds,
+          supplierId: ticket.supplierId,
+          aiEnabled: ticket.aiEnabled,
+        },
+      };
     });
+
+    if (shouldAiReply) {
+      void this.chatAiService.persistAiTurn(ticketId).catch((error) => {
+        console.error('Ошибка AI-ответа в message flow:', error);
+      });
+    } else if (senderType === 'client') {
+      void this.pushService
+        .getManagerTargetsForTicket(ticketId)
+        .then((targets) =>
+          this.pushService.sendToProfiles(targets, {
+            title: 'Новое сообщение от клиента',
+            body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
+            url: `/?ticket=${ticketId}`,
+            tag: `ticket-${ticketId}`,
+          }, 'client_chats', actorId),
+        )
+        .catch((error) =>
+          console.error('Ошибка push-уведомления для менеджеров:', error),
+        );
+    } else if (senderType === 'supplier') {
+      const managerTargets = [
+        ticketSnapshot.assignedManagerId,
+        ...(ticketSnapshot.invitedManagerIds ?? []),
+      ].filter((value): value is string => Boolean(value));
+
+      void this.pushService
+        .sendToProfiles([...new Set(managerTargets)], {
+          title: 'Новое сообщение от поставщика',
+          body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
+          url: `/?ticket=${ticketId}`,
+          tag: `ticket-${ticketId}`,
+        }, 'supplier_chats', actorId)
+        .catch((error) =>
+          console.error('Ошибка push-уведомления для менеджера по сообщению поставщика:', error),
+        );
+    } else if (senderType === 'manager' && ticketSnapshot.supplierId) {
+      void this.pushService
+        .sendToProfiles([ticketSnapshot.supplierId], {
+          title: 'Новое сообщение по вашему запросу',
+          body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
+          url: `/supplier?ticket=${ticketId}`,
+          tag: `supplier-ticket-${ticketId}`,
+        }, 'supplier_chats', actorId)
+        .catch((error) =>
+          console.error('Ошибка push-уведомления поставщику:', error),
+        );
+    }
+
+    return message;
   }
 
   async findByTicket(
     ticketId: string,
     viewerType?: string,
     markAsRead = false,
+    viewerId?: string,
   ) {
+    await this.assertTicketAccess(ticketId, {
+      viewerType,
+      viewerId,
+    });
+
     return this.prisma.$transaction(async (tx) => {
       if (viewerType) {
+        const readAt = markAsRead ? new Date() : null;
+        const statusToSet = markAsRead ? 'read' : 'delivered';
+
         await tx.message.updateMany({
           where: {
             ticketId,
             senderType: {
               notIn: [viewerType, 'system'],
             },
-            status: 'sent',
+            status: markAsRead
+              ? {
+                  in: ['sent', 'delivered'],
+                }
+              : 'sent',
           },
           data: {
-            status: 'delivered',
+            status: statusToSet,
+            deliveryStatus: statusToSet,
+            readAt,
           },
         });
-
-        if (markAsRead) {
-          await tx.message.updateMany({
-            where: {
-              ticketId,
-              senderType: {
-                notIn: [viewerType, 'system'],
-              },
-              status: {
-                in: ['sent', 'delivered'],
-              },
-            },
-            data: {
-              status: 'read',
-            },
-          });
-        }
       }
 
       return tx.message.findMany({

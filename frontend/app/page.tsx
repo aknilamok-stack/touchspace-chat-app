@@ -8,20 +8,26 @@ import {
   clearAuthSession,
   type ManagerPresence,
   managerAccounts,
-  readManagerStatuses,
   readAuthSession,
-  writeManagerStatus,
   writeAuthSession,
 } from "@/lib/auth";
+import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
+const supplierDirectory: Record<string, { id: string; name: string }> = {
+  Karelia: { id: "supplier_karelia", name: "Karelia" },
+  Pergo: { id: "supplier_pergo", name: "Pergo" },
+  LabArte: { id: "supplier_labarte", name: "LabArte" },
+  "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
+};
 
-type MessageRole = "client" | "manager" | "supplier" | "system";
+type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
 
 type ApiMessage = {
   id: string;
   content: string;
   senderType: string;
+  messageType?: string;
   status: string;
   createdAt: string;
 };
@@ -58,6 +64,12 @@ type ApiTicket = {
   firstResponseAt?: string | null;
   firstResponseTime?: number | null;
   firstResponseBreached?: boolean;
+  conversationMode?: string;
+  currentHandlerType?: string;
+  aiEnabled?: boolean;
+  aiActivatedAt?: string | null;
+  aiDeactivatedAt?: string | null;
+  handedToManagerAt?: string | null;
   messages?: ApiMessage[];
   supplierRequests?: ApiSupplierRequest[];
 };
@@ -102,9 +114,22 @@ type ChatItem = {
   firstResponseAt: string | null;
   firstResponseTime: number | null;
   firstResponseBreached: boolean;
+  conversationMode: string;
+  currentHandlerType: string;
+  aiEnabled: boolean;
+  aiActivatedAt: string | null;
+  aiDeactivatedAt: string | null;
+  handedToManagerAt: string | null;
   clientName: string;
   messages: ChatMessage[];
   supplierRequests: ChatSupplierRequest[];
+};
+
+type ToastTone = "success" | "error" | "info";
+
+type UiToast = {
+  message: string;
+  tone: ToastTone;
 };
 
 type SlaVisual = {
@@ -188,7 +213,7 @@ const getUnreadCount = (chat: ChatItem) => {
   for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
     const message = chat.messages[index];
 
-    if (message.from === "manager" || message.from === "system") {
+    if (message.from === "manager" || message.from === "system" || message.from === "ai") {
       break;
     }
 
@@ -394,6 +419,8 @@ const formatMessage = (msg: ApiMessage): ChatMessage => ({
   from:
     msg.senderType === "client"
       ? "client"
+      : msg.senderType === "ai"
+        ? "ai"
       : msg.senderType === "supplier"
         ? "supplier"
         : msg.senderType === "system"
@@ -463,6 +490,33 @@ const extractApiErrorMessage = async (
   return responseText;
 };
 
+const formatRelativeClaimTime = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+
+  const diffMs = Date.now() - new Date(value).getTime();
+
+  if (diffMs < 60_000) {
+    return "только что";
+  }
+
+  const minutes = Math.floor(diffMs / 60_000);
+
+  if (minutes < 60) {
+    return `${minutes} мин назад`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours} ч назад`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} дн назад`;
+};
+
 const formatTicket = (ticket: ApiTicket): ChatItem => ({
   id: ticket.id,
   title: ticket.title,
@@ -479,6 +533,12 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   firstResponseAt: ticket.firstResponseAt ?? null,
   firstResponseTime: ticket.firstResponseTime ?? null,
   firstResponseBreached: ticket.firstResponseBreached ?? false,
+  conversationMode: ticket.conversationMode ?? "manager",
+  currentHandlerType: ticket.currentHandlerType ?? "manager",
+  aiEnabled: ticket.aiEnabled ?? false,
+  aiActivatedAt: ticket.aiActivatedAt ?? null,
+  aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
+  handedToManagerAt: ticket.handedToManagerAt ?? null,
   clientName: "Реселлер",
   messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
   supplierRequests: Array.isArray(ticket.supplierRequests)
@@ -515,6 +575,7 @@ export default function Home() {
   const [isCreatingSupplierRequest, setIsCreatingSupplierRequest] = useState(false);
   const [createSupplierRequestError, setCreateSupplierRequestError] = useState("");
   const [isTogglingPinned, setIsTogglingPinned] = useState(false);
+  const [isClaimingIncoming, setIsClaimingIncoming] = useState(false);
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedInvitedManagerId, setSelectedInvitedManagerId] = useState(
@@ -529,12 +590,13 @@ export default function Home() {
   const [isTransferringDialog, setIsTransferringDialog] = useState(false);
   const [transferDialogError, setTransferDialogError] = useState("");
   const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
-  const [resolveToast, setResolveToast] = useState("");
+  const [toast, setToast] = useState<UiToast | null>(null);
   const [resolvedHighlight, setResolvedHighlight] = useState<{
     ticketId: string;
     until: number;
   } | null>(null);
   const [isClientTyping, setIsClientTyping] = useState(false);
+  const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
@@ -549,7 +611,7 @@ export default function Home() {
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const availableManagers = BASE_MANAGERS.map((manager) => ({
     ...manager,
-    status: managerStatuses[manager.id] ?? "online",
+    status: managerStatuses[manager.id] ?? "offline",
   }));
   const firstOnlineManagerId =
     availableManagers.find((manager) => manager.status === "online")?.id ??
@@ -558,6 +620,15 @@ export default function Home() {
   const filteredQuickReplies = QUICK_REPLIES.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setDeepLinkTicketId(params.get("ticket") ?? "");
+  }, []);
 
   useEffect(() => {
     const session = readAuthSession();
@@ -586,12 +657,10 @@ export default function Home() {
       });
     }
 
-    const storedStatuses = readManagerStatuses();
-
     setCurrentManagerId(nextManagerId);
     setCurrentManagerName(nextManagerName);
-    setManagerStatuses(storedStatuses);
-    setCurrentManagerStatus(storedStatuses[nextManagerId] ?? "online");
+    setManagerStatuses({});
+    setCurrentManagerStatus("online");
     setAuthReady(true);
   }, [router]);
 
@@ -601,7 +670,9 @@ export default function Home() {
   ): Promise<ApiMessage[]> => {
     const response = await fetch(
       apiUrl(
-        `/tickets/${ticketId}/messages?viewerType=manager&markAsRead=${markAsRead ? "true" : "false"}`
+        `/tickets/${ticketId}/messages?viewerType=manager&viewerId=${encodeURIComponent(
+          currentManagerId
+        )}&markAsRead=${markAsRead ? "true" : "false"}`
       )
     );
     if (!response.ok) {
@@ -611,34 +682,41 @@ export default function Home() {
   };
 
   const fetchTickets = async (): Promise<ApiTicket[]> => {
-    const response = await fetch(apiUrl("/tickets"));
+    const response = await fetch(
+      apiUrl(
+        `/tickets?viewerType=manager&viewerId=${encodeURIComponent(currentManagerId)}`
+      )
+    );
     if (!response.ok) {
       throw new Error("Не удалось загрузить тикеты");
     }
     return response.json();
   };
 
-  const syncMessagesForTickets = useCallback(async (ticketIds: string[]) => {
-    const messageResults = await Promise.all(
-      ticketIds.map(async (ticketId) => {
-        try {
-          const messages = await fetchMessages(ticketId, false);
-          return { ticketId, messages };
-        } catch (error) {
-          console.error(`Ошибка загрузки сообщений тикета ${ticketId}:`, error);
-          return null;
+  const syncMessagesForTickets = useCallback(
+    async (ticketIds: string[]) => {
+      const messageResults = await Promise.all(
+        ticketIds.map(async (ticketId) => {
+          try {
+            const messages = await fetchMessages(ticketId, false);
+            return { ticketId, messages };
+          } catch (error) {
+            console.error(`Ошибка загрузки сообщений тикета ${ticketId}:`, error);
+            return null;
+          }
+        })
+      );
+
+      messageResults.forEach((result) => {
+        if (!result) {
+          return;
         }
-      })
-    );
 
-    messageResults.forEach((result) => {
-      if (!result) {
-        return;
-      }
-
-      applyMessagesToTicket(result.ticketId, result.messages);
-    });
-  }, []);
+        applyMessagesToTicket(result.ticketId, result.messages);
+      });
+    },
+    [currentManagerId]
+  );
 
   const syncTickets = (tickets: ApiTicket[]) => {
     const formattedChats = tickets.map(formatTicket);
@@ -762,12 +840,13 @@ export default function Home() {
     if (filter === "all") return true;
 
     if (filter === "in_progress") {
-      return isChatMine(chat);
+      return isChatMine(chat) && !chat.aiEnabled;
     }
 
     return (
       chat.rawStatus === "new" &&
-      !chat.assignedManagerId
+      !chat.assignedManagerId &&
+      !chat.aiEnabled
     );
   });
 
@@ -793,17 +872,30 @@ export default function Home() {
   });
 
   const incomingCount = chatData.filter((chat) => {
-    return chat.rawStatus === "new" && !chat.assignedManagerId;
+    return chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
   }).length;
 
   const myCount = chatData.filter((chat) => {
-    return isChatMine(chat);
+    return isChatMine(chat) && !chat.aiEnabled;
   }).length;
+  const onlineManagers = availableManagers.filter((manager) => manager.status === "online");
 
   useEffect(() => {
+    if (!authReady || !currentManagerId) {
+      return;
+    }
+
     const loadInitialTickets = async () => {
       try {
-        const data = await fetchTickets();
+        const [data, remoteStatuses] = await Promise.all([
+          fetchTickets(),
+          fetchManagerStatuses().catch(
+            (): Record<string, ManagerPresence> => ({})
+          ),
+        ]);
+
+        setManagerStatuses(remoteStatuses);
+        setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
         syncTickets(data);
         await syncMessagesForTickets(data.map((ticket) => ticket.id));
       } catch (error) {
@@ -812,7 +904,17 @@ export default function Home() {
     };
 
     void loadInitialTickets();
-  }, [syncMessagesForTickets]);
+  }, [authReady, currentManagerId, syncMessagesForTickets]);
+
+  useEffect(() => {
+    if (!deepLinkTicketId || chatData.length === 0) {
+      return;
+    }
+
+    if (chatData.some((chat) => chat.id === deepLinkTicketId)) {
+      setActiveChatId(deepLinkTicketId);
+    }
+  }, [deepLinkTicketId, chatData]);
 
   useEffect(() => {
     if (!authReady) {
@@ -822,7 +924,17 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
-          const tickets = await fetchTickets();
+          const [tickets, remoteStatuses] = await Promise.all([
+            fetchTickets(),
+            fetchManagerStatuses().catch(
+              (): Record<string, ManagerPresence> => ({})
+            ),
+          ]);
+
+          setManagerStatuses(remoteStatuses);
+          if (currentManagerId) {
+            setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "offline");
+          }
           syncTickets(tickets);
 
           await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
@@ -842,7 +954,71 @@ export default function Home() {
     }, 4000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, activeChatId, syncMessagesForTickets]);
+  }, [authReady, activeChatId, currentManagerId, syncMessagesForTickets]);
+
+  useEffect(() => {
+    if (!authReady || !currentManagerId || !currentManagerName) {
+      return;
+    }
+
+    void updateManagerPresence(currentManagerId, currentManagerName, currentManagerStatus)
+      .then(() => {
+        setManagerStatuses((prev) => ({
+          ...prev,
+          [currentManagerId]: currentManagerStatus,
+        }));
+      })
+      .catch((error) => {
+        console.error("Ошибка синхронизации статуса менеджера:", error);
+      });
+  }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
+
+  useEffect(() => {
+    if (
+      !authReady ||
+      !currentManagerId ||
+      !currentManagerName ||
+      currentManagerStatus === "offline"
+    ) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void updateManagerPresence(currentManagerId, currentManagerName, currentManagerStatus).catch(
+        (error) => {
+          console.error("Ошибка heartbeat статуса менеджера:", error);
+        }
+      );
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
+
+  useEffect(() => {
+    if (!authReady || !currentManagerId || !currentManagerName || typeof window === "undefined") {
+      return;
+    }
+
+    const handlePageHide = () => {
+      void fetch(apiUrl(`/profiles/${currentManagerId}/manager-status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: currentManagerName,
+          managerStatus: "offline",
+        }),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [authReady, currentManagerId, currentManagerName]);
 
   useEffect(() => {
     if (!activeChatId) return;
@@ -969,7 +1145,7 @@ export default function Home() {
 
         knownMessageIdsRef.current.add(message.id);
 
-        if (message.from === "manager" || message.from === "system") {
+        if (message.from === "manager" || message.from === "system" || message.from === "ai") {
           return;
         }
 
@@ -1077,21 +1253,53 @@ export default function Home() {
   }, [messageText]);
 
   useEffect(() => {
-    if (!resolveToast) {
+    if (!toast) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setResolveToast("");
+      setToast(null);
     }, 3200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [resolveToast]);
+  }, [toast]);
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !activeChatId) return;
 
     try {
+      if (
+        activeChat &&
+        activeChat.rawStatus === "new" &&
+        !activeChat.assignedManagerId &&
+        !activeChat.aiEnabled
+      ) {
+        const claimResponse = await fetch(apiUrl(`/tickets/${activeChatId}/claim`), {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            managerId: currentManagerId,
+            managerName: currentManagerName,
+          }),
+        });
+
+        if (!claimResponse.ok) {
+          const claimErrorText = await extractApiErrorMessage(
+            claimResponse,
+            "Этот диалог уже взят другим менеджером"
+          );
+          const refreshedTickets = await fetchTickets();
+          syncTickets(refreshedTickets);
+          setToast({
+            message: claimErrorText,
+            tone: "error",
+          });
+          return;
+        }
+      }
+
       const response = await fetch(apiUrl("/messages"), {
         method: "POST",
         headers: {
@@ -1136,6 +1344,68 @@ export default function Home() {
       setAttachmentName("");
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
+      setToast({
+        message: "Не удалось отправить сообщение",
+        tone: "error",
+      });
+    }
+  };
+
+  const handleClaimIncoming = async () => {
+    if (!activeChatId || !currentManagerId || !currentManagerName) {
+      return;
+    }
+
+    setIsClaimingIncoming(true);
+
+    try {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/claim`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorMessage = await extractApiErrorMessage(
+          response,
+          "Диалог уже взят другим менеджером"
+        );
+        const refreshedTickets = await fetchTickets();
+        syncTickets(refreshedTickets);
+        setToast({
+          message: errorMessage,
+          tone: "error",
+        });
+        return;
+      }
+
+      const [tickets, messages, supplierRequests] = await Promise.all([
+        fetchTickets(),
+        fetchMessages(activeChatId, true),
+        fetchSupplierRequests(activeChatId),
+      ]);
+
+      syncTickets(tickets);
+      applyMessagesToTicket(activeChatId, messages);
+      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      setFilter("in_progress");
+      setToast({
+        message: "Диалог взят в работу",
+        tone: "success",
+      });
+    } catch (error) {
+      console.error("Ошибка взятия диалога в работу:", error);
+      setToast({
+        message: "Не удалось взять диалог в работу",
+        tone: "error",
+      });
+    } finally {
+      setIsClaimingIncoming(false);
     }
   };
 
@@ -1157,6 +1427,10 @@ export default function Home() {
     setCreateSupplierRequestError("");
 
     try {
+      const supplier = supplierDirectory[selectedSupplier] ?? {
+        id: `supplier_${selectedSupplier.toLowerCase().replace(/\s+/g, "_")}`,
+        name: selectedSupplier,
+      };
       const response = await fetch(apiUrl("/supplier-requests"), {
         method: "POST",
         headers: {
@@ -1164,10 +1438,11 @@ export default function Home() {
         },
         body: JSON.stringify({
           ticketId: activeChatId,
-          supplierName: selectedSupplier,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
           requestText: supplierRequestText,
           slaMinutes: 240,
-          createdByManagerId: "manager_1",
+          createdByManagerId: currentManagerId,
         }),
       });
 
@@ -1208,6 +1483,14 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    if (currentManagerId && currentManagerName) {
+      void updateManagerPresence(currentManagerId, currentManagerName, "offline").finally(() => {
+        clearAuthSession();
+        router.replace("/login");
+      });
+      return;
+    }
+
     clearAuthSession();
     router.replace("/login");
   };
@@ -1217,7 +1500,6 @@ export default function Home() {
       return;
     }
 
-    writeManagerStatus(currentManagerId, status);
     setManagerStatuses((prev) => ({
       ...prev,
       [currentManagerId]: status,
@@ -1243,16 +1525,25 @@ export default function Home() {
         );
 
         if (response.status === 400 && errorMessage.includes("максимум 3")) {
-          window.alert("Можно закрепить максимум 3 чата");
+          setToast({
+            message: "Можно закрепить максимум 3 чата",
+            tone: "info",
+          });
           return;
         }
 
         if (response.status === 404) {
-          window.alert("Backend был перезапущен. Обновите страницу и попробуйте ещё раз.");
+          setToast({
+            message: "Backend был перезапущен. Обновите страницу и попробуйте ещё раз.",
+            tone: "error",
+          });
           return;
         }
 
-        window.alert(errorMessage);
+        setToast({
+          message: errorMessage,
+          tone: "error",
+        });
         return;
       }
 
@@ -1260,7 +1551,10 @@ export default function Home() {
       syncTickets(tickets);
     } catch (error) {
       console.error("Ошибка изменения закрепления:", error);
-      window.alert("Не удалось изменить закрепление. Проверьте подключение к backend.");
+      setToast({
+        message: "Не удалось изменить закрепление. Проверьте подключение к backend.",
+        tone: "error",
+      });
     } finally {
       setIsTogglingPinned(false);
     }
@@ -1302,7 +1596,10 @@ export default function Home() {
       syncTickets(tickets);
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
-      setResolveToast("Диалог отмечен как решённый");
+      setToast({
+        message: "Диалог отмечен как решённый",
+        tone: "success",
+      });
       setResolvedHighlight({
         ticketId: activeChatId,
         until: Date.now() + 3 * 60 * 1000,
@@ -1345,7 +1642,10 @@ export default function Home() {
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
       setFilter("in_progress");
-      setResolveToast("Диалог снова открыт");
+      setToast({
+        message: "Диалог снова открыт",
+        tone: "success",
+      });
 
       window.setTimeout(() => {
         composerTextareaRef.current?.focus();
@@ -1559,6 +1859,16 @@ export default function Home() {
                   <div className="my-2 h-px bg-[#EEF0F4]" />
 
                   <button
+                    onClick={() => router.push("/settings")}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#1E1E1E] transition hover:bg-[#F7F8FB]"
+                  >
+                    <span>Настройки уведомлений</span>
+                    <span className="text-xs text-[#8E8E93]">→</span>
+                  </button>
+
+                  <div className="my-2 h-px bg-[#EEF0F4]" />
+
+                  <button
                     onClick={handleLogout}
                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#FD6868] transition hover:bg-[#FFF4F4]"
                   >
@@ -1627,6 +1937,30 @@ export default function Home() {
             </button>
           </div>
 
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
+            <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
+              Онлайн: {onlineManagers.length}
+            </span>
+            {onlineManagers.length > 0 ? (
+              onlineManagers.map((manager) => (
+                <span
+                  key={manager.id}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
+                >
+                  <span className="h-2 w-2 rounded-full bg-[#34C759]" />
+                  <span>
+                    {manager.name}
+                    {manager.id === currentManagerId ? " (Вы)" : ""}
+                  </span>
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
+                Нет менеджеров со статусом online
+              </span>
+            )}
+          </div>
+
           <div className="mb-4">
             <input
               value={searchQuery}
@@ -1665,6 +1999,11 @@ export default function Home() {
                           {chat.pinned && (
                             <span className="text-xs text-[#8E8E93]" title="Закреплён">
                               📌
+                            </span>
+                          )}
+                          {chat.aiEnabled && (
+                            <span className="rounded-full bg-[#EEF6FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
+                              Ведёт AI
                             </span>
                           )}
                           <p
@@ -1711,9 +2050,16 @@ export default function Home() {
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
             <div className="min-w-0">
-              <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                {activeChat?.title || "Выберите обращение"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
+                  {activeChat?.title || "Выберите обращение"}
+                </p>
+                {activeChat?.aiEnabled ? (
+                  <span className="shrink-0 rounded-full bg-[#EEF6FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
+                    AI-режим
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-1 text-[13px] text-[#8E8E93]">
                 {activeChat?.clientName
                   ? `${activeChat.clientName} • клиентский диалог`
@@ -1807,30 +2153,44 @@ export default function Home() {
             )}
 
             {activeChat ? (
-              <div className="relative">
-                <button
-                  onClick={handleResolveTicket}
-                  disabled={isResolvingTicket || activeChat.rawStatus === "resolved"}
-                  className={`flex items-center gap-2 rounded-[10px] px-4 py-2 text-sm font-semibold transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80 ${
-                    isResolveHighlighted
-                      ? "bg-[#34C759] text-white shadow-[0_10px_24px_rgba(52,199,89,0.22)]"
-                      : "bg-[#E9F7EF] text-[#34C759]"
-                  }`}
-                >
-                  <Image
-                    src="/icons/reshen.svg"
-                    alt="Решён"
-                    width={16}
-                    height={16}
-                    className="h-4 w-4"
-                    style={{
-                      filter: isResolveHighlighted
-                        ? "brightness(0) saturate(100%) invert(100%)"
-                        : "brightness(0) saturate(100%) invert(58%) sepia(78%) saturate(2475%) hue-rotate(317deg) brightness(103%) contrast(98%)",
-                    }}
-                  />
-                  <span>{isResolvingTicket ? "Сохраняем..." : "Решён"}</span>
-                </button>
+              <div className="flex items-center gap-2">
+                {activeChat.rawStatus === "new" &&
+                !activeChat.assignedManagerId &&
+                !activeChat.aiEnabled ? (
+                  <button
+                    onClick={handleClaimIncoming}
+                    disabled={isClaimingIncoming}
+                    className="flex items-center gap-2 rounded-[10px] bg-[#0A84FF] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,132,255,0.22)] transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80"
+                  >
+                    <span>{isClaimingIncoming ? "Берём..." : "Взять в работу"}</span>
+                  </button>
+                ) : null}
+
+                <div className="relative">
+                  <button
+                    onClick={handleResolveTicket}
+                    disabled={isResolvingTicket || activeChat.rawStatus === "resolved"}
+                    className={`flex items-center gap-2 rounded-[10px] px-4 py-2 text-sm font-semibold transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80 ${
+                      isResolveHighlighted
+                        ? "bg-[#34C759] text-white shadow-[0_10px_24px_rgba(52,199,89,0.22)]"
+                        : "bg-[#E9F7EF] text-[#34C759]"
+                    }`}
+                  >
+                    <Image
+                      src="/icons/reshen.svg"
+                      alt="Решён"
+                      width={16}
+                      height={16}
+                      className="h-4 w-4"
+                      style={{
+                        filter: isResolveHighlighted
+                          ? "brightness(0) saturate(100%) invert(100%)"
+                          : "brightness(0) saturate(100%) invert(58%) sepia(78%) saturate(2475%) hue-rotate(317deg) brightness(103%) contrast(98%)",
+                      }}
+                    />
+                    <span>{isResolvingTicket ? "Сохраняем..." : "Решён"}</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div />
@@ -1848,9 +2208,18 @@ export default function Home() {
             </div>
           ) : null}
 
-          {activeChat?.assignedManagerName || activeChat?.lastResolvedByManagerName ? (
+          {activeChat?.assignedManagerName || activeChat?.lastResolvedByManagerName || activeChat?.aiEnabled ? (
             <div className="border-b border-[#EDEDF1] bg-white px-6 py-3">
               <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 text-sm text-[#6C6C70]">
+                {activeChat?.aiEnabled ? (
+                  <>
+                    <span className="rounded-full bg-[#EEF6FF] px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-[#0A84FF]">
+                      Сейчас ведёт
+                    </span>
+                    <span className="mr-3 font-medium text-[#0A84FF]">AI-помощник</span>
+                  </>
+                ) : null}
+
                 {activeChat.assignedManagerName ? (
                   <>
                     <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-[#8E8E93]">
@@ -1860,6 +2229,11 @@ export default function Home() {
                       {activeChat.assignedManagerName}
                       {activeChat.assignedManagerId === currentManagerId ? " (Вы)" : ""}
                     </span>
+                    {activeChat.handedToManagerAt ? (
+                      <span className="rounded-full bg-[#EEF6FF] px-2.5 py-1 text-xs text-[#0A84FF]">
+                        Взял {formatRelativeClaimTime(activeChat.handedToManagerAt)}
+                      </span>
+                    ) : null}
                   </>
                 ) : null}
 
@@ -1925,6 +2299,8 @@ export default function Home() {
                         className={`max-w-[46%] min-w-[112px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
                           message.from === "manager"
                             ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                            : message.from === "ai"
+                              ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
                             : message.from === "client"
                               ? "bg-[#EFEFF4] text-[#1E1E1E]"
                               : message.from === "supplier"
@@ -1936,6 +2312,7 @@ export default function Home() {
                           <p className="mb-1 text-xs opacity-60">
                             {message.from === "client" && "Клиент"}
                             {message.from === "manager" && "Менеджер"}
+                            {message.from === "ai" && "AI-помощник"}
                             {message.from === "supplier" &&
                               "supplierName" in message &&
                               `Поставщик: ${message.supplierName}`}
@@ -1945,6 +2322,8 @@ export default function Home() {
                             className={`flex items-center gap-3 text-[10px] ${
                               message.from === "manager"
                                 ? "justify-between text-white/65"
+                                : message.from === "ai"
+                                  ? "justify-end text-[#4C6A92]"
                                 : "justify-end text-[#8E8E93]"
                             }`}
                           >
@@ -1967,10 +2346,18 @@ export default function Home() {
             </div>
           </div>
 
-          {resolveToast ? (
+          {toast ? (
             <div className="pointer-events-none absolute right-[352px] top-[104px] z-30">
-              <div className="rounded-2xl border border-[#D8F0DE] bg-white px-4 py-3 text-sm font-medium text-[#1F8B4C] shadow-[0_18px_40px_rgba(31,139,76,0.12)]">
-                {resolveToast}
+              <div
+                className={`rounded-2xl border bg-white px-4 py-3 text-sm font-medium shadow-[0_18px_40px_rgba(15,23,42,0.12)] ${
+                  toast.tone === "error"
+                    ? "border-[#FFD5D5] text-[#C53C3C]"
+                    : toast.tone === "info"
+                      ? "border-[#D6E7FF] text-[#0A84FF]"
+                      : "border-[#D8F0DE] text-[#1F8B4C]"
+                }`}
+              >
+                {toast.message}
               </div>
             </div>
           ) : null}

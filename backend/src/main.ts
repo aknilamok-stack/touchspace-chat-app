@@ -8,7 +8,8 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const vercelPreviewPattern = /^https:\/\/touchspace-chat-[a-z0-9-]+\.vercel\.app$/i;
+  const allowVercelPreviews = (process.env.ALLOW_VERCEL_PREVIEWS ?? 'false') === 'true';
+  const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -17,7 +18,10 @@ async function bootstrap() {
         return;
       }
 
-      if (allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        (allowVercelPreviews && vercelPreviewPattern.test(origin))
+      ) {
         callback(null, true);
         return;
       }

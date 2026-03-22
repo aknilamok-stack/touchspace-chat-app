@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
+import { getOrCreateClientSession } from "@/lib/auth";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
 const widgetFontFamily = "Montserrat, ui-sans-serif, system-ui, sans-serif";
@@ -23,12 +24,16 @@ type Ticket = {
   id: string;
   title: string;
   status?: string;
+  aiEnabled?: boolean;
+  currentHandlerType?: string;
+  conversationMode?: string;
 };
 
 type Message = {
   id: string;
   content: string;
   senderType: string;
+  messageType?: string;
   status: string;
   ticketId: string;
   createdAt: string;
@@ -70,6 +75,11 @@ export default function ClientPage() {
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
+  const [isTogglingAi, setIsTogglingAi] = useState(false);
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [aiTypingStartedAt, setAiTypingStartedAt] = useState<number | null>(null);
+  const [showAiTimeoutHint, setShowAiTimeoutHint] = useState(false);
+  const [preferredAiMode, setPreferredAiMode] = useState(false);
   const [error, setError] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -79,12 +89,22 @@ export default function ClientPage() {
   const lastTypingSentAtRef = useRef(0);
 
   const isResolved = activeTicket?.status === "resolved";
-  const widgetStatusText = isResolved ? "Ваш вопрос решён?" : "Операторы онлайн";
+  const aiModeActive = activeTicket?.aiEnabled ?? preferredAiMode;
+  const widgetStatusText = isResolved
+    ? "Ваш вопрос решён?"
+    : aiModeActive
+      ? "Сейчас отвечает AI-помощник"
+      : "Операторы онлайн";
   const hasMessages = messages.length > 0;
   const showQuickActions = !hasMessages && !activeTicket;
+  const clientSession = getOrCreateClientSession();
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
-    const response = await fetch(apiUrl("/tickets"));
+    const response = await fetch(
+      apiUrl(
+        `/tickets?viewerType=client&viewerId=${encodeURIComponent(clientSession.clientId)}`
+      )
+    );
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить список обращений");
@@ -111,6 +131,10 @@ export default function ClientPage() {
     setMessages([]);
     setReplyMap({});
     setReplyTarget(null);
+    setPreferredAiMode(false);
+    setIsAiTyping(false);
+    setAiTypingStartedAt(null);
+    setShowAiTimeoutHint(false);
     window.localStorage.removeItem(clientActiveTicketStorageKey);
   };
 
@@ -154,7 +178,11 @@ export default function ClientPage() {
 
     try {
       const messagesResponse = await fetch(
-        apiUrl(`/tickets/${ticket.id}/messages?viewerType=client&markAsRead=true`)
+        apiUrl(
+          `/tickets/${ticket.id}/messages?viewerType=client&viewerId=${encodeURIComponent(
+            clientSession.clientId
+          )}&markAsRead=true`
+        )
       );
 
       if (!messagesResponse.ok) {
@@ -163,6 +191,22 @@ export default function ClientPage() {
 
       const messagesData = (await messagesResponse.json()) as Message[];
       setMessages(messagesData);
+      setPreferredAiMode(ticket.aiEnabled ?? false);
+
+      const lastNonSystemMessage = [...messagesData]
+        .reverse()
+        .find((message) => message.senderType !== "system");
+
+      const shouldShowAiTyping =
+        Boolean(ticket.aiEnabled) &&
+        ticket.currentHandlerType === "ai" &&
+        lastNonSystemMessage?.senderType === "client";
+
+      setIsAiTyping(shouldShowAiTyping);
+      if (!shouldShowAiTyping) {
+        setAiTypingStartedAt(null);
+        setShowAiTimeoutHint(false);
+      }
     } catch (loadError) {
       console.error("Ошибка загрузки обращения:", loadError);
       setError("Не удалось загрузить данные обращения");
@@ -233,10 +277,32 @@ export default function ClientPage() {
       };
 
       void refreshActiveTicket();
-    }, 4000);
+    }, isAiTyping ? 1200 : 4000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTicket]);
+  }, [activeTicket, isAiTyping]);
+
+  useEffect(() => {
+    if (!isAiTyping) {
+      setAiTypingStartedAt(null);
+      setShowAiTimeoutHint(false);
+      return;
+    }
+
+    setAiTypingStartedAt((current) => current ?? Date.now());
+  }, [isAiTyping]);
+
+  useEffect(() => {
+    if (!isAiTyping || !aiTypingStartedAt) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowAiTimeoutHint(true);
+    }, 8000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isAiTyping, aiTypingStartedAt]);
 
   useEffect(() => {
     if (!activeTicket?.id || !draftText.trim()) {
@@ -297,18 +363,30 @@ export default function ClientPage() {
 
     setIsCreatingTicket(true);
     setError("");
+    setIsAiTyping(preferredAiMode);
+    if (preferredAiMode) {
+      setAiTypingStartedAt(Date.now());
+      setShowAiTimeoutHint(false);
+    }
 
     try {
       const derivedTitle =
         firstMessage.trim().slice(0, 48) || "Новое обращение клиента";
 
-      const ticketResponse = await fetch(apiUrl("/tickets"), {
+      const ticketResponse = await fetch(apiUrl("/tickets/with-first-message"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           title: derivedTitle,
+          firstMessage,
+          senderType: "client",
+          senderId: clientSession.clientId,
+          senderName: clientSession.clientName,
+          clientId: clientSession.clientId,
+          clientName: clientSession.clientName,
+          aiEnabled: preferredAiMode,
         }),
       });
 
@@ -317,23 +395,6 @@ export default function ClientPage() {
       }
 
       const newTicket = (await ticketResponse.json()) as Ticket;
-
-      const messageResponse = await fetch(apiUrl("/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketId: newTicket.id,
-          content: firstMessage,
-          senderType: "client",
-        }),
-      });
-
-      if (!messageResponse.ok) {
-        throw new Error("Обращение создано, но первое сообщение не сохранилось");
-      }
-
       setActiveTicket(newTicket);
       setIsWidgetOpen(true);
       window.localStorage.setItem(clientActiveTicketStorageKey, newTicket.id);
@@ -342,6 +403,9 @@ export default function ClientPage() {
       setAttachmentName("");
     } catch (createError) {
       console.error("Ошибка создания обращения:", createError);
+      setIsAiTyping(false);
+      setAiTypingStartedAt(null);
+      setShowAiTimeoutHint(false);
       setError(
         createError instanceof Error
           ? createError.message
@@ -349,6 +413,40 @@ export default function ClientPage() {
       );
     } finally {
       setIsCreatingTicket(false);
+    }
+  };
+
+  const handleToggleAiMode = async () => {
+    if (!activeTicket) {
+      setPreferredAiMode((current) => !current);
+      return;
+    }
+
+    setIsTogglingAi(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        apiUrl(`/tickets/${activeTicket.id}/ai/${activeTicket.aiEnabled ? "disable" : "enable"}`),
+        {
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Не удалось переключить AI-режим");
+      }
+
+      const updatedTicket = (await response.json()) as Ticket;
+      setActiveTicket(updatedTicket);
+      setPreferredAiMode(updatedTicket.aiEnabled ?? false);
+      setShowAiTimeoutHint(false);
+      await loadTicketContext(updatedTicket);
+    } catch (toggleError) {
+      console.error("Ошибка переключения AI-режима:", toggleError);
+      setError("Не удалось переключить AI-помощника");
+    } finally {
+      setIsTogglingAi(false);
     }
   };
 
@@ -360,12 +458,38 @@ export default function ClientPage() {
     }
 
     if (!activeTicket) {
+      setDraftText("");
+      setAttachmentName("");
+      setShowEmojiPicker(false);
       await handleCreateTicket(contentToSend);
       return;
     }
 
     setIsSendingMessage(true);
     setError("");
+    setDraftText("");
+    setAttachmentName("");
+    setShowEmojiPicker(false);
+    lastTypingSentAtRef.current = 0;
+
+    const optimisticMessageId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: optimisticMessageId,
+      content: contentToSend,
+      senderType: "client",
+      messageType: "text",
+      status: "sent",
+      ticketId: activeTicket.id,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((current) => [...current, optimisticMessage]);
+
+    if (activeTicket.aiEnabled) {
+      setIsAiTyping(true);
+      setAiTypingStartedAt(Date.now());
+      setShowAiTimeoutHint(false);
+    }
 
     try {
       const response = await fetch(apiUrl("/messages"), {
@@ -377,6 +501,8 @@ export default function ClientPage() {
           ticketId: activeTicket.id,
           content: contentToSend,
           senderType: "client",
+          senderId: clientSession.clientId,
+          senderName: clientSession.clientName,
         }),
       });
 
@@ -384,13 +510,15 @@ export default function ClientPage() {
         throw new Error("Не удалось отправить сообщение");
       }
 
-      await loadTicketContext(activeTicket);
-      setDraftText("");
-      setAttachmentName("");
-      setShowEmojiPicker(false);
-      lastTypingSentAtRef.current = 0;
-
       const createdMessage = (await response.json()) as Message;
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === optimisticMessageId ? createdMessage : message
+        )
+      );
+
+      void loadTicketContext(activeTicket);
 
       if (replyTarget) {
         const nextReplyMap = {
@@ -407,6 +535,12 @@ export default function ClientPage() {
       }
     } catch (sendError) {
       console.error("Ошибка отправки сообщения:", sendError);
+      setMessages((current) =>
+        current.filter((message) => message.id !== optimisticMessageId)
+      );
+      setIsAiTyping(false);
+      setAiTypingStartedAt(null);
+      setShowAiTimeoutHint(false);
       setError("Не удалось отправить сообщение");
     } finally {
       setIsSendingMessage(false);
@@ -419,7 +553,8 @@ export default function ClientPage() {
         if (
           message.senderType === "client" ||
           message.senderType === "manager" ||
-          message.senderType === "supplier"
+          message.senderType === "supplier" ||
+          message.senderType === "ai"
         ) {
           return [
             {
@@ -451,7 +586,30 @@ export default function ClientPage() {
           ];
         }
 
-        return [];
+        if (message.content.includes("AI-помощник")) {
+          return [
+            {
+              ...message,
+              displayContent: message.content,
+            },
+          ];
+        }
+
+        if (message.content.includes("AI передал диалог менеджеру")) {
+          return [
+            {
+              ...message,
+              displayContent: "AI передал диалог менеджеру TouchSpace.",
+            },
+          ];
+        }
+
+        return [
+          {
+            ...message,
+            displayContent: message.content,
+          },
+        ];
       }),
     [messages]
   );
@@ -513,6 +671,28 @@ export default function ClientPage() {
             <div className="relative z-10 pl-9 pr-2">
               <p className="text-[16px] font-semibold leading-tight">Напишите ваше сообщение</p>
               <p className="mt-1 text-[12px] text-white/80">{widgetStatusText}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => void handleToggleAiMode()}
+                  disabled={isTogglingAi}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                    aiModeActive
+                      ? "bg-white text-[#0A84FF]"
+                      : "bg-white/12 text-white hover:bg-white/20"
+                  } disabled:opacity-60`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      aiModeActive ? "bg-[#34C759]" : "bg-white/60"
+                    }`}
+                  />
+                  {isTogglingAi
+                    ? "Переключаем..."
+                    : aiModeActive
+                      ? "AI-помощник включён"
+                      : "Включить AI-помощника"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -594,11 +774,17 @@ export default function ClientPage() {
                             className={`max-w-[82%] rounded-[18px] px-4 py-3 text-sm leading-6 shadow-sm ${
                               message.senderType === "client"
                                 ? "rounded-tr-[6px] bg-[#0A84FF] text-white"
+                                : message.senderType === "ai"
+                                  ? "rounded-tl-[6px] border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
                                 : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
                             }`}
                           >
                             <p className="text-xs opacity-60">
-                              {message.senderType === "client" ? "Вы" : "Поддержка"}
+                              {message.senderType === "client"
+                                ? "Вы"
+                                : message.senderType === "ai"
+                                  ? "AI-помощник"
+                                  : "Поддержка"}
                             </p>
                             {replyMap[message.id] ? (
                               <div
@@ -619,6 +805,8 @@ export default function ClientPage() {
                               className={`mt-2 flex items-center gap-2 text-[10px] ${
                                 message.senderType === "client"
                                   ? "justify-end text-white/70"
+                                  : message.senderType === "ai"
+                                    ? "justify-end text-[#4C6A92]"
                                   : "justify-end text-[#8E8E93]"
                               }`}
                             >
@@ -636,6 +824,45 @@ export default function ClientPage() {
                   </div>
                 );
               })}
+
+              {isAiTyping ? (
+                <div className="grid gap-2">
+                  <div className="flex justify-start">
+                    <div className="max-w-[82%] rounded-[18px] rounded-tl-[6px] border border-[#D9E8FF] bg-[#EFF6FF] px-4 py-3 text-sm text-[#0B3B78] shadow-sm">
+                      <p className="text-xs opacity-60">AI-помощник</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#77A6E8] [animation-delay:-0.2s]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#77A6E8] [animation-delay:-0.1s]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#77A6E8]" />
+                        </div>
+                        <span className="text-xs text-[#4C6A92]">AI-помощник печатает...</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {showAiTimeoutHint ? (
+                    <div className="flex justify-start">
+                      <div className="max-w-[88%] rounded-[16px] border border-[#FFE1A6] bg-[#FFF7E8] px-4 py-3 text-xs leading-5 text-[#8A5A00] shadow-sm">
+                        <p className="font-medium text-[#7A4F00]">
+                          AI отвечает дольше обычного.
+                        </p>
+                        <p className="mt-1">
+                          Можно не ждать и сразу подключить менеджера TouchSpace.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleAiMode()}
+                          disabled={isTogglingAi}
+                          className="mt-3 rounded-full bg-[#0A84FF] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-[#0077F2] disabled:opacity-60"
+                        >
+                          Подключить менеджера
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div ref={messagesEndRef} />
             </div>

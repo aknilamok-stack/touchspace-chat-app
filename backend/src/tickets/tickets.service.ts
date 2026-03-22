@@ -1,33 +1,117 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { InviteManagerDto } from './dto/invite-manager.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto';
 import { TypingService } from '../typing.service';
+import { ProfilesService } from '../profiles.service';
+import { ChatAiService } from '../chat-ai.service';
+
+type TicketViewer = {
+  viewerType?: string;
+  viewerId?: string;
+};
 
 @Injectable()
 export class TicketsService {
   constructor(
-    private prisma: PrismaService,
-    private typingService: TypingService,
+    private readonly prisma: PrismaService,
+    private readonly typingService: TypingService,
+    private readonly profilesService: ProfilesService,
+    private readonly chatAiService: ChatAiService,
   ) {}
 
-  async create(title = 'Тестовый тикет') {
+  private async createSystemMessage(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    content: string,
+  ) {
+    return tx.message.create({
+      data: {
+        ticketId,
+        content,
+        senderType: 'system',
+        senderRole: 'system',
+        status: 'sent',
+        deliveryStatus: 'sent',
+        messageType: 'system',
+      },
+    });
+  }
+
+  private buildTicketWhere(viewer?: TicketViewer) {
+    const viewerId = viewer?.viewerId?.trim();
+    const viewerType = viewer?.viewerType?.trim();
+
+    if (!viewerType || !viewerId) {
+      return undefined;
+    }
+
+    if (viewerType === 'client') {
+      return { clientId: viewerId };
+    }
+
+    if (viewerType === 'supplier') {
+      return {
+        OR: [
+          { supplierId: viewerId },
+          {
+            supplierRequests: {
+              some: {
+                supplierId: viewerId,
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    if (viewerType === 'manager') {
+      return {
+        OR: [
+          { assignedManagerId: null },
+          { assignedManagerId: viewerId },
+          { invitedManagerIds: { has: viewerId } },
+          { lastResolvedByManagerId: viewerId },
+        ],
+      };
+    }
+
+    return undefined;
+  }
+
+  async create(title = 'Тестовый тикет', clientId?: string, clientName?: string) {
     const now = new Date();
+
+    await this.profilesService.ensureProfile({
+      id: clientId,
+      fullName: clientName,
+      role: clientId ? 'client' : null,
+    });
 
     return this.prisma.ticket.create({
       data: {
         title,
         status: 'new',
+        conversationMode: 'manager',
+        currentHandlerType: 'manager',
+        aiEnabled: false,
+        aiResolved: false,
+        invitedManagerIds: [],
         invitedManagerNames: [],
         assignedManagerId: null,
         assignedManagerName: null,
         lastResolvedByManagerId: null,
         lastResolvedByManagerName: null,
+        clientId: clientId ?? null,
+        clientName: clientName ?? null,
+        supplierId: null,
+        supplierName: null,
         firstResponseStartedAt: now,
         firstResponseAt: null,
         firstResponseTime: null,
         firstResponseBreached: false,
+        lastMessageAt: null,
       },
     });
   }
@@ -36,26 +120,59 @@ export class TicketsService {
     title: string,
     firstMessage: string,
     senderType: string,
+    senderId?: string,
+    senderName?: string,
+    clientId?: string,
+    clientName?: string,
+    aiEnabled = false,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const createdTicket = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const isClientStart = senderType === 'client';
-      const firstResponseTime =
-        senderType === 'manager' ? 0 : null;
+      const normalizedClientId =
+        senderType === 'client' ? (senderId ?? clientId ?? null) : (clientId ?? null);
+      const normalizedClientName =
+        senderType === 'client' ? (senderName ?? clientName ?? null) : (clientName ?? null);
+      const firstResponseTime = senderType === 'manager' ? 0 : null;
+
+      await this.profilesService.ensureProfile({
+        id: normalizedClientId,
+        fullName: normalizedClientName,
+        role: normalizedClientId ? 'client' : null,
+      });
+
+      if (senderId) {
+        await this.profilesService.ensureProfile({
+          id: senderId,
+          fullName: senderName,
+          role: senderType,
+        });
+      }
 
       const ticket = await tx.ticket.create({
         data: {
           title,
           status: isClientStart ? 'new' : 'in_progress',
+          conversationMode: aiEnabled ? 'ai' : 'manager',
+          currentHandlerType: aiEnabled ? 'ai' : 'manager',
+          aiEnabled,
+          aiActivatedAt: aiEnabled ? now : null,
+          aiResolved: false,
+          invitedManagerIds: [],
           invitedManagerNames: [],
           assignedManagerId: null,
           assignedManagerName: null,
           lastResolvedByManagerId: null,
           lastResolvedByManagerName: null,
+          clientId: normalizedClientId,
+          clientName: normalizedClientName,
+          supplierId: senderType === 'supplier' ? (senderId ?? null) : null,
+          supplierName: senderType === 'supplier' ? (senderName ?? null) : null,
           firstResponseStartedAt: isClientStart ? now : null,
           firstResponseAt: senderType === 'manager' ? now : null,
           firstResponseTime,
           firstResponseBreached: false,
+          lastMessageAt: now,
         },
       });
 
@@ -64,19 +181,39 @@ export class TicketsService {
           ticketId: ticket.id,
           content: firstMessage,
           senderType,
+          senderRole: senderType,
+          senderProfileId: senderId ?? null,
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'text',
         },
       });
+
+      if (aiEnabled) {
+        await this.createSystemMessage(tx, ticket.id, 'AI-помощник подключён к диалогу');
+      }
 
       return {
         ...ticket,
         messages: [message],
       };
     });
+
+    if (aiEnabled) {
+      void this.chatAiService.persistAiTurn(createdTicket.id).catch((error) => {
+        console.error('Ошибка AI-ответа в createWithFirstMessage:', error);
+      });
+    }
+
+    return this.prisma.ticket.findUnique({
+      where: { id: createdTicket.id },
+    });
   }
 
-  async findAll() {
+  async findAll(viewer?: TicketViewer) {
     return this.prisma.ticket.findMany({
-      orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+      where: this.buildTicketWhere(viewer),
+      orderBy: [{ pinned: 'desc' }, { lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
     });
   }
 
@@ -141,14 +278,22 @@ export class TicketsService {
   async resolve(id: string, resolveTicketDto: ResolveTicketDto) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: { id: true },
     });
 
     if (!ticket) {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
 
+    await this.profilesService.ensureProfile({
+      id: resolveTicketDto.managerId,
+      fullName: resolveTicketDto.managerName,
+      role: 'manager',
+    });
+
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
       const updatedTicket = await tx.ticket.update({
         where: { id },
         data: {
@@ -157,7 +302,8 @@ export class TicketsService {
           assignedManagerName: null,
           lastResolvedByManagerId: resolveTicketDto.managerId,
           lastResolvedByManagerName: resolveTicketDto.managerName,
-          closedAt: new Date(),
+          resolvedAt: now,
+          closedAt: now,
         },
       });
 
@@ -166,6 +312,17 @@ export class TicketsService {
           ticketId: id,
           content: `Диалог отмечен как решённый менеджером ${resolveTicketDto.managerName}`,
           senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+        },
+      });
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
         },
       });
 
@@ -178,7 +335,6 @@ export class TicketsService {
       where: { id },
       select: {
         id: true,
-        status: true,
       },
     });
 
@@ -186,13 +342,26 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
 
+    await this.profilesService.ensureProfile({
+      id: assignManagerDto.managerId,
+      fullName: assignManagerDto.managerName,
+      role: 'manager',
+    });
+
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
       const updatedTicket = await tx.ticket.update({
         where: { id },
         data: {
           status: 'in_progress',
           assignedManagerId: assignManagerDto.managerId,
           assignedManagerName: assignManagerDto.managerName,
+          conversationMode: 'manager',
+          currentHandlerType: 'manager',
+          aiEnabled: false,
+          handedToManagerAt: now,
+          resolvedAt: null,
           closedAt: null,
         },
       });
@@ -202,6 +371,17 @@ export class TicketsService {
           ticketId: id,
           content: `Менеджер ${assignManagerDto.managerName} снова открыл диалог`,
           senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+        },
+      });
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
         },
       });
 
@@ -214,6 +394,7 @@ export class TicketsService {
       where: { id },
       select: {
         id: true,
+        invitedManagerIds: true,
         invitedManagerNames: true,
       },
     });
@@ -222,16 +403,25 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
 
-    if (ticket.invitedManagerNames.includes(inviteManagerDto.managerName)) {
+    await this.profilesService.ensureProfile({
+      id: inviteManagerDto.managerId,
+      fullName: inviteManagerDto.managerName,
+      role: 'manager',
+    });
+
+    if (ticket.invitedManagerIds.includes(inviteManagerDto.managerId)) {
       return this.prisma.ticket.findUnique({
         where: { id },
       });
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
       const updatedTicket = await tx.ticket.update({
         where: { id },
         data: {
+          invitedManagerIds: [...ticket.invitedManagerIds, inviteManagerDto.managerId],
           invitedManagerNames: [...ticket.invitedManagerNames, inviteManagerDto.managerName],
         },
       });
@@ -241,6 +431,17 @@ export class TicketsService {
           ticketId: id,
           content: `В диалог приглашён менеджер ${inviteManagerDto.managerName}`,
           senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+        },
+      });
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
         },
       });
 
@@ -254,13 +455,18 @@ export class TicketsService {
       select: {
         id: true,
         assignedManagerId: true,
-        assignedManagerName: true,
       },
     });
 
     if (!ticket) {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
+
+    await this.profilesService.ensureProfile({
+      id: assignManagerDto.managerId,
+      fullName: assignManagerDto.managerName,
+      role: 'manager',
+    });
 
     if (ticket.assignedManagerId === assignManagerDto.managerId) {
       return this.prisma.ticket.findUnique({
@@ -269,11 +475,17 @@ export class TicketsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
       const updatedTicket = await tx.ticket.update({
         where: { id },
         data: {
           assignedManagerId: assignManagerDto.managerId,
           assignedManagerName: assignManagerDto.managerName,
+          conversationMode: 'manager',
+          currentHandlerType: 'manager',
+          aiEnabled: false,
+          handedToManagerAt: now,
         },
       });
 
@@ -282,10 +494,199 @@ export class TicketsService {
           ticketId: id,
           content: `Диалог передан менеджеру ${assignManagerDto.managerName}`,
           senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+        },
+      });
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
         },
       });
 
       return updatedTicket;
+    });
+  }
+
+  async claimIncoming(id: string, assignManagerDto: AssignManagerDto) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        aiEnabled: true,
+        assignedManagerId: true,
+        assignedManagerName: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${id}" not found`);
+    }
+
+    await this.profilesService.ensureProfile({
+      id: assignManagerDto.managerId,
+      fullName: assignManagerDto.managerName,
+      role: 'manager',
+    });
+
+    if (ticket.aiEnabled) {
+      throw new ConflictException('Диалог сейчас ведёт AI и его нельзя взять как обычный входящий');
+    }
+
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      throw new ConflictException('Диалог уже закрыт и недоступен для взятия в работу');
+    }
+
+    if (ticket.assignedManagerId === assignManagerDto.managerId) {
+      return this.prisma.ticket.findUnique({
+        where: { id },
+      });
+    }
+
+    if (ticket.assignedManagerId && ticket.assignedManagerId !== assignManagerDto.managerId) {
+      throw new ConflictException(
+        `Диалог уже взят в работу менеджером ${ticket.assignedManagerName ?? 'другим менеджером'}`,
+      );
+    }
+
+    const now = new Date();
+    const updateResult = await this.prisma.ticket.updateMany({
+      where: {
+        id,
+        assignedManagerId: null,
+        aiEnabled: false,
+        status: {
+          notIn: ['resolved', 'closed'],
+        },
+      },
+      data: {
+        assignedManagerId: assignManagerDto.managerId,
+        assignedManagerName: assignManagerDto.managerName,
+        status: 'in_progress',
+        conversationMode: 'manager',
+        currentHandlerType: 'manager',
+        handedToManagerAt: now,
+      },
+    });
+
+    if (updateResult.count === 0) {
+      const latestTicket = await this.prisma.ticket.findUnique({
+        where: { id },
+        select: {
+          assignedManagerId: true,
+          assignedManagerName: true,
+        },
+      });
+
+      throw new ConflictException(
+        `Диалог уже взят в работу менеджером ${latestTicket?.assignedManagerName ?? 'другим менеджером'}`,
+      );
+    }
+
+    await this.prisma.message.create({
+      data: {
+        ticketId: id,
+        content: `Диалог взят в работу менеджером ${assignManagerDto.managerName}`,
+        senderType: 'system',
+        senderRole: 'system',
+        status: 'sent',
+        deliveryStatus: 'sent',
+        messageType: 'system',
+      },
+    });
+
+    await this.prisma.ticket.update({
+      where: { id },
+      data: {
+        lastMessageAt: now,
+      },
+    });
+
+    return this.prisma.ticket.findUnique({
+      where: { id },
+    });
+  }
+
+  async enableAiMode(id: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: { id: true, aiEnabled: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${id}" not found`);
+    }
+
+    if (ticket.aiEnabled) {
+      return this.prisma.ticket.findUnique({
+        where: { id },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          aiEnabled: true,
+          conversationMode: 'ai',
+          currentHandlerType: 'ai',
+          aiActivatedAt: now,
+          aiResolved: false,
+        },
+      });
+
+      await this.createSystemMessage(tx, id, 'AI-помощник подключён к диалогу');
+
+      return tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
+        },
+      });
+    });
+  }
+
+  async disableAiMode(id: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${id}" not found`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          aiEnabled: false,
+          conversationMode: 'manager',
+          currentHandlerType: 'manager',
+          aiDeactivatedAt: now,
+          handedToManagerAt: now,
+          aiResolved: false,
+        },
+      });
+
+      await this.createSystemMessage(tx, id, 'AI-помощник отключён. Диалог снова ведёт менеджер');
+
+      return tx.ticket.update({
+        where: { id },
+        data: {
+          status: 'new',
+          lastMessageAt: now,
+        },
+      });
     });
   }
 }

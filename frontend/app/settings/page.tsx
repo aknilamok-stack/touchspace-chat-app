@@ -12,6 +12,7 @@ import {
   sendTestPush,
   unsubscribeCurrentPushSubscription,
 } from "@/lib/push-notifications";
+import { isDesktopShell, readDesktopRuntimeMeta } from "@/lib/runtime";
 
 type NotificationSettingsResponse = {
   profile: {
@@ -134,6 +135,8 @@ export default function NotificationSettingsPage() {
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [currentEndpoint, setCurrentEndpoint] = useState("");
   const [data, setData] = useState<NotificationSettingsResponse | null>(null);
+  const [desktopMode, setDesktopMode] = useState(false);
+  const [desktopPlatform, setDesktopPlatform] = useState("");
 
   const profileId = getInternalProfileId(session);
   const homeHref = session?.role === "admin" ? "/admin" : session?.role === "supplier" ? "/supplier" : "/";
@@ -174,7 +177,13 @@ export default function NotificationSettingsPage() {
 
     setSession(currentSession);
     setPermission(typeof Notification === "undefined" ? "default" : Notification.permission);
-    setIsInstalled(typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches);
+    const inDesktopShell = typeof window !== "undefined" && isDesktopShell();
+    setDesktopMode(inDesktopShell);
+    setIsInstalled(typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || inDesktopShell));
+
+    readDesktopRuntimeMeta()
+      .then((meta) => setDesktopPlatform(meta?.platform ?? ""))
+      .catch(() => setDesktopPlatform(""));
 
     getCurrentPushEndpoint()
       .then(setCurrentEndpoint)
@@ -210,6 +219,11 @@ export default function NotificationSettingsPage() {
   }, []);
 
   const handleInstall = async () => {
+    if (desktopMode) {
+      setInfo("TouchSpace уже открыт как отдельное desktop-приложение.");
+      return;
+    }
+
     if (!installPromptEvent) {
       setInfo("В этом браузере приложение можно установить через меню браузера.");
       return;
@@ -423,20 +437,28 @@ export default function NotificationSettingsPage() {
           <article className="rounded-[28px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_20px_60px_rgba(148,163,184,0.16)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Режим приложения</p>
             <p className="mt-3 text-2xl font-semibold text-slate-950">
-              {isInstalled ? "Установлено" : "В браузере"}
+              {desktopMode ? "Desktop app" : isInstalled ? "Установлено" : "В браузере"}
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              {isInstalled
-                ? "TouchSpace уже работает как отдельное app-window."
-                : "Установи приложение, чтобы оно открывалось как отдельное окно и жило ближе к desktop-опыту."}
+              {desktopMode
+                ? "TouchSpace уже открыт в отдельном desktop-окне и использует тот же рабочий backend."
+                : isInstalled
+                  ? "TouchSpace уже работает как отдельное app-window."
+                  : "Установи приложение, чтобы оно открывалось как отдельное окно и жило ближе к desktop-опыту."}
             </p>
             <button
               type="button"
               onClick={() => void handleInstall()}
+              disabled={desktopMode}
               className="mt-4 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              {isInstalled ? "Приложение установлено" : "Установить приложение"}
+              {desktopMode ? "Открыто как desktop app" : isInstalled ? "Приложение установлено" : "Установить приложение"}
             </button>
+            {desktopMode ? (
+              <p className="mt-3 text-xs text-slate-500">
+                Desktop shell{desktopPlatform ? `: ${desktopPlatform}` : ""}.
+              </p>
+            ) : null}
           </article>
 
           <article className="rounded-[28px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_20px_60px_rgba(148,163,184,0.16)]">

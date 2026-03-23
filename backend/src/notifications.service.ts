@@ -65,7 +65,7 @@ export class NotificationsService {
       OR: [
         { assignedManagerId: null },
         { assignedManagerId: profileId },
-        { invitedManagerIds: { has: profileId } },
+        { invitedManagerIds: { path: '$', array_contains: profileId } },
         { lastResolvedByManagerId: profileId },
       ],
     };

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { ProfilesService } from '../profiles.service';
 import { PrismaService } from '../prisma.service';
+import { readJsonStringArray } from '../prisma-json.util';
 
 type DateRangeInput = {
   preset?: string;
@@ -738,7 +739,6 @@ export class AdminService {
           ? {
               companyName: {
                 contains: filters.company,
-                mode: 'insensitive',
               },
             }
           : {}),
@@ -1003,8 +1003,8 @@ export class AdminService {
         topicCategory: dialog.topicCategory,
         sentiment: dialog.sentiment,
         aiSummary: dialog.aiSummary,
-        aiTags: dialog.aiTags,
-        insightFlags: dialog.insightFlags,
+        aiTags: readJsonStringArray(dialog.aiTags),
+        insightFlags: readJsonStringArray(dialog.insightFlags),
       },
     };
   }

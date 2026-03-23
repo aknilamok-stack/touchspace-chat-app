@@ -4,6 +4,7 @@ import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
 import { ChatAiService } from '../chat-ai.service';
 import { PushService } from '../push.service';
+import { readJsonStringArray } from '../prisma-json.util';
 
 type MessageViewer = {
   viewerType?: string;
@@ -65,6 +66,8 @@ export class MessagesService {
       throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
     }
 
+    const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
+
     if (viewerType === 'client' && ticket.clientId === viewerId) {
       return;
     }
@@ -83,7 +86,7 @@ export class MessagesService {
       viewerType === 'manager' &&
       (ticket.assignedManagerId === null ||
         ticket.assignedManagerId === viewerId ||
-        ticket.invitedManagerIds.includes(viewerId))
+        invitedManagerIds.includes(viewerId))
     ) {
       return;
     }
@@ -349,7 +352,7 @@ export class MessagesService {
     } else if (senderType === 'supplier') {
       const managerTargets = [
         ticketSnapshot.assignedManagerId,
-        ...(ticketSnapshot.invitedManagerIds ?? []),
+        ...readJsonStringArray(ticketSnapshot.invitedManagerIds),
       ].filter((value): value is string => Boolean(value));
 
       void this.pushService

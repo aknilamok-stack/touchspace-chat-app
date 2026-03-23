@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 generator client {
@@ -59,8 +59,8 @@ model Ticket {
   handedToManagerAt        DateTime?
   aiResolved               Boolean   @default(false)
   pinned                   Boolean   @default(false)
-  invitedManagerIds        String[]  @default([])
-  invitedManagerNames String[]
+  invitedManagerIds        Json
+  invitedManagerNames      Json
   assignedManagerId        String?
   assignedManagerName String?
   lastResolvedByManagerId String?
@@ -84,8 +84,8 @@ model Ticket {
   topicCategory            String?
   sentiment                String?
   aiSummary                String?
-  aiTags                   String[]  @default([])
-  insightFlags             String[]  @default([])
+  aiTags                   Json?
+  insightFlags             Json?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
   closedAt                 DateTime?

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import webpush from 'web-push';
 import { ProfilesService } from './profiles.service';
 import { PrismaService } from './prisma.service';
+import { readJsonStringArray } from './prisma-json.util';
 
 type StoredSubscriptionInput = {
   profileId: string;
@@ -175,7 +176,7 @@ export class PushService {
 
     const explicitTargets = [
       ticket.assignedManagerId,
-      ...(ticket.invitedManagerIds ?? []),
+      ...readJsonStringArray(ticket.invitedManagerIds),
     ].filter((value): value is string => Boolean(value));
 
     if (explicitTargets.length > 0) {

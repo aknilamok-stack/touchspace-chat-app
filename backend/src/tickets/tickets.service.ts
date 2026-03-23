@@ -6,6 +6,7 @@ import { ResolveTicketDto } from './dto/resolve-ticket.dto';
 import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
 import { ChatAiService } from '../chat-ai.service';
+import { readJsonStringArray } from '../prisma-json.util';
 
 type TicketViewer = {
   viewerType?: string;
@@ -71,7 +72,7 @@ export class TicketsService {
         OR: [
           { assignedManagerId: null },
           { assignedManagerId: viewerId },
-          { invitedManagerIds: { has: viewerId } },
+          { invitedManagerIds: { path: '$', array_contains: viewerId } },
           { lastResolvedByManagerId: viewerId },
         ],
       };
@@ -403,13 +404,16 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
 
+    const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
+    const invitedManagerNames = readJsonStringArray(ticket.invitedManagerNames);
+
     await this.profilesService.ensureProfile({
       id: inviteManagerDto.managerId,
       fullName: inviteManagerDto.managerName,
       role: 'manager',
     });
 
-    if (ticket.invitedManagerIds.includes(inviteManagerDto.managerId)) {
+    if (invitedManagerIds.includes(inviteManagerDto.managerId)) {
       return this.prisma.ticket.findUnique({
         where: { id },
       });
@@ -421,8 +425,8 @@ export class TicketsService {
       const updatedTicket = await tx.ticket.update({
         where: { id },
         data: {
-          invitedManagerIds: [...ticket.invitedManagerIds, inviteManagerDto.managerId],
-          invitedManagerNames: [...ticket.invitedManagerNames, inviteManagerDto.managerName],
+          invitedManagerIds: [...invitedManagerIds, inviteManagerDto.managerId],
+          invitedManagerNames: [...invitedManagerNames, inviteManagerDto.managerName],
         },
       });
 

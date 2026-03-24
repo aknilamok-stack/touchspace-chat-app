@@ -92,6 +92,8 @@
     ".touchspace-widget-panel{display:none;position:absolute;right:0;bottom:0;width:336px;height:496px;border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
     ".touchspace-widget-panel.is-open{display:block;}",
     ".touchspace-widget-panel iframe{width:100%;height:100%;border:0;background:#fff;}",
+    ".touchspace-widget-close{position:absolute;left:14px;top:14px;z-index:3;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;border-radius:9999px;background:rgba(255,255,255,.16);color:#fff;font:400 22px/1 Arial,sans-serif;cursor:pointer;backdrop-filter:blur(3px);box-shadow:0 8px 18px rgba(0,0,0,.14);}",
+    ".touchspace-widget-close:hover{background:rgba(255,255,255,.24);}",
     "@keyframes touchspace-widget-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}",
     "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{width:min(336px,100%);height:min(496px,78vh)}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
   ].join("");
@@ -107,6 +109,12 @@
   iframe.src = iframeUrl.toString();
   iframe.title = "TouchSpace Chat Widget";
   iframe.allow = "clipboard-read; clipboard-write";
+
+  var panelClose = document.createElement("button");
+  panelClose.type = "button";
+  panelClose.className = "touchspace-widget-close";
+  panelClose.setAttribute("aria-label", "Закрыть чат");
+  panelClose.textContent = "×";
 
   var launcher = document.createElement("button");
   launcher.type = "button";
@@ -167,7 +175,13 @@
 
   launcher.addEventListener("click", openWidget);
   iframe.addEventListener("load", postVisibilityState);
+  panelClose.addEventListener("click", function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeWidget();
+  });
 
+  panel.appendChild(panelClose);
   panel.appendChild(iframe);
   root.appendChild(panel);
   root.appendChild(launcher);

@@ -34,6 +34,7 @@ type Message = {
   id: string;
   content: string;
   senderType: string;
+  senderName?: string | null;
   messageType?: string;
   status: string;
   ticketId: string;
@@ -69,8 +70,11 @@ const tryParseAttachmentPayload = (content: string) => {
   }
 };
 
-const getMessageStatusChecks = (status?: string) =>
-  status === "read" ? "✓✓" : "✓";
+const formatMessageTime = (createdAt: string) =>
+  new Date(createdAt).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 const getMessageDayKey = (createdAt: string) => {
   const date = new Date(createdAt);
@@ -1083,22 +1087,27 @@ export default function ClientPage() {
                             ) : null}
                           </button>
 
-                          <div
-                            className={`max-w-[82%] rounded-[18px] px-4 py-3 text-sm leading-6 shadow-sm ${
-                              message.senderType === "client"
-                                ? "rounded-tr-[6px] bg-[#0A84FF] text-white"
-                                : message.senderType === "ai"
-                                  ? "rounded-tl-[6px] border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
-                                : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
-                            }`}
-                          >
-                            <p className="text-xs opacity-60">
-                              {message.senderType === "client"
-                                ? "Вы"
-                                : message.senderType === "ai"
-                                  ? "AI-помощник"
-                                  : "Поддержка"}
-                            </p>
+                          <div className="max-w-[82%]">
+                            {message.senderType !== "client" ? (
+                              <p className="mb-1 px-1 text-xs text-[#8E8E93]">
+                                {message.senderType === "manager"
+                                  ? message.senderName || "Оператор"
+                                  : message.senderType === "ai"
+                                    ? "AI-помощник"
+                                    : message.senderType === "supplier"
+                                      ? message.senderName || "Поставщик"
+                                      : "Поддержка"}
+                              </p>
+                            ) : null}
+                            <div
+                              className={`rounded-[18px] px-4 py-3 text-sm leading-6 shadow-sm ${
+                                message.senderType === "client"
+                                  ? "rounded-tr-[6px] bg-[#0A84FF] text-white"
+                                  : message.senderType === "ai"
+                                    ? "rounded-tl-[6px] border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
+                                  : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
+                              }`}
+                            >
                             {replyMap[message.id] ? (
                               <div
                                 className={`mt-2 rounded-[14px] border px-3 py-2 text-xs ${
@@ -1113,7 +1122,40 @@ export default function ClientPage() {
                                 </p>
                               </div>
                             ) : null}
-                            <p className="mt-1 break-words">{message.displayContent}</p>
+                            <div className="mt-1 flex items-end gap-3">
+                              <p className="min-w-0 flex-1 break-words leading-6">
+                                {message.displayContent}
+                              </p>
+                              <div
+                                className={`flex shrink-0 items-center gap-1 text-[10px] leading-none ${
+                                  message.senderType === "client"
+                                    ? "text-white/78"
+                                    : message.senderType === "ai"
+                                      ? "text-[#4C6A92]"
+                                      : "text-[#8E8E93]"
+                                }`}
+                              >
+                                <span>{formatMessageTime(message.createdAt)}</span>
+                                {message.senderType === "client" ? (
+                                  <span className="relative inline-flex h-3.5 w-4">
+                                    {message.status === "read" ? (
+                                      <>
+                                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-[-0.1em]">
+                                          ✓
+                                        </span>
+                                        <span className="absolute left-[5px] top-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-[-0.1em]">
+                                          ✓
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="absolute left-[1px] top-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-[-0.1em]">
+                                        ✓
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
                             {message.attachmentUrl ? (
                               <a
                                 href={message.attachmentUrl}
@@ -1131,21 +1173,6 @@ export default function ClientPage() {
                                 </span>
                               </a>
                             ) : null}
-                            <div
-                              className={`mt-2 flex items-center gap-2 text-[10px] ${
-                                message.senderType === "client"
-                                  ? "justify-end text-white/70"
-                                  : message.senderType === "ai"
-                                    ? "justify-end text-[#4C6A92]"
-                                  : "justify-end text-[#8E8E93]"
-                              }`}
-                            >
-                              <p>{new Date(message.createdAt).toLocaleTimeString()}</p>
-                              {message.senderType === "client" ? (
-                                <p className="text-[11px] font-semibold tracking-[-0.02em]">
-                                  {getMessageStatusChecks(message.status)}
-                                </p>
-                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -1378,9 +1405,6 @@ export default function ClientPage() {
               ) : null}
 
               {error ? <p className="mt-3 text-sm text-[#FD6868]">{error}</p> : null}
-              {isLoadingContext ? (
-                <p className="mt-2 text-xs text-[#8E8E93]">Обновляем чат...</p>
-              ) : null}
             </div>
           </div>
         </div>

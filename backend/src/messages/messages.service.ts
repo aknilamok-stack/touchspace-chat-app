@@ -476,10 +476,22 @@ export class MessagesService {
         });
       }
 
-      return tx.message.findMany({
+      const messages = await tx.message.findMany({
         where: { ticketId },
         orderBy: { createdAt: 'asc' },
+        include: {
+          senderProfile: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
       });
+
+      return messages.map((message) => ({
+        ...message,
+        senderName: message.senderProfile?.fullName ?? null,
+      }));
     });
   }
 }

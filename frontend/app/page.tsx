@@ -54,6 +54,8 @@ type ApiSupplierRequest = {
 type ApiTicket = {
   id: string;
   title: string;
+  clientName?: string | null;
+  clientId?: string | null;
   status?: string;
   pinned?: boolean;
   invitedManagerNames?: string[];
@@ -545,7 +547,7 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   aiActivatedAt: ticket.aiActivatedAt ?? null,
   aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
   handedToManagerAt: ticket.handedToManagerAt ?? null,
-  clientName: "Реселлер",
+  clientName: ticket.clientName?.trim() || ticket.title || "Реселлер",
   messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
   supplierRequests: Array.isArray(ticket.supplierRequests)
     ? ticket.supplierRequests.map(formatSupplierRequest)
@@ -1318,8 +1320,8 @@ export default function Home() {
 
         const notificationTitle =
           message.from === "supplier"
-            ? "Ответ поставщика"
-            : "Новое сообщение от клиента";
+            ? `Поставщик: ${chat.title || chat.clientName || "диалог"}`
+            : `Клиент: ${chat.clientName || chat.title || "неизвестный клиент"}`;
 
         void showDesktopNotification(
           notificationTitle,

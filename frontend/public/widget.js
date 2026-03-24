@@ -99,16 +99,16 @@
     ".touchspace-widget-launcher.is-pulsing img{animation:touchspace-widget-pulse 1.8s ease-in-out infinite;}",
     ".touchspace-widget-badge{position:absolute;right:6px;top:2px;display:none;min-width:24px;height:24px;padding:0 7px;border-radius:9999px;background:#ff453a;color:#fff;font:600 12px/24px Montserrat,ui-sans-serif,system-ui,sans-serif;box-shadow:0 10px 20px rgba(255,69,58,.35);}",
     ".touchspace-widget-badge.is-visible{display:inline-block;}",
-    ".touchspace-widget-panel{display:none;position:fixed;right:24px;bottom:24px;width:336px;height:496px;min-width:336px;min-height:496px;max-width:min(92vw,640px);max-height:min(88vh,820px);resize:horizontal;border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
+    ".touchspace-widget-panel{display:none;position:fixed;right:24px;bottom:24px;width:336px;height:496px;min-width:336px;min-height:496px;max-width:min(92vw,640px);max-height:min(88vh,820px);border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
     ".touchspace-widget-panel.is-open{display:block;}",
     ".touchspace-widget-panel iframe{width:100%;height:100%;border:0;background:#fff;}",
     ".touchspace-widget-close{position:absolute;left:14px;top:14px;z-index:3;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;border-radius:9999px;background:rgba(255,255,255,.16);color:#fff;font:400 22px/1 Arial,sans-serif;cursor:pointer;backdrop-filter:blur(3px);box-shadow:0 8px 18px rgba(0,0,0,.14);}",
     ".touchspace-widget-close:hover{background:rgba(255,255,255,.24);}",
     ".touchspace-widget-dragger{position:absolute;left:54px;right:14px;top:0;z-index:3;height:76px;cursor:grab;background:transparent;}",
     ".touchspace-widget-dragger.is-dragging{cursor:grabbing;}",
-    ".touchspace-widget-resize{position:absolute;right:10px;bottom:10px;z-index:3;width:14px;height:14px;pointer-events:none;opacity:.72;background:linear-gradient(135deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
+    ".touchspace-widget-resize{position:absolute;right:8px;bottom:8px;z-index:4;width:20px;height:20px;cursor:nwse-resize;opacity:.82;background:linear-gradient(135deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
     "@keyframes touchspace-widget-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}",
-    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none;resize:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
+    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
   ].join("");
   document.head.appendChild(style);
 
@@ -316,11 +316,21 @@
   });
 
   var dragState = null;
+  var resizeState = null;
 
   function stopDrag() {
     dragState = null;
     dragHandle.classList.remove("is-dragging");
-    document.body.style.userSelect = "";
+    if (!resizeState) {
+      document.body.style.userSelect = "";
+    }
+  }
+
+  function stopResize() {
+    resizeState = null;
+    if (!dragState) {
+      document.body.style.userSelect = "";
+    }
   }
 
   dragHandle.addEventListener("pointerdown", function (event) {
@@ -372,6 +382,57 @@
   });
 
   dragHandle.addEventListener("pointercancel", stopDrag);
+
+  resizeHandle.addEventListener("pointerdown", function (event) {
+    if (!isDesktopLayout() || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    var rect = panel.getBoundingClientRect();
+    resizeState = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      startRight: window.innerWidth - rect.right,
+    };
+
+    document.body.style.userSelect = "none";
+    resizeHandle.setPointerCapture(event.pointerId);
+  });
+
+  resizeHandle.addEventListener("pointermove", function (event) {
+    if (!resizeState) {
+      return;
+    }
+
+    event.preventDefault();
+
+    var deltaX = event.clientX - resizeState.startX;
+    var deltaY = event.clientY - resizeState.startY;
+    var nextWidth = clamp(resizeState.startWidth + deltaX, MIN_PANEL_WIDTH, getMaxWidth());
+    var nextHeight = clamp(resizeState.startHeight + deltaY, MIN_PANEL_HEIGHT, getMaxHeight());
+    var maxRight = Math.max(getGap(), window.innerWidth - nextWidth - getGap());
+    var nextRight = clamp(resizeState.startRight, getGap(), maxRight);
+
+    panel.style.width = Math.round(nextWidth) + "px";
+    panel.style.height = Math.round(nextHeight) + "px";
+    panel.style.right = Math.round(nextRight) + "px";
+    panel.style.bottom = getGap() + "px";
+  });
+
+  resizeHandle.addEventListener("pointerup", function (event) {
+    if (resizeState) {
+      resizeHandle.releasePointerCapture(event.pointerId);
+      persistCurrentLayout();
+    }
+
+    stopResize();
+  });
+
+  resizeHandle.addEventListener("pointercancel", stopResize);
 
   if (window.ResizeObserver) {
     var resizeObserver = new window.ResizeObserver(function () {

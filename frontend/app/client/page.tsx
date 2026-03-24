@@ -1036,53 +1036,53 @@ export default function ClientPage() {
               : "fixed bottom-6 right-6 z-40 h-[72vh] min-h-[496px] w-[336px] max-h-[620px] rounded-[22px] shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
           }`}
         >
-          <div className="relative shrink-0 overflow-hidden bg-[linear-gradient(135deg,#0A84FF,#5B5CF6)] px-4 pb-4 pt-3 text-white">
+          <div className="relative shrink-0 overflow-hidden bg-[linear-gradient(135deg,#0A84FF,#5B5CF6)] px-4 pb-3 pt-2.5 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.12]">
-              <Image
-                src="/icons/otpravit.svg"
-                alt=""
-                width={24}
-                height={24}
-                className="absolute right-5 top-4 h-6 w-6 rotate-[18deg]"
-              />
-              <Image
-                src="/icons/smail.svg"
-                alt=""
-                width={22}
-                height={22}
-                className="absolute right-16 top-7 h-5 w-5 -rotate-12"
-              />
               <Image
                 src="/icons/otpravit.svg"
                 alt=""
                 width={20}
                 height={20}
-                className="absolute right-10 top-14 h-5 w-5 rotate-45"
+                className="absolute right-5 top-3 h-5 w-5 rotate-[18deg]"
               />
               <Image
                 src="/icons/smail.svg"
                 alt=""
                 width={18}
                 height={18}
-                className="absolute right-28 top-3 h-4 w-4 rotate-[24deg]"
+                className="absolute right-16 top-6 h-4 w-4 -rotate-12"
+              />
+              <Image
+                src="/icons/otpravit.svg"
+                alt=""
+                width={16}
+                height={16}
+                className="absolute right-10 top-11 h-4 w-4 rotate-45"
+              />
+              <Image
+                src="/icons/smail.svg"
+                alt=""
+                width={14}
+                height={14}
+                className="absolute right-28 top-2.5 h-3.5 w-3.5 rotate-[24deg]"
               />
             </div>
             <button
               onClick={() => requestHostClose()}
-              className="absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm text-white transition hover:bg-white/25"
+              className="absolute left-3 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm text-white transition hover:bg-white/25"
               aria-label="Закрыть чат"
             >
               ✕
             </button>
 
             <div className="relative z-10 pl-9 pr-2">
-              <p className="text-[16px] font-semibold leading-tight">Напишите ваше сообщение</p>
-              <p className="mt-1 text-[12px] text-white/80">{widgetStatusText}</p>
-              <div className="mt-3 flex items-center gap-2">
+              <p className="text-[15px] font-semibold leading-tight">Напишите ваше сообщение</p>
+              <p className="mt-0.5 text-[11px] text-white/80">{widgetStatusText}</p>
+              <div className="mt-2 flex items-center gap-2">
                 <button
                   onClick={() => void handleToggleAiMode()}
                   disabled={isTogglingAi}
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition ${
                     aiModeActive
                       ? "bg-white text-[#0A84FF]"
                       : "bg-white/12 text-white hover:bg-white/20"
@@ -1394,7 +1394,7 @@ export default function ClientPage() {
               </div>
             ) : null}
 
-            <div className="shrink-0 border-t border-[#E7E9EF] bg-white px-4 py-4">
+            <div className="shrink-0 border-t border-[#E7E9EF] bg-white px-4 py-3">
               {replyTarget ? (
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
                   <div className="min-w-0">
@@ -1451,7 +1451,7 @@ export default function ClientPage() {
                 </div>
               ) : null}
 
-              <div className="rounded-[24px] border border-[#E3E5EA] bg-white px-4 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+              <div className="rounded-[22px] border border-[#E3E5EA] bg-white px-4 py-2.5 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                 <textarea
                   ref={composerRef}
                   value={draftText}
@@ -1463,37 +1463,37 @@ export default function ClientPage() {
                     }
                   }}
                   rows={1}
-                  className="min-h-[74px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                  className="min-h-[54px] max-h-[104px] w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
                   placeholder="Напишите сообщение..."
                 />
 
-                <div className="mt-2 flex items-center justify-between gap-3 border-t border-[#EEF1F5] pt-2">
-                  <div className="flex items-center gap-1 text-[#8E8E93]">
+                <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-[#EEF1F5] pt-2">
+                  <div className="flex items-center gap-0.5 text-[#8E8E93]">
                     <button
                       onClick={() => setShowEmojiPicker((prev) => !prev)}
-                      className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                      className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
                       aria-label="Смайлики"
                     >
                       <Image
                         src="/icons/smail.svg"
                         alt="Смайлики"
-                        width={18}
-                        height={18}
-                        className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                        width={16}
+                        height={16}
+                        className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
                       />
                     </button>
 
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                      className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
                       aria-label="Вложить файл"
                     >
                       <Image
                         src="/icons/skrepka.svg"
                         alt="Вложить файл"
-                        width={18}
-                        height={18}
-                        className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                        width={16}
+                        height={16}
+                        className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
                       />
                     </button>
 
@@ -1510,26 +1510,28 @@ export default function ClientPage() {
                     />
                   </div>
 
-                  <button
-                    onClick={() => {
-                      void handleSendMessage();
-                    }}
-                    disabled={
-                      (!draftText.trim() && !selectedFile) ||
-                      isCreatingTicket ||
-                      isSendingMessage
-                    }
-                    className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                    aria-label="Отправить"
-                  >
-                    <Image
-                      src="/icons/otpravit.svg"
-                      alt="Отправить"
-                      width={18}
-                      height={18}
-                      className="h-[18px] w-[18px]"
-                    />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        void handleSendMessage();
+                      }}
+                      disabled={
+                        (!draftText.trim() && !selectedFile) ||
+                        isCreatingTicket ||
+                        isSendingMessage
+                      }
+                      className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_10px_18px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                      aria-label="Отправить"
+                    >
+                      <Image
+                        src="/icons/otpravit.svg"
+                        alt="Отправить"
+                        width={16}
+                        height={16}
+                        className="h-4 w-4"
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
 

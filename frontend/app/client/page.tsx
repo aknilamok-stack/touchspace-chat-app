@@ -3,9 +3,10 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
-import { getOrCreateClientSession } from "@/lib/auth";
+import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
+const clientSeenMessageMapStorageKey = "touchspace_client_seen_message_map";
 const widgetFontFamily = "Montserrat, ui-sans-serif, system-ui, sans-serif";
 const QUICK_ACTIONS = [
   "Привет!",
@@ -63,6 +64,7 @@ const formatMessageDayLabel = (createdAt: string) =>
   });
 
 export default function ClientPage() {
+  const [clientSession, setClientSession] = useState(() => getOrCreateClientSession());
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draftText, setDraftText] = useState("");
@@ -81,6 +83,8 @@ export default function ClientPage() {
   const [showAiTimeoutHint, setShowAiTimeoutHint] = useState(false);
   const [preferredAiMode, setPreferredAiMode] = useState(false);
   const [error, setError] = useState("");
+  const [isEmbeddedWidget, setIsEmbeddedWidget] = useState(false);
+  const [hostWidgetOpen, setHostWidgetOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -90,6 +94,7 @@ export default function ClientPage() {
 
   const isResolved = activeTicket?.status === "resolved";
   const aiModeActive = activeTicket?.aiEnabled ?? preferredAiMode;
+  const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
   const widgetStatusText = isResolved
     ? "Ваш вопрос решён?"
     : aiModeActive
@@ -97,7 +102,7 @@ export default function ClientPage() {
       : "Операторы онлайн";
   const hasMessages = messages.length > 0;
   const showQuickActions = !hasMessages && !activeTicket;
-  const clientSession = getOrCreateClientSession();
+  const widgetVisible = isEmbeddedWidget || isWidgetOpen;
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
     const response = await fetch(
@@ -138,6 +143,45 @@ export default function ClientPage() {
     window.localStorage.removeItem(clientActiveTicketStorageKey);
   };
 
+  const requestHostClose = () => {
+    if (!isEmbeddedWidget || typeof window === "undefined") {
+      setIsWidgetOpen(false);
+      return;
+    }
+
+    window.parent?.postMessage({ type: "touchspace-widget-close" }, "*");
+  };
+
+  const readSeenMessageMap = () => {
+    if (typeof window === "undefined") {
+      return {} as Record<string, string>;
+    }
+
+    const rawValue = window.localStorage.getItem(clientSeenMessageMapStorageKey);
+
+    if (!rawValue) {
+      return {} as Record<string, string>;
+    }
+
+    try {
+      return JSON.parse(rawValue) as Record<string, string>;
+    } catch {
+      window.localStorage.removeItem(clientSeenMessageMapStorageKey);
+      return {} as Record<string, string>;
+    }
+  };
+
+  const writeSeenMessageMap = (nextValue: Record<string, string>) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      clientSeenMessageMapStorageKey,
+      JSON.stringify(nextValue)
+    );
+  };
+
   const readReplyMap = (ticketId: string) => {
     if (typeof window === "undefined") {
       return {};
@@ -172,7 +216,7 @@ export default function ClientPage() {
     window.localStorage.setItem("touchspace_client_reply_map", JSON.stringify(parsed));
   };
 
-  const loadTicketContext = async (ticket: Ticket) => {
+  const loadTicketContext = async (ticket: Ticket, markAsRead = shouldMarkMessagesAsRead) => {
     setIsLoadingContext(true);
     setError("");
 
@@ -181,7 +225,7 @@ export default function ClientPage() {
         apiUrl(
           `/tickets/${ticket.id}/messages?viewerType=client&viewerId=${encodeURIComponent(
             clientSession.clientId
-          )}&markAsRead=true`
+          )}&markAsRead=${markAsRead ? "true" : "false"}`
         )
       );
 
@@ -216,6 +260,66 @@ export default function ClientPage() {
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setIsEmbeddedWidget(params.get("embed") === "1");
+
+    const tradePointId = params.get("tradePointId")?.trim();
+    const tradePointName = params.get("tradePointName")?.trim();
+    const platformUserId = params.get("userId")?.trim();
+    const platformUserName = params.get("userName")?.trim();
+    const email = params.get("email")?.trim();
+
+    if (!tradePointId || !tradePointName) {
+      return;
+    }
+
+    const nextSession = {
+      clientId: tradePointId,
+      clientName: tradePointName,
+      tradePointId,
+      tradePointName,
+      platformUserId: platformUserId || undefined,
+      platformUserName: platformUserName || undefined,
+      email: email || undefined,
+    };
+
+    if (
+      clientSession.clientId !== nextSession.clientId ||
+      clientSession.clientName !== nextSession.clientName
+    ) {
+      writeClientSession(nextSession);
+      setClientSession(nextSession);
+      window.localStorage.removeItem(clientActiveTicketStorageKey);
+      setActiveTicket(null);
+      setMessages([]);
+      setReplyMap({});
+      setReplyTarget(null);
+    }
+  }, [clientSession.clientId, clientSession.clientName]);
+
+  useEffect(() => {
+    if (!isEmbeddedWidget || typeof window === "undefined") {
+      return;
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "touchspace-widget-visibility") {
+        setHostWidgetOpen(Boolean(event.data.open));
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [isEmbeddedWidget]);
+
+  useEffect(() => {
     const savedTicketId = window.localStorage.getItem(clientActiveTicketStorageKey);
 
     if (!savedTicketId) {
@@ -233,7 +337,7 @@ export default function ClientPage() {
 
         setActiveTicket(restoredTicket);
         setIsWidgetOpen(true);
-        await loadTicketContext(restoredTicket);
+        await loadTicketContext(restoredTicket, shouldMarkMessagesAsRead);
       } catch (restoreError) {
         console.error("Ошибка восстановления active ticket:", restoreError);
         clearActiveTicket();
@@ -242,7 +346,44 @@ export default function ClientPage() {
     };
 
     void restoreTicket();
-  }, []);
+  }, [shouldMarkMessagesAsRead]);
+
+  useEffect(() => {
+    if (activeTicket || typeof window === "undefined") {
+      return;
+    }
+
+    const restoreLatestTicket = async () => {
+      try {
+        const response = await fetch(
+          apiUrl(
+            `/tickets?viewerType=client&viewerId=${encodeURIComponent(clientSession.clientId)}`
+          )
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const tickets = (await response.json()) as Ticket[];
+
+        if (!tickets.length) {
+          return;
+        }
+
+        const latestTicket =
+          tickets.find((ticket) => ticket.status !== "resolved" && ticket.status !== "closed") ??
+          tickets[0];
+
+        setActiveTicket(latestTicket);
+        await loadTicketContext(latestTicket, shouldMarkMessagesAsRead);
+      } catch (restoreError) {
+        console.error("Ошибка восстановления последнего обращения:", restoreError);
+      }
+    };
+
+    void restoreLatestTicket();
+  }, [activeTicket, clientSession.clientId, shouldMarkMessagesAsRead]);
 
   useEffect(() => {
     if (!activeTicket) {
@@ -280,7 +421,50 @@ export default function ClientPage() {
     }, isAiTyping ? 1200 : 4000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTicket, isAiTyping]);
+  }, [activeTicket, isAiTyping, shouldMarkMessagesAsRead]);
+
+  useEffect(() => {
+    if (!isEmbeddedWidget || !activeTicket || typeof window === "undefined") {
+      return;
+    }
+
+    const nonClientMessages = messages.filter(
+      (message) => message.senderType !== "client" && message.senderType !== "system"
+    );
+
+    const lastSeenMap = readSeenMessageMap();
+    const lastSeenMessageId = lastSeenMap[clientSession.clientId] ?? "";
+    const lastSeenIndex = nonClientMessages.findIndex(
+      (message) => message.id === lastSeenMessageId
+    );
+    const unreadCount =
+      lastSeenIndex >= 0
+        ? nonClientMessages.slice(lastSeenIndex + 1).length
+        : nonClientMessages.length;
+
+    window.parent?.postMessage(
+      {
+        type: "touchspace-widget-unread",
+        unreadCount: shouldMarkMessagesAsRead ? 0 : unreadCount,
+      },
+      "*"
+    );
+
+    if (shouldMarkMessagesAsRead && nonClientMessages.length > 0) {
+      const nextSeenMap = {
+        ...lastSeenMap,
+        [clientSession.clientId]: nonClientMessages[nonClientMessages.length - 1].id,
+      };
+      writeSeenMessageMap(nextSeenMap);
+      window.parent?.postMessage(
+        {
+          type: "touchspace-widget-unread",
+          unreadCount: 0,
+        },
+        "*"
+      );
+    }
+  }, [messages, activeTicket, isEmbeddedWidget, clientSession.clientId, shouldMarkMessagesAsRead]);
 
   useEffect(() => {
     if (!isAiTyping) {
@@ -398,7 +582,7 @@ export default function ClientPage() {
       setActiveTicket(newTicket);
       setIsWidgetOpen(true);
       window.localStorage.setItem(clientActiveTicketStorageKey, newTicket.id);
-      await loadTicketContext(newTicket);
+      await loadTicketContext(newTicket, true);
       setDraftText("");
       setAttachmentName("");
     } catch (createError) {
@@ -441,7 +625,7 @@ export default function ClientPage() {
       setActiveTicket(updatedTicket);
       setPreferredAiMode(updatedTicket.aiEnabled ?? false);
       setShowAiTimeoutHint(false);
-      await loadTicketContext(updatedTicket);
+      await loadTicketContext(updatedTicket, shouldMarkMessagesAsRead);
     } catch (toggleError) {
       console.error("Ошибка переключения AI-режима:", toggleError);
       setError("Не удалось переключить AI-помощника");
@@ -518,7 +702,7 @@ export default function ClientPage() {
         )
       );
 
-      void loadTicketContext(activeTicket);
+      void loadTicketContext(activeTicket, shouldMarkMessagesAsRead);
 
       if (replyTarget) {
         const nextReplyMap = {
@@ -619,7 +803,7 @@ export default function ClientPage() {
       className="min-h-screen bg-transparent"
       style={{ fontFamily: widgetFontFamily }}
     >
-      {!isWidgetOpen ? (
+      {!widgetVisible ? (
         <button
           onClick={() => setIsWidgetOpen(true)}
           className="fixed bottom-6 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-[#0A84FF] text-[26px] text-white shadow-[0_20px_50px_rgba(10,132,255,0.35)] transition hover:scale-105 hover:bg-[#0077F2]"
@@ -628,7 +812,13 @@ export default function ClientPage() {
           💬
         </button>
       ) : (
-        <div className="fixed bottom-6 right-6 z-40 flex h-[72vh] min-h-[496px] w-[336px] max-h-[620px] flex-col overflow-hidden rounded-[22px] border border-[#DCE3F0] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+        <div
+          className={`flex flex-col overflow-hidden border border-[#DCE3F0] bg-white ${
+            isEmbeddedWidget
+              ? "h-full w-full rounded-none shadow-none"
+              : "fixed bottom-6 right-6 z-40 h-[72vh] min-h-[496px] w-[336px] max-h-[620px] rounded-[22px] shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
+          }`}
+        >
           <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0A84FF,#5B5CF6)] px-4 pb-4 pt-3 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.12]">
               <Image
@@ -661,7 +851,7 @@ export default function ClientPage() {
               />
             </div>
             <button
-              onClick={() => setIsWidgetOpen(false)}
+              onClick={() => requestHostClose()}
               className="absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm text-white transition hover:bg-white/25"
               aria-label="Закрыть чат"
             >

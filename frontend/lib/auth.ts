@@ -95,7 +95,20 @@ export function writeManagerStatus(managerId: string, status: ManagerPresence) {
 export type ClientSession = {
   clientId: string;
   clientName: string;
+  tradePointId?: string;
+  tradePointName?: string;
+  platformUserId?: string;
+  platformUserName?: string;
+  email?: string;
 };
+
+export function writeClientSession(session: ClientSession) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(clientSessionStorageKey, JSON.stringify(session));
+}
 
 export function getOrCreateClientSession(): ClientSession {
   if (typeof window === "undefined") {
@@ -123,6 +136,6 @@ export function getOrCreateClientSession(): ClientSession {
     clientName: "Клиент",
   } satisfies ClientSession;
 
-  window.localStorage.setItem(clientSessionStorageKey, JSON.stringify(session));
+  writeClientSession(session);
   return session;
 }

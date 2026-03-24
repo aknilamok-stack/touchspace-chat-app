@@ -311,6 +311,55 @@ export default function ClientPage() {
     window.localStorage.setItem("touchspace_client_reply_map", JSON.stringify(parsed));
   };
 
+  const mergeMessagesWithPendingClient = (
+    serverMessages: Message[],
+    currentMessages: Message[]
+  ) => {
+    const serverIds = new Set(serverMessages.map((message) => message.id));
+    const normalizedServerClientKeys = new Set(
+      serverMessages
+        .filter((message) => message.senderType === "client")
+        .map((message) => {
+          const normalizedContent = message.content.trim();
+          const createdAtMs = new Date(message.createdAt).getTime();
+          return `${normalizedContent}::${Number.isNaN(createdAtMs) ? 0 : Math.round(createdAtMs / 1000)}`;
+        })
+    );
+
+    const recentClientMessages = currentMessages.filter((message) => {
+      if (message.senderType !== "client") {
+        return false;
+      }
+
+      if (serverIds.has(message.id)) {
+        return false;
+      }
+
+      const normalizedContent = message.content.trim();
+      const messageCreatedAtMs = new Date(message.createdAt).getTime();
+      const messageKey = `${normalizedContent}::${Number.isNaN(messageCreatedAtMs) ? 0 : Math.round(messageCreatedAtMs / 1000)}`;
+
+      if (normalizedServerClientKeys.has(messageKey)) {
+        return false;
+      }
+
+      if (Number.isNaN(messageCreatedAtMs)) {
+        return true;
+      }
+
+      return Date.now() - messageCreatedAtMs < 15000;
+    });
+
+    if (recentClientMessages.length === 0) {
+      return serverMessages;
+    }
+
+    return [...serverMessages, ...recentClientMessages].sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+    );
+  };
+
   const loadTicketContext = async (ticket: Ticket, markAsRead = shouldMarkMessagesAsRead) => {
     setIsLoadingContext(true);
     setError("");
@@ -329,7 +378,9 @@ export default function ClientPage() {
       }
 
       const messagesData = (await messagesResponse.json()) as Message[];
-      setMessages(messagesData);
+      setMessages((currentMessages) =>
+        mergeMessagesWithPendingClient(messagesData, currentMessages)
+      );
       setPreferredAiMode(ticket.aiEnabled ?? false);
 
       const lastNonSystemMessage = [...messagesData]
@@ -1452,86 +1503,93 @@ export default function ClientPage() {
               ) : null}
 
               <div className="rounded-[22px] border border-[#E3E5EA] bg-white px-4 py-2.5 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
-                <textarea
-                  ref={composerRef}
-                  value={draftText}
-                  onChange={(event) => setDraftText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleSendMessage();
-                    }
-                  }}
-                  rows={1}
-                  className="min-h-[54px] max-h-[104px] w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                  placeholder="Напишите сообщение..."
-                />
-
-                <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-[#EEF1F5] pt-2">
-                  <div className="flex items-center gap-0.5 text-[#8E8E93]">
-                    <button
-                      onClick={() => setShowEmojiPicker((prev) => !prev)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
-                      aria-label="Смайлики"
-                    >
-                      <Image
-                        src="/icons/smail.svg"
-                        alt="Смайлики"
-                        width={16}
-                        height={16}
-                        className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
-                      />
-                    </button>
-
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
-                      aria-label="Вложить файл"
-                    >
-                      <Image
-                        src="/icons/skrepka.svg"
-                        alt="Вложить файл"
-                        width={16}
-                        height={16}
-                        className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
-                      />
-                    </button>
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        setSelectedFile(file ?? null);
-                        setAttachmentName(file?.name ?? "");
-                        event.target.value = "";
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => {
+                <div className="flex items-end gap-3">
+                  <textarea
+                    ref={composerRef}
+                    value={draftText}
+                    onChange={(event) => setDraftText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
                         void handleSendMessage();
-                      }}
-                      disabled={
-                        (!draftText.trim() && !selectedFile) ||
-                        isCreatingTicket ||
-                        isSendingMessage
                       }
-                      className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_10px_18px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                      aria-label="Отправить"
-                    >
-                      <Image
-                        src="/icons/otpravit.svg"
-                        alt="Отправить"
-                        width={16}
-                        height={16}
-                        className="h-4 w-4"
-                      />
-                    </button>
-                  </div>
+                    }}
+                    rows={1}
+                    className="min-h-[54px] max-h-[104px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                    placeholder="Напишите сообщение..."
+                  />
+
+                  <button
+                    onClick={() => {
+                      void handleSendMessage();
+                    }}
+                    disabled={
+                      (!draftText.trim() && !selectedFile) ||
+                      isCreatingTicket ||
+                      isSendingMessage
+                    }
+                    className="mb-1 flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_10px_18px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                    aria-label="Отправить"
+                  >
+                    <Image
+                      src="/icons/otpravit.svg"
+                      alt="Отправить"
+                      width={16}
+                      height={16}
+                      className="h-4 w-4"
+                    />
+                  </button>
+                </div>
+
+                <div className="mt-1 flex items-center gap-0.5 border-t border-[#EEF1F5] pt-1.5 text-[#8E8E93]">
+                  <button
+                    type="button"
+                    className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                    aria-label="Изменить размер окна"
+                    disabled
+                  >
+                    <span className="block h-3.5 w-3.5 opacity-70 [background:linear-gradient(135deg,transparent_0_42%,#9AA9BF_42%_52%,transparent_52%_64%,#9AA9BF_64%_74%,transparent_74%_86%,#9AA9BF_86%_96%,transparent_96%_100%)]" />
+                  </button>
+
+                  <button
+                    onClick={() => setShowEmojiPicker((prev) => !prev)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                    aria-label="Смайлики"
+                  >
+                    <Image
+                      src="/icons/smail.svg"
+                      alt="Смайлики"
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                    />
+                  </button>
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                    aria-label="Вложить файл"
+                  >
+                    <Image
+                      src="/icons/skrepka.svg"
+                      alt="Вложить файл"
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                    />
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setSelectedFile(file ?? null);
+                      setAttachmentName(file?.name ?? "");
+                      event.target.value = "";
+                    }}
+                  />
                 </div>
               </div>
 

@@ -1124,21 +1124,35 @@ export default function Home() {
   }, [authReady]);
 
   useEffect(() => {
+    lastTypingSentAtRef.current = 0;
+  }, [activeChatId]);
+
+  useEffect(() => {
     if (!activeChatId || !messageText.trim()) {
       return;
     }
 
-    const now = Date.now();
+    const emitTyping = () => {
+      const now = Date.now();
 
-    if (now - lastTypingSentAtRef.current < 1000) {
-      return;
-    }
+      if (now - lastTypingSentAtRef.current < 900) {
+        return;
+      }
 
-    lastTypingSentAtRef.current = now;
+      lastTypingSentAtRef.current = now;
 
-    void sendTyping(activeChatId).catch((typingError) => {
-      console.error("Ошибка отправки typing-события менеджера:", typingError);
-    });
+      void sendTyping(activeChatId).catch((typingError) => {
+        console.error("Ошибка отправки typing-события менеджера:", typingError);
+      });
+    };
+
+    emitTyping();
+
+    const intervalId = window.setInterval(() => {
+      emitTyping();
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
   }, [messageText, activeChatId]);
 
   useEffect(() => {

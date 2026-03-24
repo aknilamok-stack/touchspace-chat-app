@@ -106,7 +106,7 @@
     ".touchspace-widget-close:hover{background:rgba(255,255,255,.24);}",
     ".touchspace-widget-dragger{position:absolute;left:54px;right:14px;top:0;z-index:3;height:76px;cursor:grab;background:transparent;}",
     ".touchspace-widget-dragger.is-dragging{cursor:grabbing;}",
-    ".touchspace-widget-resize{position:absolute;right:8px;bottom:8px;z-index:4;width:20px;height:20px;cursor:nwse-resize;opacity:.82;background:linear-gradient(135deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
+    ".touchspace-widget-resize{position:absolute;left:8px;bottom:8px;z-index:4;width:20px;height:20px;cursor:nesw-resize;opacity:.82;background:linear-gradient(225deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
     "@keyframes touchspace-widget-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}",
     "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
   ].join("");
@@ -397,6 +397,7 @@
       startWidth: rect.width,
       startHeight: rect.height,
       startRight: window.innerWidth - rect.right,
+      panelLeft: rect.left,
     };
 
     document.body.style.userSelect = "none";
@@ -412,10 +413,13 @@
 
     var deltaX = event.clientX - resizeState.startX;
     var deltaY = event.clientY - resizeState.startY;
-    var nextWidth = clamp(resizeState.startWidth + deltaX, MIN_PANEL_WIDTH, getMaxWidth());
+    var nextWidth = clamp(resizeState.startWidth - deltaX, MIN_PANEL_WIDTH, getMaxWidth());
     var nextHeight = clamp(resizeState.startHeight + deltaY, MIN_PANEL_HEIGHT, getMaxHeight());
-    var maxRight = Math.max(getGap(), window.innerWidth - nextWidth - getGap());
-    var nextRight = clamp(resizeState.startRight, getGap(), maxRight);
+    var nextRight = clamp(
+      window.innerWidth - resizeState.panelLeft - nextWidth,
+      getGap(),
+      Math.max(getGap(), window.innerWidth - nextWidth - getGap())
+    );
 
     panel.style.width = Math.round(nextWidth) + "px";
     panel.style.height = Math.round(nextHeight) + "px";

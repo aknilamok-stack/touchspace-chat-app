@@ -157,6 +157,8 @@ export class MessagesService {
             firstResponseAt: null,
             firstResponseTime: null,
             firstResponseBreached: false,
+            managerRating: null,
+            managerRatingSubmittedAt: null,
             resolvedAt: null,
             closedAt: null,
             lastMessageAt: reopenedAt,
@@ -300,6 +302,10 @@ export class MessagesService {
 
       if (senderType === 'client') {
         this.typingService.clearTyping(ticketId, 'client');
+      }
+
+      if (senderType === 'manager') {
+        this.typingService.clearTyping(ticketId, 'manager');
       }
 
       if (senderType === 'manager' && ticket.aiEnabled) {

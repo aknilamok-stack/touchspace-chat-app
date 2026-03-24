@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ResolveTicketDto {
   @IsString()
@@ -8,4 +8,9 @@ export class ResolveTicketDto {
   @IsString()
   @IsNotEmpty()
   managerName: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['manager', 'supplier'])
+  resolverRole?: string;
 }

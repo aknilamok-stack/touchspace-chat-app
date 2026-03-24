@@ -1186,6 +1186,7 @@ export default function SupplierPage() {
             selectedTicket?.assignedManagerId ??
             "manager_anna",
           managerName: selectedManagerName,
+          resolverRole: "supplier",
         }),
       });
 

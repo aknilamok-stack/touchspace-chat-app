@@ -1200,6 +1200,8 @@ export class AdminService {
           relatedTickets.map((ticket) => ticket.firstResponseTime),
         ),
         avgCloseTimeMs: this.average(relatedTickets.map((ticket) => ticket.resolutionTime)),
+        avgRating: this.average(relatedTickets.map((ticket) => ticket.managerRating)),
+        ratingsCount: relatedTickets.filter((ticket) => typeof ticket.managerRating === 'number').length,
         slaBreaches: relatedTickets.filter(
           (ticket) => ticket.firstResponseBreached || ticket.slaBreached,
         ).length,
@@ -1260,6 +1262,8 @@ export class AdminService {
         handledDialogs: tickets.length,
         avgFirstResponseMs: this.average(tickets.map((ticket) => ticket.firstResponseTime)),
         avgCloseTimeMs: this.average(tickets.map((ticket) => ticket.resolutionTime)),
+        avgRating: this.average(tickets.map((ticket) => ticket.managerRating)),
+        ratingsCount: tickets.filter((ticket) => typeof ticket.managerRating === 'number').length,
         slaBreaches: tickets.filter(
           (ticket) => ticket.firstResponseBreached || ticket.slaBreached,
         ).length,

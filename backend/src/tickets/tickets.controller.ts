@@ -65,8 +65,11 @@ export class TicketsController {
   }
 
   @Post(':id/typing')
-  updateTyping(@Param('id') id: string, @Body() body: { senderType: string }) {
-    return this.ticketsService.updateTyping(id, body.senderType);
+  updateTyping(
+    @Param('id') id: string,
+    @Body() body: { senderType: string; previewText?: string },
+  ) {
+    return this.ticketsService.updateTyping(id, body.senderType, body.previewText);
   }
 
   @Get(':id/typing')
@@ -88,6 +91,14 @@ export class TicketsController {
   )
   resolve(@Param('id') id: string, @Body() resolveTicketDto: ResolveTicketDto) {
     return this.ticketsService.resolve(id, resolveTicketDto);
+  }
+
+  @Post(':id/manager-rating')
+  rateManager(
+    @Param('id') id: string,
+    @Body() body: { rating: number },
+  ) {
+    return this.ticketsService.rateManager(id, body.rating);
   }
 
   @Patch(':id/reopen')

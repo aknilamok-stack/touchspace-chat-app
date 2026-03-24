@@ -27,6 +27,7 @@ type ApiMessage = {
   id: string;
   content: string;
   senderType: string;
+  senderName?: string | null;
   messageType?: string;
   status: string;
   createdAt: string;
@@ -78,6 +79,7 @@ type ChatMessage = {
   id: string;
   text: string;
   from: MessageRole;
+  senderName?: string | null;
   status: string;
   time: string;
   createdAt: string;
@@ -427,6 +429,7 @@ const formatMessage = (msg: ApiMessage): ChatMessage => ({
           ? "system"
           : "manager",
   status: msg.status,
+  senderName: msg.senderName ?? null,
   time: new Date(msg.createdAt).toLocaleTimeString(),
   createdAt: msg.createdAt,
 });
@@ -596,6 +599,7 @@ export default function Home() {
     until: number;
   } | null>(null);
   const [isClientTyping, setIsClientTyping] = useState(false);
+  const [clientTypingPreview, setClientTypingPreview] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -603,6 +607,7 @@ export default function Home() {
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastTypingSentAtRef = useRef(0);
   const knownTicketIdsRef = useRef<Set<string>>(new Set());
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const notificationsInitializedRef = useRef(false);
@@ -766,7 +771,11 @@ export default function Home() {
 
   const fetchTyping = async (
     ticketId: string
-  ): Promise<{ clientTyping: boolean }> => {
+  ): Promise<{
+    clientTyping: boolean;
+    managerTyping: boolean;
+    clientPreviewText: string;
+  }> => {
     const response = await fetch(apiUrl(`/tickets/${ticketId}/typing`));
 
     if (!response.ok) {
@@ -774,6 +783,18 @@ export default function Home() {
     }
 
     return response.json();
+  };
+
+  const sendTyping = async (ticketId: string) => {
+    await fetch(apiUrl(`/tickets/${ticketId}/typing`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        senderType: "manager",
+      }),
+    });
   };
 
   const applyMessagesToTicket = (ticketId: string, messages: ApiMessage[]) => {
@@ -1059,6 +1080,7 @@ export default function Home() {
   useEffect(() => {
     if (!activeChatId) {
       setIsClientTyping(false);
+      setClientTypingPreview("");
       return;
     }
 
@@ -1066,9 +1088,11 @@ export default function Home() {
       try {
         const typingState = await fetchTyping(activeChatId);
         setIsClientTyping(typingState.clientTyping);
+        setClientTypingPreview(typingState.clientPreviewText || "");
       } catch (error) {
         console.error("Ошибка загрузки typing-состояния:", error);
         setIsClientTyping(false);
+        setClientTypingPreview("");
       }
     };
 
@@ -1098,6 +1122,24 @@ export default function Home() {
 
     return () => window.clearInterval(intervalId);
   }, [authReady]);
+
+  useEffect(() => {
+    if (!activeChatId || !messageText.trim()) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - lastTypingSentAtRef.current < 1000) {
+      return;
+    }
+
+    lastTypingSentAtRef.current = now;
+
+    void sendTyping(activeChatId).catch((typingError) => {
+      console.error("Ошибка отправки typing-события менеджера:", typingError);
+    });
+  }, [messageText, activeChatId]);
 
   useEffect(() => {
     if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
@@ -1342,6 +1384,7 @@ export default function Home() {
       syncTickets(refreshedTickets);
       setMessageText("");
       setAttachmentName("");
+      lastTypingSentAtRef.current = 0;
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
       setToast({
@@ -1367,6 +1410,7 @@ export default function Home() {
         body: JSON.stringify({
           managerId: currentManagerId,
           managerName: currentManagerName,
+          resolverRole: "manager",
         }),
       });
 
@@ -2363,9 +2407,25 @@ export default function Home() {
           ) : null}
 
           {isClientTyping && activeChat?.rawStatus !== "resolved" ? (
-            <div className="border-t border-transparent bg-white px-6 pb-1">
-              <div className="mx-auto w-full max-w-3xl text-sm text-[#8E8E93]">
-                Клиент печатает...
+            <div className="border-t border-transparent bg-white px-6 pb-2 pt-1">
+              <div className="mx-auto w-full max-w-3xl">
+                <div className="inline-flex max-w-[70%] items-end gap-2 rounded-[20px] rounded-bl-[8px] border border-[#E6EBF3] bg-[#FBFCFE] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-[#9AA5B5]">
+                      {activeChat?.clientName || "Клиент"} печатает
+                    </p>
+                    <div className="mt-1 flex items-end gap-2">
+                      <p className="line-clamp-3 break-words text-[15px] leading-6 text-[#667085]">
+                        {clientTypingPreview || "…"}
+                      </p>
+                      <div className="mb-1 flex items-end gap-1">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#A9B7CA] [animation-delay:-0.24s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#A9B7CA] [animation-delay:-0.12s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#A9B7CA]" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}

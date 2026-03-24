@@ -118,6 +118,7 @@ export function AdminManagersAnalytics() {
               { key: "handledDialogs", label: "Обработано" },
               { key: "dialogsInWork", label: "В работе" },
               { key: "avgFirstResponseMs", label: "1-й ответ" },
+              { key: "avgRating", label: "Оценка" },
               { key: "slaBreaches", label: "SLA" },
               { key: "escalationsToSupplier", label: "Эскалации" },
             ]}
@@ -136,6 +137,10 @@ export function AdminManagersAnalytics() {
                 return formatDuration(row.avgFirstResponseMs);
               }
 
+              if (key === "avgRating") {
+                return row.ratingsCount ? `${Number(row.avgRating ?? 0).toFixed(1)} (${row.ratingsCount})` : "—";
+              }
+
               return row[key];
             }}
           />
@@ -150,6 +155,7 @@ export function AdminManagersAnalytics() {
                 <p className="mt-1"><span className="font-medium text-slate-950">Live presence:</span> <AdminStatusBadge value={detail.manager.presenceStatus ?? "offline"} /></p>
                 <p className="mt-1"><span className="font-medium text-slate-950">Обработано:</span> {detail.metrics.handledDialogs}</p>
                 <p className="mt-1"><span className="font-medium text-slate-950">1-й ответ:</span> {formatDuration(detail.metrics.avgFirstResponseMs)}</p>
+                <p className="mt-1"><span className="font-medium text-slate-950">Средняя оценка:</span> {detail.metrics.ratingsCount ? `${Number(detail.metrics.avgRating ?? 0).toFixed(1)} (${detail.metrics.ratingsCount})` : "Нет оценок"}</p>
               </div>
 
               <div className="grid gap-3">

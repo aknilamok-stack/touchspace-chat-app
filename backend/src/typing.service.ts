@@ -2,14 +2,16 @@ import { Injectable } from '@nestjs/common';
 
 type TicketTypingState = {
   clientLastTypingAt?: number;
+  managerLastTypingAt?: number;
+  clientPreviewText?: string;
 };
 
 @Injectable()
 export class TypingService {
   private readonly typingState = new Map<string, TicketTypingState>();
 
-  setTyping(ticketId: string, senderType: string) {
-    if (senderType !== 'client') {
+  setTyping(ticketId: string, senderType: string, previewText?: string) {
+    if (senderType !== 'client' && senderType !== 'manager') {
       return;
     }
 
@@ -17,12 +19,18 @@ export class TypingService {
 
     this.typingState.set(ticketId, {
       ...currentState,
-      clientLastTypingAt: Date.now(),
+      ...(senderType === 'client'
+        ? {
+            clientLastTypingAt: Date.now(),
+            clientPreviewText:
+              typeof previewText === 'string' ? previewText.slice(0, 500) : '',
+          }
+        : { managerLastTypingAt: Date.now() }),
     });
   }
 
   clearTyping(ticketId: string, senderType?: string) {
-    if (senderType && senderType !== 'client') {
+    if (senderType && senderType !== 'client' && senderType !== 'manager') {
       return;
     }
 
@@ -32,9 +40,16 @@ export class TypingService {
       return;
     }
 
-    delete currentState.clientLastTypingAt;
+    if (!senderType || senderType === 'client') {
+      delete currentState.clientLastTypingAt;
+      delete currentState.clientPreviewText;
+    }
 
-    if (!currentState.clientLastTypingAt) {
+    if (!senderType || senderType === 'manager') {
+      delete currentState.managerLastTypingAt;
+    }
+
+    if (!currentState.clientLastTypingAt && !currentState.managerLastTypingAt) {
       this.typingState.delete(ticketId);
       return;
     }
@@ -47,11 +62,18 @@ export class TypingService {
     const clientTyping =
       typeof state?.clientLastTypingAt === 'number' &&
       Date.now() - state.clientLastTypingAt < 3000;
+    const managerTyping =
+      typeof state?.managerLastTypingAt === 'number' &&
+      Date.now() - state.managerLastTypingAt < 3000;
 
-    if (!clientTyping && state) {
+    if (!clientTyping && !managerTyping && state) {
       this.typingState.delete(ticketId);
     }
 
-    return { clientTyping };
+    return {
+      clientTyping,
+      managerTyping,
+      clientPreviewText: clientTyping ? state?.clientPreviewText ?? '' : '',
+    };
   }
 }

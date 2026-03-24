@@ -65,6 +65,9 @@ model Ticket {
   assignedManagerName String?
   lastResolvedByManagerId String?
   lastResolvedByManagerName String?
+  lastResolvedByRole       String?
+  managerRating            Int?
+  managerRatingSubmittedAt DateTime?
   clientId                 String?
   clientName               String?
   supplierId               String?

@@ -218,7 +218,7 @@ export class TicketsService {
     });
   }
 
-  async updateTyping(id: string, senderType: string) {
+  async updateTyping(id: string, senderType: string, previewText?: string) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
       select: { id: true },
@@ -228,7 +228,7 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with id "${id}" not found`);
     }
 
-    this.typingService.setTyping(id, senderType);
+    this.typingService.setTyping(id, senderType, previewText);
 
     return {
       ok: true,
@@ -303,6 +303,9 @@ export class TicketsService {
           assignedManagerName: null,
           lastResolvedByManagerId: resolveTicketDto.managerId,
           lastResolvedByManagerName: resolveTicketDto.managerName,
+          lastResolvedByRole: resolveTicketDto.resolverRole ?? 'manager',
+          managerRating: null,
+          managerRatingSubmittedAt: null,
           resolvedAt: now,
           closedAt: now,
         },
@@ -385,6 +388,51 @@ export class TicketsService {
           lastMessageAt: now,
         },
       });
+
+      return updatedTicket;
+    });
+  }
+
+  async rateManager(id: string, rating: number) {
+    if (![1, 2, 3].includes(rating)) {
+      throw new BadRequestException('Оценка должна быть 1, 2 или 3');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        managerRatingSubmittedAt: true,
+        lastResolvedByRole: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${id}" not found`);
+    }
+
+    if (ticket.lastResolvedByRole !== 'manager') {
+      throw new BadRequestException('Оценка доступна только для диалога, завершённого менеджером');
+    }
+
+    if (ticket.managerRatingSubmittedAt) {
+      throw new ConflictException('Оценка уже отправлена');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      const updatedTicket = await tx.ticket.update({
+        where: { id },
+        data: {
+          managerRating: rating,
+          managerRatingSubmittedAt: now,
+          lastMessageAt: now,
+        },
+      });
+
+      await this.createSystemMessage(tx, id, 'Спасибо за оценку');
 
       return updatedTicket;
     });

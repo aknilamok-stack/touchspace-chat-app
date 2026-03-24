@@ -28,6 +28,10 @@ type Ticket = {
   aiEnabled?: boolean;
   currentHandlerType?: string;
   conversationMode?: string;
+  lastResolvedByRole?: string | null;
+  lastResolvedByManagerName?: string | null;
+  managerRating?: number | null;
+  managerRatingSubmittedAt?: string | null;
 };
 
 type Message = {
@@ -115,6 +119,7 @@ export default function ClientPage() {
   const [error, setError] = useState("");
   const [isEmbeddedWidget, setIsEmbeddedWidget] = useState(false);
   const [hostWidgetOpen, setHostWidgetOpen] = useState(false);
+  const [isManagerTyping, setIsManagerTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -125,14 +130,16 @@ export default function ClientPage() {
   const isResolved = activeTicket?.status === "resolved";
   const aiModeActive = activeTicket?.aiEnabled ?? preferredAiMode;
   const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
-  const widgetStatusText = isResolved
-    ? "Ваш вопрос решён?"
-    : aiModeActive
-      ? "Сейчас отвечает AI-помощник"
-      : "Операторы онлайн";
+  const widgetStatusText = aiModeActive
+    ? "Сейчас отвечает AI-помощник"
+    : "Операторы онлайн";
   const hasMessages = messages.length > 0;
   const showQuickActions = !hasMessages && !activeTicket;
   const widgetVisible = isEmbeddedWidget || isWidgetOpen;
+  const canRateResolvedManager =
+    activeTicket?.status === "resolved" &&
+    activeTicket?.lastResolvedByRole === "manager" &&
+    !activeTicket?.managerRatingSubmittedAt;
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
     const response = await fetch(
@@ -149,7 +156,7 @@ export default function ClientPage() {
     return tickets.find((ticket) => ticket.id === ticketId) ?? null;
   };
 
-  const sendTyping = async (ticketId: string) => {
+  const sendTyping = async (ticketId: string, previewText: string) => {
     await fetch(apiUrl(`/tickets/${ticketId}/typing`), {
       method: "POST",
       headers: {
@@ -157,8 +164,66 @@ export default function ClientPage() {
       },
       body: JSON.stringify({
         senderType: "client",
+        previewText,
       }),
     });
+  };
+
+  const fetchTyping = async (
+    ticketId: string
+  ): Promise<{
+    clientTyping: boolean;
+    managerTyping: boolean;
+    clientPreviewText: string;
+  }> => {
+    const response = await fetch(apiUrl(`/tickets/${ticketId}/typing`));
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить typing-состояние");
+    }
+
+    return response.json();
+  };
+
+  const submitManagerRating = async (rating: number) => {
+    if (!activeTicket?.id) {
+      return;
+    }
+
+    const response = await fetch(apiUrl(`/tickets/${activeTicket.id}/manager-rating`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rating }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Не удалось отправить оценку");
+    }
+
+    const [ticket, nextMessages] = await Promise.all([
+      fetchTicketById(activeTicket.id),
+      fetch(
+        apiUrl(
+          `/tickets/${activeTicket.id}/messages?viewerType=client&viewerId=${encodeURIComponent(
+            clientSession.clientId
+          )}`
+        )
+      ).then(async (messagesResponse) => {
+        if (!messagesResponse.ok) {
+          throw new Error("Не удалось обновить историю после оценки");
+        }
+
+        return messagesResponse.json() as Promise<Message[]>;
+      }),
+    ]);
+
+    if (ticket) {
+      setActiveTicket(ticket);
+    }
+
+    setMessages(nextMessages);
   };
 
   const clearActiveTicket = () => {
@@ -531,10 +596,35 @@ export default function ClientPage() {
 
     lastTypingSentAtRef.current = now;
 
-    void sendTyping(activeTicket.id).catch((typingError) => {
+    void sendTyping(activeTicket.id, draftText).catch((typingError) => {
       console.error("Ошибка отправки typing-события:", typingError);
     });
   }, [draftText, activeTicket?.id]);
+
+  useEffect(() => {
+    if (!activeTicket?.id || activeTicket.status === "resolved") {
+      setIsManagerTyping(false);
+      return;
+    }
+
+    const loadTypingState = async () => {
+      try {
+        const typingState = await fetchTyping(activeTicket.id);
+        setIsManagerTyping(Boolean(typingState.managerTyping) && !isAiTyping);
+      } catch (error) {
+        console.error("Ошибка загрузки typing-состояния:", error);
+        setIsManagerTyping(false);
+      }
+    };
+
+    void loadTypingState();
+
+    const intervalId = window.setInterval(() => {
+      void loadTypingState();
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTicket?.id, activeTicket?.status, isAiTyping]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1221,6 +1311,68 @@ export default function ClientPage() {
                 </div>
               ) : null}
 
+              {isManagerTyping ? (
+                <div className="flex justify-start">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[#E2E8F4] bg-white px-3 py-2 text-xs text-[#6F7E93] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                    <span>Оператор печатает</span>
+                    <div className="flex items-end gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#9DB0C9] [animation-delay:-0.24s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#9DB0C9] [animation-delay:-0.12s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#9DB0C9]" />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {canRateResolvedManager ? (
+                <div className="flex justify-start">
+                  <div className="max-w-[88%] rounded-[22px] border border-[#E6EAF2] bg-white px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[15px] font-semibold text-[#1E1E1E]">
+                          Оцените работу менеджера
+                        </p>
+                        <p className="mt-1 text-[13px] leading-5 text-[#6F7E93]">
+                          {activeTicket?.lastResolvedByManagerName
+                            ? `${activeTicket.lastResolvedByManagerName} завершил диалог.`
+                            : "Диалог был отмечен как решённый."}{" "}
+                          Поделитесь, пожалуйста, впечатлением от общения.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-3">
+                      {[
+                        { rating: 3, emoji: "😄", label: "Хорошо" },
+                        { rating: 2, emoji: "😐", label: "Нормально" },
+                        { rating: 1, emoji: "☹️", label: "Плохо" },
+                      ].map((option) => (
+                        <button
+                          key={option.rating}
+                          type="button"
+                          onClick={() => {
+                            void submitManagerRating(option.rating).catch((submitError) => {
+                              setError(
+                                submitError instanceof Error
+                                  ? submitError.message
+                                  : "Не удалось отправить оценку"
+                              );
+                            });
+                          }}
+                          className="group flex h-12 w-12 items-center justify-center rounded-full border border-[#E5E9F2] bg-[#FBFCFE] text-[24px] transition hover:-translate-y-0.5 hover:border-[#B8D4FF] hover:bg-[#F3F8FF]"
+                          aria-label={option.label}
+                          title={option.label}
+                        >
+                          <span className="transition group-hover:scale-110">
+                            {option.emoji}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div ref={messagesEndRef} />
             </div>
 
@@ -1299,110 +1451,87 @@ export default function ClientPage() {
                 </div>
               ) : null}
 
-              <div className="flex items-end gap-3 rounded-[24px] border border-[#E3E5EA] bg-white px-4 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
-                <div className="min-w-0 flex-1">
-                  <textarea
-                    ref={composerRef}
-                    value={draftText}
-                    onChange={(event) => setDraftText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSendMessage();
-                      }
-                    }}
-                    rows={1}
-                    className="min-h-[40px] max-h-[116px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                    placeholder="Напишите сообщение..."
-                  />
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setShowEmojiPicker((prev) => !prev)}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F8FF] transition hover:bg-[#E5F0FF]"
-                    aria-label="Смайлики"
-                  >
-                    <Image
-                      src="/icons/smail.svg"
-                      alt="Смайлики"
-                      width={18}
-                      height={18}
-                      className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
-                    />
-                  </button>
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F8FF] transition hover:bg-[#E5F0FF]"
-                    aria-label="Вложить файл"
-                  >
-                    <Image
-                      src="/icons/skrepka.svg"
-                      alt="Вложить файл"
-                      width={18}
-                      height={18}
-                      className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
-                    />
-                  </button>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      setSelectedFile(file ?? null);
-                      setAttachmentName(file?.name ?? "");
-                      event.target.value = "";
-                    }}
-                  />
-                </div>
-
-                <button
-                  onClick={() => {
-                    void handleSendMessage();
+              <div className="rounded-[24px] border border-[#E3E5EA] bg-white px-4 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+                <textarea
+                  ref={composerRef}
+                  value={draftText}
+                  onChange={(event) => setDraftText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSendMessage();
+                    }
                   }}
-                  disabled={
-                    (!draftText.trim() && !selectedFile) ||
-                    isCreatingTicket ||
-                    isSendingMessage ||
-                    isResolved
-                  }
-                  className="flex h-[44px] w-[44px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                  aria-label="Отправить"
-                >
-                  <Image
-                    src="/icons/otpravit.svg"
-                    alt="Отправить"
-                    width={18}
-                    height={18}
-                    className="h-[18px] w-[18px]"
-                  />
-                </button>
-              </div>
+                  rows={1}
+                  className="min-h-[74px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                  placeholder="Напишите сообщение..."
+                />
 
-              {isResolved ? (
-                <div className="mt-3 rounded-[18px] border border-[#E6F3EA] bg-[#F4FFF7] px-3 py-3">
-                  <p className="text-sm font-medium text-[#1E1E1E]">
-                    Ваш вопрос решён?
-                  </p>
-                  <div className="mt-3 flex gap-2">
+                <div className="mt-2 flex items-center justify-between gap-3 border-t border-[#EEF1F5] pt-2">
+                  <div className="flex items-center gap-1 text-[#8E8E93]">
                     <button
-                      onClick={() => clearActiveTicket()}
-                      className="flex-1 rounded-full border border-[#DCE7FF] px-3 py-2 text-sm font-medium text-[#0A84FF]"
+                      onClick={() => setShowEmojiPicker((prev) => !prev)}
+                      className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                      aria-label="Смайлики"
                     >
-                      Да
+                      <Image
+                        src="/icons/smail.svg"
+                        alt="Смайлики"
+                        width={18}
+                        height={18}
+                        className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                      />
                     </button>
+
                     <button
-                      onClick={() => setDraftText("У меня остался вопрос")}
-                      className="flex-1 rounded-full bg-[#0A84FF] px-3 py-2 text-sm font-medium text-white"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
+                      aria-label="Вложить файл"
                     >
-                      Нет
+                      <Image
+                        src="/icons/skrepka.svg"
+                        alt="Вложить файл"
+                        width={18}
+                        height={18}
+                        className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
+                      />
                     </button>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        setSelectedFile(file ?? null);
+                        setAttachmentName(file?.name ?? "");
+                        event.target.value = "";
+                      }}
+                    />
                   </div>
+
+                  <button
+                    onClick={() => {
+                      void handleSendMessage();
+                    }}
+                    disabled={
+                      (!draftText.trim() && !selectedFile) ||
+                      isCreatingTicket ||
+                      isSendingMessage
+                    }
+                    className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                    aria-label="Отправить"
+                  >
+                    <Image
+                      src="/icons/otpravit.svg"
+                      alt="Отправить"
+                      width={18}
+                      height={18}
+                      className="h-[18px] w-[18px]"
+                    />
+                  </button>
                 </div>
-              ) : null}
+              </div>
 
               {error ? <p className="mt-3 text-sm text-[#FD6868]">{error}</p> : null}
             </div>

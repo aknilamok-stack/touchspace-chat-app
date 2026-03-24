@@ -74,6 +74,16 @@
   var iframeUrl = new URL("/client", baseUrl);
   iframeUrl.searchParams.set("embed", "1");
 
+  var STORAGE_KEY = "touchspace-widget-layout-v2";
+  var DEFAULT_PANEL_WIDTH = 336;
+  var DEFAULT_PANEL_HEIGHT = 496;
+  var MIN_PANEL_WIDTH = 336;
+  var MIN_PANEL_HEIGHT = 496;
+  var MAX_PANEL_WIDTH = 640;
+  var MAX_PANEL_HEIGHT = 820;
+  var DESKTOP_GAP = 24;
+  var MOBILE_GAP = 12;
+
   if (fallbackTradePointId) iframeUrl.searchParams.set("tradePointId", String(fallbackTradePointId));
   if (fallbackTradePointName) iframeUrl.searchParams.set("tradePointName", String(fallbackTradePointName));
   if (fallbackUserId) iframeUrl.searchParams.set("userId", String(fallbackUserId));
@@ -89,13 +99,16 @@
     ".touchspace-widget-launcher.is-pulsing img{animation:touchspace-widget-pulse 1.8s ease-in-out infinite;}",
     ".touchspace-widget-badge{position:absolute;right:6px;top:2px;display:none;min-width:24px;height:24px;padding:0 7px;border-radius:9999px;background:#ff453a;color:#fff;font:600 12px/24px Montserrat,ui-sans-serif,system-ui,sans-serif;box-shadow:0 10px 20px rgba(255,69,58,.35);}",
     ".touchspace-widget-badge.is-visible{display:inline-block;}",
-    ".touchspace-widget-panel{display:none;position:absolute;right:0;bottom:0;width:336px;height:496px;border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
+    ".touchspace-widget-panel{display:none;position:fixed;right:24px;bottom:24px;width:336px;height:496px;min-width:336px;min-height:496px;max-width:min(92vw,640px);max-height:min(88vh,820px);resize:horizontal;border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
     ".touchspace-widget-panel.is-open{display:block;}",
     ".touchspace-widget-panel iframe{width:100%;height:100%;border:0;background:#fff;}",
     ".touchspace-widget-close{position:absolute;left:14px;top:14px;z-index:3;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;border-radius:9999px;background:rgba(255,255,255,.16);color:#fff;font:400 22px/1 Arial,sans-serif;cursor:pointer;backdrop-filter:blur(3px);box-shadow:0 8px 18px rgba(0,0,0,.14);}",
     ".touchspace-widget-close:hover{background:rgba(255,255,255,.24);}",
+    ".touchspace-widget-dragger{position:absolute;left:54px;right:14px;top:0;z-index:3;height:76px;cursor:grab;background:transparent;}",
+    ".touchspace-widget-dragger.is-dragging{cursor:grabbing;}",
+    ".touchspace-widget-resize{position:absolute;right:10px;bottom:10px;z-index:3;width:14px;height:14px;pointer-events:none;opacity:.72;background:linear-gradient(135deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
     "@keyframes touchspace-widget-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}",
-    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{width:min(336px,100%);height:min(496px,78vh)}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
+    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none;resize:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
   ].join("");
   document.head.appendChild(style);
 
@@ -116,6 +129,14 @@
   panelClose.setAttribute("aria-label", "Закрыть чат");
   panelClose.textContent = "×";
 
+  var dragHandle = document.createElement("div");
+  dragHandle.className = "touchspace-widget-dragger";
+  dragHandle.setAttribute("aria-hidden", "true");
+
+  var resizeHandle = document.createElement("span");
+  resizeHandle.className = "touchspace-widget-resize";
+  resizeHandle.setAttribute("aria-hidden", "true");
+
   var launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = "touchspace-widget-launcher";
@@ -130,6 +151,118 @@
 
   launcher.appendChild(launcherImage);
   launcher.appendChild(badge);
+
+  function isDesktopLayout() {
+    return window.innerWidth > 640;
+  }
+
+  function getGap() {
+    return isDesktopLayout() ? DESKTOP_GAP : MOBILE_GAP;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function safeParseLayout() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveLayout(layout) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    } catch (_) {
+      // noop
+    }
+  }
+
+  function getViewportBounds() {
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+  }
+
+  function getMaxWidth() {
+    var viewport = getViewportBounds();
+    return clamp(Math.min(MAX_PANEL_WIDTH, viewport.width - getGap() * 2), MIN_PANEL_WIDTH, MAX_PANEL_WIDTH);
+  }
+
+  function getMaxHeight() {
+    var viewport = getViewportBounds();
+    return clamp(Math.min(MAX_PANEL_HEIGHT, viewport.height - getGap() * 2), MIN_PANEL_HEIGHT, MAX_PANEL_HEIGHT);
+  }
+
+  function normalizeLayout(layout) {
+    var width = DEFAULT_PANEL_WIDTH;
+    var height = DEFAULT_PANEL_HEIGHT;
+    var right = getGap();
+
+    if (isDesktopLayout()) {
+      var maxWidth = getMaxWidth();
+      var maxHeight = getMaxHeight();
+
+      width = clamp(Number(layout && layout.width) || DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, maxWidth);
+      height = clamp(Number(layout && layout.height) || DEFAULT_PANEL_HEIGHT, MIN_PANEL_HEIGHT, maxHeight);
+
+      var maxRight = Math.max(getGap(), window.innerWidth - width - getGap());
+      right = clamp(Number(layout && layout.right) || getGap(), getGap(), maxRight);
+    } else {
+      width = Math.min(DEFAULT_PANEL_WIDTH, window.innerWidth - getGap() * 2);
+      height = Math.min(DEFAULT_PANEL_HEIGHT, Math.round(window.innerHeight * 0.78));
+      right = getGap();
+    }
+
+    return {
+      width: Math.round(width),
+      height: Math.round(height),
+      right: Math.round(right),
+    };
+  }
+
+  function getCurrentLayout() {
+    var panelRect = panel.getBoundingClientRect();
+    return normalizeLayout({
+      width: panelRect.width || parseFloat(panel.style.width) || DEFAULT_PANEL_WIDTH,
+      height: panelRect.height || parseFloat(panel.style.height) || DEFAULT_PANEL_HEIGHT,
+      right: window.innerWidth - panelRect.right,
+    });
+  }
+
+  function applyLayout(layout) {
+    var normalized = normalizeLayout(layout);
+
+    panel.style.width = normalized.width + "px";
+    panel.style.height = normalized.height + "px";
+    panel.style.right = normalized.right + "px";
+    panel.style.bottom = getGap() + "px";
+    panel.style.left = "auto";
+  }
+
+  function persistCurrentLayout() {
+    if (!isDesktopLayout()) {
+      return;
+    }
+
+    saveLayout(getCurrentLayout());
+  }
+
+  var savedLayout = safeParseLayout();
+  applyLayout(savedLayout);
 
   function setUnreadCount(count) {
     var normalized = Number(count) > 0 ? Number(count) : 0;
@@ -161,6 +294,7 @@
   }
 
   function openWidget() {
+    applyLayout(safeParseLayout());
     panel.classList.add("is-open");
     launcher.style.display = "none";
     setUnreadCount(0);
@@ -181,7 +315,85 @@
     closeWidget();
   });
 
+  var dragState = null;
+
+  function stopDrag() {
+    dragState = null;
+    dragHandle.classList.remove("is-dragging");
+    document.body.style.userSelect = "";
+  }
+
+  dragHandle.addEventListener("pointerdown", function (event) {
+    if (!isDesktopLayout() || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    var rect = panel.getBoundingClientRect();
+    dragState = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startRight: window.innerWidth - rect.right,
+      startHeight: rect.height,
+      width: rect.width,
+    };
+
+    dragHandle.classList.add("is-dragging");
+    document.body.style.userSelect = "none";
+    dragHandle.setPointerCapture(event.pointerId);
+  });
+
+  dragHandle.addEventListener("pointermove", function (event) {
+    if (!dragState) {
+      return;
+    }
+
+    event.preventDefault();
+
+    var deltaX = event.clientX - dragState.startX;
+    var deltaY = event.clientY - dragState.startY;
+    var maxRight = Math.max(getGap(), window.innerWidth - dragState.width - getGap());
+    var nextRight = clamp(dragState.startRight - deltaX, getGap(), maxRight);
+    var nextHeight = clamp(dragState.startHeight - deltaY, MIN_PANEL_HEIGHT, getMaxHeight());
+
+    panel.style.right = Math.round(nextRight) + "px";
+    panel.style.height = Math.round(nextHeight) + "px";
+    panel.style.bottom = getGap() + "px";
+  });
+
+  dragHandle.addEventListener("pointerup", function (event) {
+    if (dragState) {
+      dragHandle.releasePointerCapture(event.pointerId);
+      persistCurrentLayout();
+    }
+
+    stopDrag();
+  });
+
+  dragHandle.addEventListener("pointercancel", stopDrag);
+
+  if (window.ResizeObserver) {
+    var resizeObserver = new window.ResizeObserver(function () {
+      if (!isDesktopLayout() || !panel.classList.contains("is-open")) {
+        return;
+      }
+
+      var layout = getCurrentLayout();
+      applyLayout(layout);
+      saveLayout(layout);
+    });
+
+    resizeObserver.observe(panel);
+  }
+
+  window.addEventListener("resize", function () {
+    applyLayout(safeParseLayout());
+  });
+
+  panel.appendChild(dragHandle);
   panel.appendChild(panelClose);
+  panel.appendChild(resizeHandle);
   panel.appendChild(iframe);
   root.appendChild(panel);
   root.appendChild(launcher);

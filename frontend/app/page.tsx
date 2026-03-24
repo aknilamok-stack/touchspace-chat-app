@@ -632,6 +632,34 @@ export default function Home() {
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
 
+  const showDesktopNotification = async (title: string, body: string) => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      return;
+    }
+
+    if ("serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        await registration.showNotification(title, {
+          body,
+          icon: "/pwa/icon-192.svg",
+          badge: "/pwa/badge.svg",
+          tag: `manager-ui-${title}`,
+          data: { url: activeChatId ? `/?ticket=${activeChatId}` : "/" },
+        });
+        return;
+      } catch (error) {
+        console.error("Не удалось показать service-worker уведомление:", error);
+      }
+    }
+
+    new Notification(title, { body });
+  };
+
   const requestBrowserNotifications = async () => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setNotificationBannerMessage("Этот браузер не поддерживает desktop-уведомления.");
@@ -662,6 +690,14 @@ export default function Home() {
     }
 
     setNotificationBannerMessage("Разрешение на уведомления пока не выдано.");
+  };
+
+  const sendLocalNotificationTest = async () => {
+    await showDesktopNotification(
+      "Тестовое уведомление TouchSpace",
+      "Если ты видишь это окно, pop-up уведомления в Chrome работают."
+    );
+    setNotificationBannerMessage("Тестовый pop-up отправлен.");
   };
 
   useEffect(() => {
@@ -1249,15 +1285,16 @@ export default function Home() {
     }
 
     chatData.forEach((chat) => {
-      if (!knownTicketIdsRef.current.has(chat.id)) {
-        if (canShowNotification) {
-          new Notification("Новое обращение", {
-            body: chat.title || "Новый клиентский диалог",
-          });
-        }
+        if (!knownTicketIdsRef.current.has(chat.id)) {
+          if (canShowNotification) {
+            void showDesktopNotification(
+              "Новое обращение",
+              chat.title || "Новый клиентский диалог"
+            );
+          }
 
-        knownTicketIdsRef.current.add(chat.id);
-      }
+          knownTicketIdsRef.current.add(chat.id);
+        }
 
       chat.messages.forEach((message) => {
         if (knownMessageIdsRef.current.has(message.id)) {
@@ -1284,12 +1321,10 @@ export default function Home() {
             ? "Ответ поставщика"
             : "Новое сообщение от клиента";
 
-        new Notification(notificationTitle, {
-          body:
-            message.text.length > 80
-              ? `${message.text.slice(0, 80)}...`
-              : message.text,
-        });
+        void showDesktopNotification(
+          notificationTitle,
+          message.text.length > 80 ? `${message.text.slice(0, 80)}...` : message.text
+        );
       });
     });
   }, [chatData, authReady, activeChatId]);
@@ -2129,6 +2164,14 @@ export default function Home() {
                 {notificationPermission === "granted"
                   ? "Проверить ещё раз"
                   : "Включить в Chrome"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendLocalNotificationTest()}
+                disabled={notificationPermission !== "granted"}
+                className="rounded-full border border-[#DCE3F0] px-3 py-2 text-xs font-semibold text-[#1E1E1E] transition hover:bg-[#F7F9FC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Тестовый pop-up
               </button>
               <button
                 type="button"

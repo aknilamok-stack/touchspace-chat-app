@@ -430,7 +430,10 @@ const formatMessage = (msg: ApiMessage): ChatMessage => ({
           : "manager",
   status: msg.status,
   senderName: msg.senderName ?? null,
-  time: new Date(msg.createdAt).toLocaleTimeString(),
+  time: new Date(msg.createdAt).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }),
   createdAt: msg.createdAt,
 });
 
@@ -601,6 +604,9 @@ export default function Home() {
   const [isClientTyping, setIsClientTyping] = useState(false);
   const [clientTypingPreview, setClientTypingPreview] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>("default");
+  const [notificationBannerMessage, setNotificationBannerMessage] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
@@ -625,6 +631,38 @@ export default function Home() {
   const filteredQuickReplies = QUICK_REPLIES.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
+
+  const requestBrowserNotifications = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationBannerMessage("Этот браузер не поддерживает desktop-уведомления.");
+      return;
+    }
+
+    const result = await Notification.requestPermission();
+    setNotificationPermission(result);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.error("Не удалось зарегистрировать service worker:", error);
+      });
+    }
+
+    if (result === "granted") {
+      setNotificationBannerMessage(
+        "Уведомления включены. Теперь новые сообщения будут всплывать в Chrome, даже если вкладка неактивна."
+      );
+      return;
+    }
+
+    if (result === "denied") {
+      setNotificationBannerMessage(
+        "Chrome запретил уведомления. Разреши их в настройках сайта рядом с адресной строкой."
+      );
+      return;
+    }
+
+    setNotificationBannerMessage("Разрешение на уведомления пока не выдано.");
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1183,8 +1221,12 @@ export default function Home() {
       return;
     }
 
-    if (Notification.permission === "default") {
-      void Notification.requestPermission();
+    setNotificationPermission(Notification.permission);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.error("Не удалось зарегистрировать service worker:", error);
+      });
     }
   }, [authReady]);
 
@@ -2049,6 +2091,59 @@ export default function Home() {
               className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
               placeholder="Поиск по клиенту, диалогу или сообщению..."
             />
+          </div>
+
+          <div className="mb-4 rounded-[20px] border border-[#E5E9F2] bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold text-[#1E1E1E]">
+                  Pop-up уведомления
+                </p>
+                <p className="mt-1 text-[12px] leading-5 text-[#6C6C70]">
+                  Для Chrome: новые сообщения будут всплывать, даже если вкладка неактивна или браузер свернут.
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  notificationPermission === "granted"
+                    ? "bg-[#ECFFF1] text-[#1F8B4C]"
+                    : notificationPermission === "denied"
+                      ? "bg-[#FFF4F4] text-[#D64545]"
+                      : "bg-[#EEF6FF] text-[#0A84FF]"
+                }`}
+              >
+                {notificationPermission === "granted"
+                  ? "Включены"
+                  : notificationPermission === "denied"
+                    ? "Запрещены"
+                    : "Не подключены"}
+              </span>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void requestBrowserNotifications()}
+                className="rounded-full bg-[#0A84FF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
+              >
+                {notificationPermission === "granted"
+                  ? "Проверить ещё раз"
+                  : "Включить в Chrome"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/settings")}
+                className="rounded-full border border-[#DCE3F0] px-3 py-2 text-xs font-semibold text-[#1E1E1E] transition hover:bg-[#F7F9FC]"
+              >
+                Настройки
+              </button>
+            </div>
+
+            {notificationBannerMessage ? (
+              <p className="mt-3 rounded-[14px] bg-[#F7F9FC] px-3 py-2 text-[12px] leading-5 text-[#5F6B7A]">
+                {notificationBannerMessage}
+              </p>
+            ) : null}
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">

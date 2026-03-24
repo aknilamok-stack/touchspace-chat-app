@@ -668,7 +668,7 @@ export default function ClientPage() {
     const loadTypingState = async () => {
       try {
         const typingState = await fetchTyping(activeTicket.id);
-        setIsManagerTyping(Boolean(typingState.managerTyping) && !isAiTyping);
+        setIsManagerTyping(Boolean(typingState.managerTyping));
       } catch (error) {
         console.error("Ошибка загрузки typing-состояния:", error);
         setIsManagerTyping(false);
@@ -682,7 +682,7 @@ export default function ClientPage() {
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTicket?.id, activeTicket?.status, isAiTyping]);
+  }, [activeTicket?.id, activeTicket?.status]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1330,7 +1330,7 @@ export default function ClientPage() {
                 );
               })}
 
-              {isAiTyping ? (
+              {isAiTyping && !isManagerTyping ? (
                 <div className="grid gap-2">
                   <div className="flex justify-start">
                     <div className="max-w-[82%] rounded-[18px] rounded-tl-[6px] border border-[#D9E8FF] bg-[#EFF6FF] px-4 py-3 text-sm text-[#0B3B78] shadow-sm">

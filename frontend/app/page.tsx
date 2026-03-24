@@ -1344,7 +1344,7 @@ export default function Home() {
           const notificationTitle =
             unreadMessage.from === "supplier"
               ? `Поставщик: ${chat.title || chat.clientName || "диалог"}`
-              : `Клиент: ${chat.clientName || chat.title || "неизвестный клиент"}`;
+              : `Клиент: ${chat.title || chat.clientName || "неизвестный клиент"}`;
           const notificationBody =
             unreadMessage.text.length > 80
               ? `${unreadMessage.text.slice(0, 80)}...`

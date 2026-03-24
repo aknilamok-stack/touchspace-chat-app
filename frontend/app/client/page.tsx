@@ -686,7 +686,7 @@ export default function ClientPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isWidgetOpen]);
+  }, [messages.length, isWidgetOpen, isManagerTyping, isAiTyping]);
 
   useEffect(() => {
     if (!composerRef.current) {

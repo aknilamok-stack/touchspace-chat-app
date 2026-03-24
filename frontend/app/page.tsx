@@ -776,7 +776,12 @@ export default function Home() {
     managerTyping: boolean;
     clientPreviewText: string;
   }> => {
-    const response = await fetch(apiUrl(`/tickets/${ticketId}/typing`));
+    const response = await fetch(
+      apiUrl(`/tickets/${ticketId}/typing?_ts=${Date.now()}`),
+      {
+        cache: "no-store",
+      }
+    );
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить typing-состояние");

@@ -174,7 +174,10 @@
   document.body.appendChild(root);
 
   window.addEventListener("message", function (event) {
-    if (event.origin !== iframeUrl.origin) {
+    if (
+      event.source !== iframe.contentWindow &&
+      event.origin !== iframeUrl.origin
+    ) {
       return;
     }
 

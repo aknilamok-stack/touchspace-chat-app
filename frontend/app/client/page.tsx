@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { apiBaseUrl, apiUrl } from "@/lib/api";
 import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
@@ -42,6 +42,31 @@ type Message = {
 
 type ClientVisibleMessage = Message & {
   displayContent: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentCaption?: string;
+};
+
+const tryParseAttachmentPayload = (content: string) => {
+  try {
+    const parsed = JSON.parse(content) as {
+      url?: string;
+      name?: string;
+      caption?: string;
+    };
+
+    if (!parsed?.url || !parsed?.name) {
+      return null;
+    }
+
+    return {
+      url: parsed.url.startsWith("http") ? parsed.url : `${apiBaseUrl}${parsed.url}`,
+      name: parsed.name,
+      caption: parsed.caption || "",
+    };
+  } catch {
+    return null;
+  }
 };
 
 const getMessageStatusChecks = (status?: string) =>
@@ -71,6 +96,7 @@ export default function ClientPage() {
   const [isWidgetOpen, setIsWidgetOpen] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachmentName, setAttachmentName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState("");
   const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
@@ -542,7 +568,7 @@ export default function ClientPage() {
 
   const handleCreateTicket = async (firstMessage: string) => {
     if (!firstMessage.trim()) {
-      return;
+      return null;
     }
 
     setIsCreatingTicket(true);
@@ -585,6 +611,8 @@ export default function ClientPage() {
       await loadTicketContext(newTicket, true);
       setDraftText("");
       setAttachmentName("");
+      setSelectedFile(null);
+      return newTicket;
     } catch (createError) {
       console.error("Ошибка создания обращения:", createError);
       setIsAiTyping(false);
@@ -595,6 +623,7 @@ export default function ClientPage() {
           ? createError.message
           : "Не удалось создать обращение"
       );
+      return null;
     } finally {
       setIsCreatingTicket(false);
     }
@@ -637,90 +666,174 @@ export default function ClientPage() {
   const handleSendMessage = async (overrideText?: string) => {
     const contentToSend = overrideText ?? draftText;
 
-    if (!contentToSend.trim()) {
+    const hasTextToSend = Boolean(contentToSend.trim());
+    const hasAttachmentToSend = Boolean(selectedFile);
+
+    if (!hasTextToSend && !hasAttachmentToSend) {
       return;
     }
 
-    if (!activeTicket) {
+    let targetTicket = activeTicket;
+    let textAlreadyUsedForBootstrap = false;
+
+    if (!targetTicket && hasTextToSend && !hasAttachmentToSend) {
       setDraftText("");
       setAttachmentName("");
+      setSelectedFile(null);
       setShowEmojiPicker(false);
       await handleCreateTicket(contentToSend);
+      return;
+    }
+
+    if (!targetTicket && hasAttachmentToSend) {
+      const bootstrapText = hasTextToSend
+        ? contentToSend
+        : `Отправлено вложение: ${selectedFile?.name ?? "файл"}`;
+
+      targetTicket = await handleCreateTicket(bootstrapText);
+      textAlreadyUsedForBootstrap = true;
+
+      if (!targetTicket) {
+        return;
+      }
+    }
+
+    if (!targetTicket) {
       return;
     }
 
     setIsSendingMessage(true);
     setError("");
     setDraftText("");
-    setAttachmentName("");
     setShowEmojiPicker(false);
     lastTypingSentAtRef.current = 0;
 
-    const optimisticMessageId = `temp-${Date.now()}`;
-    const optimisticMessage: Message = {
-      id: optimisticMessageId,
-      content: contentToSend,
-      senderType: "client",
-      messageType: "text",
-      status: "sent",
-      ticketId: activeTicket.id,
-      createdAt: new Date().toISOString(),
-    };
+    const optimisticTextMessageId = `temp-text-${Date.now()}`;
+    const optimisticAttachmentMessageId = `temp-attachment-${Date.now()}`;
+    const optimisticMessages: Message[] = [];
 
-    setMessages((current) => [...current, optimisticMessage]);
+    if (hasTextToSend) {
+      optimisticMessages.push({
+        id: optimisticTextMessageId,
+        content: contentToSend,
+        senderType: "client",
+        messageType: "text",
+        status: "sent",
+        ticketId: targetTicket.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
-    if (activeTicket.aiEnabled) {
+    if (selectedFile) {
+      optimisticMessages.push({
+        id: optimisticAttachmentMessageId,
+        content: JSON.stringify({
+          name: selectedFile.name,
+          url: "",
+        }),
+        senderType: "client",
+        messageType: "attachment",
+        status: "sent",
+        ticketId: targetTicket.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    if (optimisticMessages.length > 0) {
+      setMessages((current) => [...current, ...optimisticMessages]);
+    }
+
+    if (targetTicket.aiEnabled) {
       setIsAiTyping(true);
       setAiTypingStartedAt(Date.now());
       setShowAiTimeoutHint(false);
     }
 
     try {
-      const response = await fetch(apiUrl("/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketId: activeTicket.id,
-          content: contentToSend,
-          senderType: "client",
-          senderId: clientSession.clientId,
-          senderName: clientSession.clientName,
-        }),
-      });
+      let createdTextMessage: Message | null = null;
 
-      if (!response.ok) {
-        throw new Error("Не удалось отправить сообщение");
+      if (hasTextToSend && !textAlreadyUsedForBootstrap) {
+        const response = await fetch(apiUrl("/messages"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticketId: targetTicket.id,
+            content: contentToSend,
+            senderType: "client",
+            senderId: clientSession.clientId,
+            senderName: clientSession.clientName,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Не удалось отправить сообщение");
+        }
+
+        createdTextMessage = (await response.json()) as Message;
+
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticTextMessageId ? createdTextMessage! : message
+          )
+        );
       }
 
-      const createdMessage = (await response.json()) as Message;
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("ticketId", targetTicket.id);
+        formData.append("senderType", "client");
+        formData.append("senderId", clientSession.clientId);
+        formData.append("senderName", clientSession.clientName);
 
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === optimisticMessageId ? createdMessage : message
-        )
-      );
+        const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+          method: "POST",
+          body: formData,
+        });
 
-      void loadTicketContext(activeTicket, shouldMarkMessagesAsRead);
+        if (!attachmentResponse.ok) {
+          throw new Error("Не удалось отправить вложение");
+        }
 
-      if (replyTarget) {
+        const createdAttachmentMessage = (await attachmentResponse.json()) as Message;
+
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticAttachmentMessageId
+              ? createdAttachmentMessage
+              : message
+          )
+        );
+      }
+
+      setAttachmentName("");
+      setSelectedFile(null);
+
+      void loadTicketContext(targetTicket, shouldMarkMessagesAsRead);
+
+      if (replyTarget && createdTextMessage) {
         const nextReplyMap = {
           ...replyMap,
-          [createdMessage.id]: {
+          [createdTextMessage.id]: {
             replyToId: replyTarget.id,
             replyToContent: replyTarget.content,
           },
         };
 
         setReplyMap(nextReplyMap);
-        writeReplyMap(activeTicket.id, nextReplyMap);
+        writeReplyMap(targetTicket.id, nextReplyMap);
         setReplyTarget(null);
       }
     } catch (sendError) {
       console.error("Ошибка отправки сообщения:", sendError);
       setMessages((current) =>
-        current.filter((message) => message.id !== optimisticMessageId)
+        current.filter(
+          (message) =>
+            message.id !== optimisticTextMessageId &&
+            message.id !== optimisticAttachmentMessageId
+        )
       );
       setIsAiTyping(false);
       setAiTypingStartedAt(null);
@@ -740,10 +853,20 @@ export default function ClientPage() {
           message.senderType === "supplier" ||
           message.senderType === "ai"
         ) {
+          const attachmentPayload =
+            message.messageType === "attachment"
+              ? tryParseAttachmentPayload(message.content)
+              : null;
+
           return [
             {
               ...message,
-              displayContent: message.content,
+              displayContent: attachmentPayload
+                ? attachmentPayload.name
+                : message.content,
+              attachmentUrl: attachmentPayload?.url,
+              attachmentName: attachmentPayload?.name,
+              attachmentCaption: attachmentPayload?.caption,
             },
           ];
         }
@@ -800,7 +923,7 @@ export default function ClientPage() {
 
   return (
     <main
-      className="min-h-screen bg-transparent"
+      className={isEmbeddedWidget ? "h-[100dvh] overflow-hidden bg-transparent" : "min-h-screen bg-transparent"}
       style={{ fontFamily: widgetFontFamily }}
     >
       {!widgetVisible ? (
@@ -819,7 +942,7 @@ export default function ClientPage() {
               : "fixed bottom-6 right-6 z-40 h-[72vh] min-h-[496px] w-[336px] max-h-[620px] rounded-[22px] shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
           }`}
         >
-          <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0A84FF,#5B5CF6)] px-4 pb-4 pt-3 text-white">
+          <div className="relative shrink-0 overflow-hidden bg-[linear-gradient(135deg,#0A84FF,#5B5CF6)] px-4 pb-4 pt-3 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.12]">
               <Image
                 src="/icons/otpravit.svg"
@@ -991,6 +1114,23 @@ export default function ClientPage() {
                               </div>
                             ) : null}
                             <p className="mt-1 break-words">{message.displayContent}</p>
+                            {message.attachmentUrl ? (
+                              <a
+                                href={message.attachmentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`mt-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                                  message.senderType === "client"
+                                    ? "border-white/20 bg-white/10 text-white"
+                                    : "border-[#CFE0FF] bg-white text-[#0A84FF]"
+                                }`}
+                              >
+                                <span>📎</span>
+                                <span className="max-w-[180px] truncate">
+                                  {message.attachmentName}
+                                </span>
+                              </a>
+                            ) : null}
                             <div
                               className={`mt-2 flex items-center gap-2 text-[10px] ${
                                 message.senderType === "client"
@@ -1075,7 +1215,7 @@ export default function ClientPage() {
               </div>
             ) : null}
 
-            <div className="border-t border-[#E7E9EF] bg-white px-4 py-4">
+            <div className="shrink-0 border-t border-[#E7E9EF] bg-white px-4 py-4">
               {replyTarget ? (
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
                   <div className="min-w-0">
@@ -1153,7 +1293,7 @@ export default function ClientPage() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setShowEmojiPicker((prev) => !prev)}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:bg-[#E5F0FF]"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F8FF] transition hover:bg-[#E5F0FF]"
                     aria-label="Смайлики"
                   >
                     <Image
@@ -1161,13 +1301,13 @@ export default function ClientPage() {
                       alt="Смайлики"
                       width={18}
                       height={18}
-                      className="h-[18px] w-[18px]"
+                      className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
                     />
                   </button>
 
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:bg-[#E5F0FF]"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F8FF] transition hover:bg-[#E5F0FF]"
                     aria-label="Вложить файл"
                   >
                     <Image
@@ -1175,7 +1315,7 @@ export default function ClientPage() {
                       alt="Вложить файл"
                       width={18}
                       height={18}
-                      className="h-[18px] w-[18px]"
+                      className="h-[18px] w-[18px] opacity-80 [filter:brightness(0)_saturate(100%)_invert(45%)_sepia(10%)_saturate(637%)_hue-rotate(191deg)_brightness(91%)_contrast(89%)]"
                     />
                   </button>
 
@@ -1185,6 +1325,7 @@ export default function ClientPage() {
                     className="hidden"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
+                      setSelectedFile(file ?? null);
                       setAttachmentName(file?.name ?? "");
                       event.target.value = "";
                     }}
@@ -1196,7 +1337,10 @@ export default function ClientPage() {
                     void handleSendMessage();
                   }}
                   disabled={
-                    !draftText.trim() || isCreatingTicket || isSendingMessage || isResolved
+                    (!draftText.trim() && !selectedFile) ||
+                    isCreatingTicket ||
+                    isSendingMessage ||
+                    isResolved
                   }
                   className="flex h-[44px] w-[44px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                   aria-label="Отправить"

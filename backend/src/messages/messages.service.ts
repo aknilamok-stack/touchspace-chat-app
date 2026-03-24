@@ -381,6 +381,65 @@ export class MessagesService {
     return message;
   }
 
+  async createAttachment(
+    file: any,
+    ticketId: string,
+    senderType: string,
+    managerId?: string,
+    managerName?: string,
+    senderId?: string,
+    senderName?: string,
+    caption?: string,
+  ) {
+    if (!file) {
+      throw new NotFoundException('Attachment file is required');
+    }
+
+    const actorId = senderId ?? managerId;
+    const actorName = senderName ?? managerName;
+
+    if (actorId) {
+      await this.profilesService.ensureProfile({
+        id: actorId,
+        fullName: actorName,
+        role: senderType,
+      });
+    }
+
+    const attachmentPayload = JSON.stringify({
+      name: file.originalname,
+      url: `/uploads/${file.filename}`,
+      mimeType: file.mimetype,
+      size: file.size,
+      caption: caption?.trim() || '',
+    });
+
+    const message = await this.prisma.message.create({
+      data: {
+        ticketId,
+        content: attachmentPayload,
+        senderType,
+        senderRole: senderType,
+        senderProfileId: actorId ?? null,
+        status: 'sent',
+        deliveryStatus: 'sent',
+        messageType: 'attachment',
+        isInternal: false,
+      },
+    });
+
+    await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        lastMessageAt: message.createdAt,
+        closedAt: null,
+        status: senderType === 'client' ? 'new' : undefined,
+      },
+    });
+
+    return message;
+  }
+
   async findByTicket(
     ticketId: string,
     viewerType?: string,

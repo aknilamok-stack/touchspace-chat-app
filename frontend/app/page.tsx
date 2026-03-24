@@ -797,6 +797,20 @@ export default function Home() {
     });
   };
 
+  const emitManagerTyping = (ticketId: string) => {
+    const now = Date.now();
+
+    if (now - lastTypingSentAtRef.current < 900) {
+      return;
+    }
+
+    lastTypingSentAtRef.current = now;
+
+    void sendTyping(ticketId).catch((typingError) => {
+      console.error("Ошибка отправки typing-события менеджера:", typingError);
+    });
+  };
+
   const applyMessagesToTicket = (ticketId: string, messages: ApiMessage[]) => {
     setChatData((prevChats) =>
       prevChats.map((chat) =>
@@ -1132,24 +1146,10 @@ export default function Home() {
       return;
     }
 
-    const emitTyping = () => {
-      const now = Date.now();
-
-      if (now - lastTypingSentAtRef.current < 900) {
-        return;
-      }
-
-      lastTypingSentAtRef.current = now;
-
-      void sendTyping(activeChatId).catch((typingError) => {
-        console.error("Ошибка отправки typing-события менеджера:", typingError);
-      });
-    };
-
-    emitTyping();
+    emitManagerTyping(activeChatId);
 
     const intervalId = window.setInterval(() => {
-      emitTyping();
+      emitManagerTyping(activeChatId);
     }, 1500);
 
     return () => window.clearInterval(intervalId);
@@ -2474,7 +2474,14 @@ export default function Home() {
                   <textarea
                     ref={composerTextareaRef}
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setMessageText(nextValue);
+
+                      if (activeChatId && nextValue.trim()) {
+                        emitManagerTyping(activeChatId);
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();

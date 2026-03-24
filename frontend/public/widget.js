@@ -477,6 +477,11 @@
       return;
     }
 
+    if (event.data && event.data.type === "touchspace-widget-ready") {
+      postVisibilityState();
+      return;
+    }
+
     if (event.data && event.data.type === "touchspace-widget-unread") {
       if (!panel.classList.contains("is-open")) {
         setUnreadCount(event.data.unreadCount);

@@ -39,6 +39,27 @@ export class MessagesService {
     });
   }
 
+  private async markClientMessagesAsRead(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    readAt: Date,
+  ) {
+    await tx.message.updateMany({
+      where: {
+        ticketId,
+        senderType: 'client',
+        status: {
+          in: ['sent', 'delivered'],
+        },
+      },
+      data: {
+        status: 'read',
+        deliveryStatus: 'read',
+        readAt,
+      },
+    });
+  }
+
   private async assertTicketAccess(ticketId: string, viewer?: MessageViewer) {
     const viewerType = viewer?.viewerType?.trim();
     const viewerId = viewer?.viewerId?.trim();
@@ -306,6 +327,7 @@ export class MessagesService {
 
       if (senderType === 'manager') {
         this.typingService.clearTyping(ticketId, 'manager');
+        await this.markClientMessagesAsRead(tx, ticketId, message.createdAt);
       }
 
       if (senderType === 'manager' && ticket.aiEnabled) {
@@ -420,30 +442,41 @@ export class MessagesService {
       caption: caption?.trim() || '',
     });
 
-    const message = await this.prisma.message.create({
-      data: {
-        ticketId,
-        content: attachmentPayload,
-        senderType,
-        senderRole: senderType,
-        senderProfileId: actorId ?? null,
-        status: 'sent',
-        deliveryStatus: 'sent',
-        messageType: 'attachment',
-        isInternal: false,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const message = await tx.message.create({
+        data: {
+          ticketId,
+          content: attachmentPayload,
+          senderType,
+          senderRole: senderType,
+          senderProfileId: actorId ?? null,
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'attachment',
+          isInternal: false,
+        },
+      });
 
-    await this.prisma.ticket.update({
-      where: { id: ticketId },
-      data: {
-        lastMessageAt: message.createdAt,
-        closedAt: null,
-        status: senderType === 'client' ? 'new' : undefined,
-      },
-    });
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          lastMessageAt: message.createdAt,
+          closedAt: null,
+          status: senderType === 'client' ? 'new' : undefined,
+        },
+      });
 
-    return message;
+      if (senderType === 'manager') {
+        this.typingService.clearTyping(ticketId, 'manager');
+        await this.markClientMessagesAsRead(tx, ticketId, message.createdAt);
+      }
+
+      if (senderType === 'client') {
+        this.typingService.clearTyping(ticketId, 'client');
+      }
+
+      return message;
+    });
   }
 
   async findByTicket(

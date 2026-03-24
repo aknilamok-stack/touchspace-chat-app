@@ -452,6 +452,8 @@ export default function ClientPage() {
       return;
     }
 
+    window.parent?.postMessage({ type: "touchspace-widget-ready" }, "*");
+
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "touchspace-widget-visibility") {
         setHostWidgetOpen(Boolean(event.data.open));
@@ -1542,15 +1544,6 @@ export default function ClientPage() {
                 </div>
 
                 <div className="mt-1 flex items-center gap-0.5 border-t border-[#EEF1F5] pt-1.5 text-[#8E8E93]">
-                  <button
-                    type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"
-                    aria-label="Изменить размер окна"
-                    disabled
-                  >
-                    <span className="block h-3.5 w-3.5 opacity-70 [background:linear-gradient(135deg,transparent_0_42%,#9AA9BF_42%_52%,transparent_52%_64%,#9AA9BF_64%_74%,transparent_74%_86%,#9AA9BF_86%_96%,transparent_96%_100%)]" />
-                  </button>
-
                   <button
                     onClick={() => setShowEmojiPicker((prev) => !prev)}
                     className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[#F5F8FF]"

@@ -1071,6 +1071,24 @@ export default function Home() {
   }, [activeChatId]);
 
   useEffect(() => {
+    if (!activeChatId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchMessages(activeChatId, true)
+        .then((messages) => {
+          applyMessagesToTicket(activeChatId, messages);
+        })
+        .catch((error) => {
+          console.error("Ошибка live-обновления активного чата:", error);
+        });
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeChatId]);
+
+  useEffect(() => {
     if (!activeChatId) return;
 
     const loadCurrentSupplierRequests = async () => {
@@ -1150,7 +1168,7 @@ export default function Home() {
 
     const intervalId = window.setInterval(() => {
       emitManagerTyping(activeChatId);
-    }, 1500);
+    }, 900);
 
     return () => window.clearInterval(intervalId);
   }, [messageText, activeChatId]);
@@ -2483,6 +2501,16 @@ export default function Home() {
                       }
                     }}
                     onKeyDown={(e) => {
+                      if (
+                        activeChatId &&
+                        e.key.length === 1 &&
+                        !e.ctrlKey &&
+                        !e.metaKey &&
+                        !e.altKey
+                      ) {
+                        emitManagerTyping(activeChatId);
+                      }
+
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         void handleSendMessage();

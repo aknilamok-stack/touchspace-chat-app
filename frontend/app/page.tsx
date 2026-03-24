@@ -20,6 +20,9 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
   LabArte: { id: "supplier_labarte", name: "LabArte" },
   "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
 };
+const NOTIFICATION_CARD_DISMISSED_KEY =
+  "touchspace-manager-notification-card-dismissed";
+const REPEATED_NOTIFICATION_INTERVAL_MS = 10_000;
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
 
@@ -221,10 +224,32 @@ const getUnreadCount = (chat: ChatItem) => {
       break;
     }
 
+    if (message.status === "read") {
+      break;
+    }
+
     unreadCount += 1;
   }
 
   return unreadCount;
+};
+
+const getLatestUnreadIncomingMessage = (chat: ChatItem) => {
+  for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
+    const message = chat.messages[index];
+
+    if (message.from === "manager" || message.from === "system" || message.from === "ai") {
+      break;
+    }
+
+    if (message.status === "read") {
+      break;
+    }
+
+    return message;
+  }
+
+  return null;
 };
 
 const getLastNonSystemMessage = (chat: ChatItem) => {
@@ -609,6 +634,7 @@ export default function Home() {
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermission>("default");
   const [notificationBannerMessage, setNotificationBannerMessage] = useState("");
+  const [isNotificationCardDismissed, setIsNotificationCardDismissed] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
@@ -620,6 +646,8 @@ export default function Home() {
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const notificationsInitializedRef = useRef(false);
   const isWindowFocusedRef = useRef(true);
+  const lastNotificationAtRef = useRef<Record<string, number>>({});
+  const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const availableManagers = BASE_MANAGERS.map((manager) => ({
@@ -634,7 +662,11 @@ export default function Home() {
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
 
-  const showDesktopNotification = async (title: string, body: string) => {
+  const showDesktopNotification = async (
+    title: string,
+    body: string,
+    options?: { tag?: string; ticketId?: string }
+  ) => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
@@ -650,8 +682,10 @@ export default function Home() {
           body,
           icon: "/pwa/icon-192.svg",
           badge: "/pwa/badge.svg",
-          tag: `manager-ui-${title}`,
-          data: { url: activeChatId ? `/?ticket=${activeChatId}` : "/" },
+          tag: `manager-ui-${options?.tag ?? title}`,
+          data: {
+            url: options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/",
+          },
         });
         return;
       } catch (error) {
@@ -706,6 +740,10 @@ export default function Home() {
     if (typeof window === "undefined") {
       return;
     }
+
+    setIsNotificationCardDismissed(
+      window.localStorage.getItem(NOTIFICATION_CARD_DISMISSED_KEY) === "1"
+    );
 
     const params = new URLSearchParams(window.location.search);
     setDeepLinkTicketId(params.get("ticket") ?? "");
@@ -1283,53 +1321,64 @@ export default function Home() {
         chatData.flatMap((chat) => chat.messages.map((message) => message.id))
       );
       notificationsInitializedRef.current = true;
-      return;
     }
 
     chatData.forEach((chat) => {
-        if (!knownTicketIdsRef.current.has(chat.id)) {
-          if (canShowNotification) {
-            void showDesktopNotification(
-              "Новое обращение",
-              chat.title || "Новый клиентский диалог"
-            );
-          }
+      if (!knownTicketIdsRef.current.has(chat.id)) {
+        knownTicketIdsRef.current.add(chat.id);
+      }
 
-          knownTicketIdsRef.current.add(chat.id);
-        }
+      const unreadMessage = getLatestUnreadIncomingMessage(chat);
+      const unreadCount = getUnreadCount(chat);
 
-      chat.messages.forEach((message) => {
-        if (knownMessageIdsRef.current.has(message.id)) {
-          return;
-        }
-
-        knownMessageIdsRef.current.add(message.id);
-
-        if (message.from === "manager" || message.from === "system" || message.from === "ai") {
-          return;
-        }
-
+      if (!unreadMessage || unreadCount === 0) {
+        delete lastNotificationAtRef.current[chat.id];
+        delete lastNotificationMessageIdRef.current[chat.id];
+      } else {
         const isSameVisibleChat =
           document.visibilityState === "visible" &&
           isWindowFocusedRef.current &&
           activeChatId === chat.id;
 
-        if (!canShowNotification || isSameVisibleChat) {
-          return;
+        if (!isSameVisibleChat && canShowNotification) {
+          const notificationTitle =
+            unreadMessage.from === "supplier"
+              ? `Поставщик: ${chat.title || chat.clientName || "диалог"}`
+              : `Клиент: ${chat.clientName || chat.title || "неизвестный клиент"}`;
+          const notificationBody =
+            unreadMessage.text.length > 80
+              ? `${unreadMessage.text.slice(0, 80)}...`
+              : unreadMessage.text;
+          const lastNotificationAt = lastNotificationAtRef.current[chat.id] ?? 0;
+          const lastMessageId = lastNotificationMessageIdRef.current[chat.id];
+          const shouldNotify =
+            lastMessageId !== unreadMessage.id ||
+            Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+
+          if (shouldNotify) {
+            lastNotificationAtRef.current[chat.id] = Date.now();
+            lastNotificationMessageIdRef.current[chat.id] = unreadMessage.id;
+            void showDesktopNotification(notificationTitle, notificationBody, {
+              tag: chat.id,
+              ticketId: chat.id,
+            });
+          }
         }
+      }
 
-        const notificationTitle =
-          message.from === "supplier"
-            ? `Поставщик: ${chat.title || chat.clientName || "диалог"}`
-            : `Клиент: ${chat.clientName || chat.title || "неизвестный клиент"}`;
-
-        void showDesktopNotification(
-          notificationTitle,
-          message.text.length > 80 ? `${message.text.slice(0, 80)}...` : message.text
-        );
+      chat.messages.forEach((message) => {
+        knownMessageIdsRef.current.add(message.id);
       });
     });
   }, [chatData, authReady, activeChatId]);
+
+  const dismissNotificationCard = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(NOTIFICATION_CARD_DISMISSED_KEY, "1");
+    }
+
+    setIsNotificationCardDismissed(true);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2130,7 +2179,8 @@ export default function Home() {
             />
           </div>
 
-          <div className="mb-4 rounded-[20px] border border-[#E5E9F2] bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+          {!isNotificationCardDismissed ? (
+            <div className="mb-4 rounded-[20px] border border-[#E5E9F2] bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[13px] font-semibold text-[#1E1E1E]">
@@ -2155,6 +2205,18 @@ export default function Home() {
                     ? "Запрещены"
                     : "Не подключены"}
               </span>
+            </div>
+
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={dismissNotificationCard}
+                className="h-7 w-7 rounded-full text-[#8E8E93] transition hover:bg-[#F2F4F8] hover:text-[#1E1E1E]"
+                aria-label="Скрыть плашку уведомлений"
+                title="Скрыть плашку уведомлений"
+              >
+                ×
+              </button>
             </div>
 
             <div className="mt-3 flex items-center gap-2">
@@ -2189,7 +2251,8 @@ export default function Home() {
                 {notificationBannerMessage}
               </p>
             ) : null}
-          </div>
+            </div>
+          ) : null}
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {searchedChats.map((chat) => (

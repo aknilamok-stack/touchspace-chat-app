@@ -11,6 +11,17 @@ type NotificationPreferencesInput = {
   notifyAdminAlerts?: boolean;
 };
 
+type ManagerNotificationCandidate = {
+  ticketId: string;
+  title: string;
+  clientName: string | null;
+  messageId: string;
+  messageText: string;
+  createdAt: Date;
+  assignedManagerId: string | null;
+  assignedManagerName: string | null;
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -115,6 +126,34 @@ export class NotificationsService {
       aiDialogs,
       pendingSupplierRequests,
     };
+  }
+
+  private async getActiveManagerIds() {
+    const statuses = await this.profilesService.getManagerStatuses();
+
+    return statuses
+      .filter((manager) => manager.managerStatus === 'online' || manager.managerStatus === 'break')
+      .map((manager) => manager.id);
+  }
+
+  private shouldNotifyManagerAboutTicket(
+    profileId: string,
+    activeManagerIds: Set<string>,
+    candidate: Pick<ManagerNotificationCandidate, 'assignedManagerId'>,
+  ) {
+    if (!activeManagerIds.has(profileId)) {
+      return false;
+    }
+
+    if (!candidate.assignedManagerId) {
+      return true;
+    }
+
+    if (candidate.assignedManagerId === profileId) {
+      return true;
+    }
+
+    return !activeManagerIds.has(candidate.assignedManagerId);
   }
 
   private async getSupplierCounters(profileId: string) {
@@ -262,6 +301,96 @@ export class NotificationsService {
       },
       counters,
       devices,
+    };
+  }
+
+  async getManagerNotificationCandidates(profileId: string) {
+    const profile = await this.ensureSettingsProfile(profileId, 'manager');
+
+    if (!profile.notificationPushEnabled || !profile.notifyClientChats) {
+      return {
+        items: [],
+      };
+    }
+
+    const [activeManagerIds, tickets] = await Promise.all([
+      this.getActiveManagerIds(),
+      this.prisma.ticket.findMany({
+        where: {
+          aiEnabled: false,
+          status: {
+            notIn: ['resolved', 'closed'],
+          },
+          messages: {
+            some: {
+              senderType: 'client',
+              status: {
+                in: ['sent', 'delivered'],
+              },
+            },
+          },
+        },
+        orderBy: {
+          lastMessageAt: 'desc',
+        },
+        select: {
+          id: true,
+          title: true,
+          clientName: true,
+          assignedManagerId: true,
+          assignedManagerName: true,
+          messages: {
+            where: {
+              senderType: 'client',
+              status: {
+                in: ['sent', 'delivered'],
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 1,
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const activeManagerIdsSet = new Set(activeManagerIds);
+
+    const items = tickets
+      .map((ticket) => {
+        const latestUnreadMessage = ticket.messages[0];
+
+        if (!latestUnreadMessage) {
+          return null;
+        }
+
+        const candidate: ManagerNotificationCandidate = {
+          ticketId: ticket.id,
+          title: ticket.title?.trim() || ticket.clientName?.trim() || 'Клиент',
+          clientName: ticket.clientName?.trim() || null,
+          messageId: latestUnreadMessage.id,
+          messageText: latestUnreadMessage.content,
+          createdAt: latestUnreadMessage.createdAt,
+          assignedManagerId: ticket.assignedManagerId,
+          assignedManagerName: ticket.assignedManagerName,
+        };
+
+        if (!this.shouldNotifyManagerAboutTicket(profile.id, activeManagerIdsSet, candidate)) {
+          return null;
+        }
+
+        return candidate;
+      })
+      .filter((candidate): candidate is ManagerNotificationCandidate => Boolean(candidate));
+
+    return {
+      items,
     };
   }
 

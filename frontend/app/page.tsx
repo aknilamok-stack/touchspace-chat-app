@@ -22,7 +22,7 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
 };
 const NOTIFICATION_CARD_DISMISSED_KEY =
   "touchspace-manager-notification-card-dismissed";
-const REPEATED_NOTIFICATION_INTERVAL_MS = 10_000;
+const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
 
@@ -132,6 +132,17 @@ type ChatItem = {
   supplierRequests: ChatSupplierRequest[];
 };
 
+type NotificationCandidate = {
+  ticketId: string;
+  title: string;
+  clientName: string | null;
+  messageId: string;
+  messageText: string;
+  createdAt: string;
+  assignedManagerId: string | null;
+  assignedManagerName: string | null;
+};
+
 type ToastTone = "success" | "error" | "info";
 
 type UiToast = {
@@ -232,24 +243,6 @@ const getUnreadCount = (chat: ChatItem) => {
   }
 
   return unreadCount;
-};
-
-const getLatestUnreadIncomingMessage = (chat: ChatItem) => {
-  for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
-    const message = chat.messages[index];
-
-    if (message.from === "manager" || message.from === "system" || message.from === "ai") {
-      break;
-    }
-
-    if (message.status === "read") {
-      break;
-    }
-
-    return message;
-  }
-
-  return null;
 };
 
 const getLastNonSystemMessage = (chat: ChatItem) => {
@@ -635,6 +628,7 @@ export default function Home() {
     useState<NotificationPermission>("default");
   const [notificationBannerMessage, setNotificationBannerMessage] = useState("");
   const [isNotificationCardDismissed, setIsNotificationCardDismissed] = useState(false);
+  const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
@@ -642,10 +636,6 @@ export default function Home() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastTypingSentAtRef = useRef(0);
-  const knownTicketIdsRef = useRef<Set<string>>(new Set());
-  const knownMessageIdsRef = useRef<Set<string>>(new Set());
-  const notificationsInitializedRef = useRef(false);
-  const isWindowFocusedRef = useRef(true);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
 
@@ -810,6 +800,21 @@ export default function Home() {
       throw new Error("Не удалось загрузить тикеты");
     }
     return response.json();
+  };
+
+  const fetchManagerNotificationCandidates = async (): Promise<NotificationCandidate[]> => {
+    const response = await fetch(
+      apiUrl(
+        `/notifications/manager-candidates?profileId=${encodeURIComponent(currentManagerId)}`
+      )
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить кандидатов для уведомлений");
+    }
+
+    const payload = (await response.json()) as { items?: NotificationCandidate[] };
+    return Array.isArray(payload.items) ? payload.items : [];
   };
 
   const syncMessagesForTickets = useCallback(
@@ -1041,15 +1046,19 @@ export default function Home() {
 
     const loadInitialTickets = async () => {
       try {
-        const [data, remoteStatuses] = await Promise.all([
+        const [data, remoteStatuses, candidates] = await Promise.all([
           fetchTickets(),
           fetchManagerStatuses().catch(
             (): Record<string, ManagerPresence> => ({})
+          ),
+          fetchManagerNotificationCandidates().catch(
+            (): NotificationCandidate[] => []
           ),
         ]);
 
         setManagerStatuses(remoteStatuses);
         setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
+        setNotificationCandidates(candidates);
         syncTickets(data);
         await syncMessagesForTickets(data.map((ticket) => ticket.id));
       } catch (error) {
@@ -1078,14 +1087,18 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
-          const [tickets, remoteStatuses] = await Promise.all([
+          const [tickets, remoteStatuses, candidates] = await Promise.all([
             fetchTickets(),
             fetchManagerStatuses().catch(
               (): Record<string, ManagerPresence> => ({})
             ),
+            fetchManagerNotificationCandidates().catch(
+              (): NotificationCandidate[] => []
+            ),
           ]);
 
           setManagerStatuses(remoteStatuses);
+          setNotificationCandidates(candidates);
           if (currentManagerId) {
             setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "offline");
           }
@@ -1311,66 +1324,48 @@ export default function Home() {
       return;
     }
 
-    const canShowNotification =
-      Notification.permission === "granted" &&
-      (document.visibilityState !== "visible" || !isWindowFocusedRef.current);
-
-    if (!notificationsInitializedRef.current) {
-      knownTicketIdsRef.current = new Set(chatData.map((chat) => chat.id));
-      knownMessageIdsRef.current = new Set(
-        chatData.flatMap((chat) => chat.messages.map((message) => message.id))
-      );
-      notificationsInitializedRef.current = true;
+    if (Notification.permission !== "granted") {
+      return;
     }
 
-    chatData.forEach((chat) => {
-      if (!knownTicketIdsRef.current.has(chat.id)) {
-        knownTicketIdsRef.current.add(chat.id);
+    const activeCandidateIds = new Set(
+      notificationCandidates.map((candidate) => candidate.ticketId)
+    );
+
+    Object.keys(lastNotificationAtRef.current).forEach((ticketId) => {
+      if (!activeCandidateIds.has(ticketId)) {
+        delete lastNotificationAtRef.current[ticketId];
+        delete lastNotificationMessageIdRef.current[ticketId];
+      }
+    });
+
+    notificationCandidates.forEach((candidate) => {
+      const notificationTitle = `Клиент: ${
+        candidate.title || candidate.clientName || "неизвестный клиент"
+      }`;
+      const notificationBody =
+        candidate.messageText.length > 80
+          ? `${candidate.messageText.slice(0, 80)}...`
+          : candidate.messageText;
+      const lastNotificationAt = lastNotificationAtRef.current[candidate.ticketId] ?? 0;
+      const lastMessageId = lastNotificationMessageIdRef.current[candidate.ticketId];
+      const shouldNotify =
+        lastMessageId !== candidate.messageId ||
+        Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+
+      if (!shouldNotify) {
+        return;
       }
 
-      const unreadMessage = getLatestUnreadIncomingMessage(chat);
-      const unreadCount = getUnreadCount(chat);
+      lastNotificationAtRef.current[candidate.ticketId] = Date.now();
+      lastNotificationMessageIdRef.current[candidate.ticketId] = candidate.messageId;
 
-      if (!unreadMessage || unreadCount === 0) {
-        delete lastNotificationAtRef.current[chat.id];
-        delete lastNotificationMessageIdRef.current[chat.id];
-      } else {
-        const isSameVisibleChat =
-          document.visibilityState === "visible" &&
-          isWindowFocusedRef.current &&
-          activeChatId === chat.id;
-
-        if (!isSameVisibleChat && canShowNotification) {
-          const notificationTitle =
-            unreadMessage.from === "supplier"
-              ? `Поставщик: ${chat.title || chat.clientName || "диалог"}`
-              : `Клиент: ${chat.title || chat.clientName || "неизвестный клиент"}`;
-          const notificationBody =
-            unreadMessage.text.length > 80
-              ? `${unreadMessage.text.slice(0, 80)}...`
-              : unreadMessage.text;
-          const lastNotificationAt = lastNotificationAtRef.current[chat.id] ?? 0;
-          const lastMessageId = lastNotificationMessageIdRef.current[chat.id];
-          const shouldNotify =
-            lastMessageId !== unreadMessage.id ||
-            Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
-
-          if (shouldNotify) {
-            lastNotificationAtRef.current[chat.id] = Date.now();
-            lastNotificationMessageIdRef.current[chat.id] = unreadMessage.id;
-            void showDesktopNotification(notificationTitle, notificationBody, {
-              tag: chat.id,
-              ticketId: chat.id,
-            });
-          }
-        }
-      }
-
-      chat.messages.forEach((message) => {
-        knownMessageIdsRef.current.add(message.id);
+      void showDesktopNotification(notificationTitle, notificationBody, {
+        tag: candidate.ticketId,
+        ticketId: candidate.ticketId,
       });
     });
-  }, [chatData, authReady, activeChatId]);
+  }, [notificationCandidates, authReady]);
 
   const dismissNotificationCard = () => {
     if (typeof window !== "undefined") {
@@ -1379,28 +1374,6 @@ export default function Home() {
 
     setIsNotificationCardDismissed(true);
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleFocus = () => {
-      isWindowFocusedRef.current = true;
-    };
-
-    const handleBlur = () => {
-      isWindowFocusedRef.current = false;
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
 
   useEffect(() => {
     if (!showQuickReplies && !showEmojiPicker) {

@@ -13,6 +13,11 @@ export class NotificationsController {
     return this.notificationsService.getSettings(profileId, role);
   }
 
+  @Get('manager-candidates')
+  getManagerNotificationCandidates(@Query('profileId') profileId: string) {
+    return this.notificationsService.getManagerNotificationCandidates(profileId);
+  }
+
   @Patch('preferences')
   updatePreferences(
     @Body()

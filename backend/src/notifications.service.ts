@@ -132,7 +132,7 @@ export class NotificationsService {
     const statuses = await this.profilesService.getManagerStatuses();
 
     return statuses
-      .filter((manager) => manager.managerStatus === 'online' || manager.managerStatus === 'break')
+      .filter((manager) => manager.managerStatus === 'online')
       .map((manager) => manager.id);
   }
 

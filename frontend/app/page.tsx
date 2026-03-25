@@ -638,6 +638,8 @@ export default function Home() {
   const lastTypingSentAtRef = useRef(0);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
+  const titleFlashIntervalRef = useRef<number | null>(null);
+  const defaultDocumentTitleRef = useRef("TouchSpace");
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const availableManagers = BASE_MANAGERS.map((manager) => ({
@@ -684,6 +686,49 @@ export default function Home() {
     }
 
     new Notification(title, { body });
+  };
+
+  const playNotificationSound = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return;
+    }
+
+    try {
+      const audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.28);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+
+      oscillator.addEventListener(
+        "ended",
+        () => {
+          void audioContext.close().catch(() => undefined);
+        },
+        { once: true }
+      );
+    } catch (error) {
+      console.error("Не удалось воспроизвести звук уведомления:", error);
+    }
   };
 
   const requestBrowserNotifications = async () => {
@@ -816,6 +861,19 @@ export default function Home() {
     const payload = (await response.json()) as { items?: NotificationCandidate[] };
     return Array.isArray(payload.items) ? payload.items : [];
   };
+
+  const refreshNotificationCandidates = useCallback(async () => {
+    if (!currentManagerId) {
+      return;
+    }
+
+    try {
+      const candidates = await fetchManagerNotificationCandidates();
+      setNotificationCandidates(candidates);
+    } catch (error) {
+      console.error("Ошибка загрузки кандидатов для уведомлений:", error);
+    }
+  }, [currentManagerId]);
 
   const syncMessagesForTickets = useCallback(
     async (ticketIds: string[]) => {
@@ -1118,7 +1176,7 @@ export default function Home() {
       };
 
       void refreshManagerData();
-    }, 4000);
+    }, 2000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, activeChatId, currentManagerId, syncMessagesForTickets]);
@@ -1359,6 +1417,7 @@ export default function Home() {
 
       lastNotificationAtRef.current[candidate.ticketId] = Date.now();
       lastNotificationMessageIdRef.current[candidate.ticketId] = candidate.messageId;
+      playNotificationSound();
 
       void showDesktopNotification(notificationTitle, notificationBody, {
         tag: candidate.ticketId,
@@ -1366,6 +1425,43 @@ export default function Home() {
       });
     });
   }, [notificationCandidates, authReady]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (!defaultDocumentTitleRef.current) {
+      defaultDocumentTitleRef.current = document.title;
+    }
+
+    if (titleFlashIntervalRef.current) {
+      window.clearInterval(titleFlashIntervalRef.current);
+      titleFlashIntervalRef.current = null;
+    }
+
+    if (notificationCandidates.length === 0) {
+      document.title = defaultDocumentTitleRef.current;
+      return;
+    }
+
+    let showAlertTitle = true;
+    const alertTitle = `(${notificationCandidates.length}) Новый чат • TouchSpace`;
+    document.title = alertTitle;
+
+    titleFlashIntervalRef.current = window.setInterval(() => {
+      document.title = showAlertTitle ? alertTitle : defaultDocumentTitleRef.current;
+      showAlertTitle = !showAlertTitle;
+    }, 1000);
+
+    return () => {
+      if (titleFlashIntervalRef.current) {
+        window.clearInterval(titleFlashIntervalRef.current);
+        titleFlashIntervalRef.current = null;
+      }
+      document.title = defaultDocumentTitleRef.current;
+    };
+  }, [notificationCandidates]);
 
   const dismissNotificationCard = () => {
     if (typeof window !== "undefined") {
@@ -1472,6 +1568,7 @@ export default function Home() {
           );
           const refreshedTickets = await fetchTickets();
           syncTickets(refreshedTickets);
+          await refreshNotificationCandidates();
           setToast({
             message: claimErrorText,
             tone: "error",
@@ -1520,6 +1617,7 @@ export default function Home() {
       setFilter("in_progress");
       const refreshedTickets = await fetchTickets();
       syncTickets(refreshedTickets);
+      await refreshNotificationCandidates();
       setMessageText("");
       setAttachmentName("");
       lastTypingSentAtRef.current = 0;
@@ -1532,15 +1630,15 @@ export default function Home() {
     }
   };
 
-  const handleClaimIncoming = async () => {
-    if (!activeChatId || !currentManagerId || !currentManagerName) {
+  const handleClaimIncoming = async (ticketId = activeChatId) => {
+    if (!ticketId || !currentManagerId || !currentManagerName) {
       return;
     }
 
     setIsClaimingIncoming(true);
 
     try {
-      const response = await fetch(apiUrl(`/tickets/${activeChatId}/claim`), {
+      const response = await fetch(apiUrl(`/tickets/${ticketId}/claim`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1559,6 +1657,7 @@ export default function Home() {
         );
         const refreshedTickets = await fetchTickets();
         syncTickets(refreshedTickets);
+        await refreshNotificationCandidates();
         setToast({
           message: errorMessage,
           tone: "error",
@@ -1568,13 +1667,15 @@ export default function Home() {
 
       const [tickets, messages, supplierRequests] = await Promise.all([
         fetchTickets(),
-        fetchMessages(activeChatId, true),
-        fetchSupplierRequests(activeChatId),
+        fetchMessages(ticketId, true),
+        fetchSupplierRequests(ticketId),
       ]);
 
+      setActiveChatId(ticketId);
       syncTickets(tickets);
-      applyMessagesToTicket(activeChatId, messages);
-      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      await refreshNotificationCandidates();
+      applyMessagesToTicket(ticketId, messages);
+      applySupplierRequestsToTicket(ticketId, supplierRequests);
       setFilter("in_progress");
       setToast({
         message: "Диалог взят в работу",
@@ -1731,6 +1832,7 @@ export default function Home() {
 
       const tickets = await fetchTickets();
       syncTickets(tickets);
+      await refreshNotificationCandidates();
     } catch (error) {
       console.error("Ошибка изменения закрепления:", error);
       setToast({
@@ -1776,6 +1878,7 @@ export default function Home() {
       ]);
 
       syncTickets(tickets);
+      await refreshNotificationCandidates();
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
       setToast({
@@ -1821,6 +1924,7 @@ export default function Home() {
       ]);
 
       syncTickets(tickets);
+      await refreshNotificationCandidates();
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
       setFilter("in_progress");
@@ -1873,6 +1977,7 @@ export default function Home() {
       ]);
 
       syncTickets(tickets);
+      await refreshNotificationCandidates();
       applyMessagesToTicket(activeChatId, messages);
       setIsInviteModalOpen(false);
     } catch (error) {
@@ -1919,6 +2024,7 @@ export default function Home() {
       ]);
 
       syncTickets(tickets);
+      await refreshNotificationCandidates();
       applyMessagesToTicket(activeChatId, messages);
       setIsTransferModalOpen(false);
       setFilter("in_progress");
@@ -2233,6 +2339,8 @@ export default function Home() {
                 const unreadCount = getUnreadCount(chat);
                 const chatTone = getChatTone(chat);
                 const isActive = activeChatId === chat.id;
+                const isIncomingQueueChat =
+                  chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
 
                 return (
                   <button
@@ -2290,11 +2398,31 @@ export default function Home() {
                     </p>
 
                     <div className="mt-3 flex items-center justify-between">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${chatTone.pill}`}>
-                        {chatTone.label}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${chatTone.pill}`}>
+                          {isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
+                        </span>
+                        {isIncomingQueueChat ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setActiveChatId(chat.id);
+                              void handleClaimIncoming(chat.id);
+                            }}
+                            className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
+                          >
+                            Взять в работу
+                          </button>
+                        ) : null}
+                      </div>
                       <span className="text-xs text-[#8E8E93]">
-                        {chat.rawStatus === "resolved" ? "Решён" : chat.status}
+                        {chat.rawStatus === "resolved"
+                          ? "Решён"
+                          : isIncomingQueueChat
+                            ? "В общей очереди"
+                            : chat.status}
                       </span>
                     </div>
                   </button>
@@ -2415,7 +2543,7 @@ export default function Home() {
                 !activeChat.assignedManagerId &&
                 !activeChat.aiEnabled ? (
                   <button
-                    onClick={handleClaimIncoming}
+                    onClick={() => void handleClaimIncoming()}
                     disabled={isClaimingIncoming}
                     className="flex items-center gap-2 rounded-[10px] bg-[#0A84FF] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,132,255,0.22)] transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80"
                   >

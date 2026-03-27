@@ -10,13 +10,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       throw new Error('DATABASE_URL is not defined');
     }
 
-    super({
-      datasources: {
-        db: {
-          url: connectionString,
-        },
-      },
-    });
+    super();
   }
 
   async onModuleInit() {

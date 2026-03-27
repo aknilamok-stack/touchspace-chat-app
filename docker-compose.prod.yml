@@ -29,7 +29,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-mysql://${MYSQL_USER:-touchspace}:${MYSQL_PASSWORD:-touchspace_change_me}@mysql:3306/${MYSQL_DATABASE:-touchspace}}
     command: >
-      sh -c "npx prisma db push &&
+      sh -c "npx prisma db push --config ./prisma.config.ts &&
              npm run start:prod"
     depends_on:
       mysql:

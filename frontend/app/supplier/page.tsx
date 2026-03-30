@@ -2108,14 +2108,14 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  style={{ width: "fit-content", maxWidth: "min(520px, 50%)" }}
-                                  className={`relative inline-flex shrink-0 min-w-0 flex-col rounded-[18px] px-[12px] pb-[24px] pt-[9px] text-[15px] leading-[21px] shadow-sm transition ${
+                                  style={{ width: "fit-content", maxWidth: "min(480px, 50%)" }}
+                                  className={`relative inline-flex min-h-[30px] min-w-[76px] shrink-0 max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
-                                  <div className="space-y-1">
+                                  <div className="min-w-0 max-w-full space-y-1">
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2124,7 +2124,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1.5 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
+                                        className={`mb-1 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-0.5 py-0.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2148,7 +2148,7 @@ export default function SupplierPage() {
                                             Ответ
                                           </p>
                                           <p
-                                            className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[18px] ${
+                                            className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[16px] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/82"
                                                 : "text-[#5A6270]"
@@ -2169,22 +2169,17 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="min-w-0 whitespace-pre-wrap pr-[72px] [overflow-wrap:anywhere] [word-break:normal]">
+                                      <p className="min-w-0 whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
                                         {message.displayContent}
                                       </p>
                                     )}
                                     <div
-                                      className={`absolute bottom-[8px] right-[12px] inline-flex items-center gap-1.5 text-[11px] leading-none ${
+                                      className={`absolute bottom-[5px] right-[8px] inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
                                           : "text-[#8E8E93]"
                                       }`}
                                     >
-                                      {message.senderType === "supplier" ? (
-                                        <p className="shrink-0">
-                                          {getMessageStatusLabel(message.status)}
-                                        </p>
-                                      ) : null}
                                       <p className="shrink-0">
                                         {new Date(message.createdAt).toLocaleTimeString()}
                                       </p>

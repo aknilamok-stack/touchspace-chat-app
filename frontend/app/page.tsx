@@ -3054,8 +3054,8 @@ export default function Home() {
                         </button>
 
                         <div
-                          style={{ width: "fit-content", maxWidth: "min(520px, 50%)" }}
-                          className={`relative inline-flex shrink-0 min-w-0 flex-col rounded-[18px] px-[12px] pb-[24px] pt-[9px] text-[15px] leading-[21px] shadow-sm transition ${
+                          style={{ width: "fit-content", maxWidth: "min(480px, 50%)" }}
+                          className={`relative inline-flex min-h-[30px] min-w-[76px] shrink-0 max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
                             message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
@@ -3067,7 +3067,7 @@ export default function Home() {
                                   : "bg-[#EFEFF4] text-[#1E1E1E]"
                           }`}
                         >
-                          <div className="space-y-1">
+                          <div className="min-w-0 max-w-full space-y-1">
                             {message.from === "ai" || message.from === "supplier" ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
@@ -3083,7 +3083,7 @@ export default function Home() {
                                     message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                   )
                                 }
-                                className={`mb-1.5 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
+                                className={`mb-1 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-0.5 py-0.5 text-left transition ${
                                   message.from === "manager"
                                     ? "hover:bg-white/10"
                                     : "hover:bg-[#F2F7FF]"
@@ -3105,7 +3105,7 @@ export default function Home() {
                                     Ответ
                                   </p>
                                   <p
-                                    className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[18px] ${
+                                    className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[16px] ${
                                       message.from === "manager"
                                         ? "text-white/82"
                                         : "text-[#5A6270]"
@@ -3122,12 +3122,12 @@ export default function Home() {
                                 tone={message.from === "manager" ? "outgoing" : "incoming"}
                               />
                             ) : (
-                              <p className="min-w-0 whitespace-pre-wrap pr-[72px] [overflow-wrap:anywhere] [word-break:normal]">
+                              <p className="min-w-0 whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
                                 {message.text}
                               </p>
                             )}
                             <div
-                              className={`absolute bottom-[8px] right-[12px] inline-flex items-center gap-1.5 text-[11px] leading-none ${
+                              className={`absolute bottom-[5px] right-[8px] inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                 message.from === "manager"
                                   ? "text-white/65"
                                   : message.from === "ai"
@@ -3135,11 +3135,6 @@ export default function Home() {
                                     : "text-[#8E8E93]"
                               }`}
                             >
-                              {message.from === "manager" ? (
-                                <p className="shrink-0">
-                                  {getMessageStatusLabel(message.status)}
-                                </p>
-                              ) : null}
                               {message.time ? <p className="shrink-0">{message.time}</p> : null}
                             </div>
                           </div>

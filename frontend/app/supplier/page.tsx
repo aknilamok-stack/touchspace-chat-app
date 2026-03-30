@@ -2187,24 +2187,28 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
-                                  <span
+                                  <svg
                                     aria-hidden="true"
-                                    className={`absolute h-[14px] w-[10px] ${
+                                    viewBox="0 0 15 16"
+                                    className={`pointer-events-none absolute h-[16px] w-[15px] ${
                                       message.senderType === "supplier"
-                                        ? "-right-[5px] bottom-[2px] bg-[#0A84FF]"
-                                        : "-left-[5px] bottom-[2px] border-l border-b border-[#E8EBF1] bg-white"
+                                        ? "-right-[8px] bottom-0 text-[#0A84FF]"
+                                        : "-left-[8px] bottom-0 text-white"
                                     }`}
                                     style={{
-                                      clipPath:
+                                      transform:
                                         message.senderType === "supplier"
-                                          ? "polygon(0 0, 100% 100%, 0 100%)"
-                                          : "polygon(100% 0, 100% 100%, 0 100%)",
-                                      borderBottomRightRadius:
-                                        message.senderType === "supplier" ? "10px" : undefined,
-                                      borderBottomLeftRadius:
-                                        message.senderType !== "supplier" ? "10px" : undefined,
+                                          ? "scaleX(-1)"
+                                          : undefined,
                                     }}
-                                  />
+                                  >
+                                    <path
+                                      d="M9.60963 6C9.60963 8 9.30942 13 14.1094 15C12.1095 15.5 7.2096 15.8 3.6096 13C0.00956869 11.8 -0.223723 4.83333 0.109635 1.5L9.60963 0V6Z"
+                                      fill="currentColor"
+                                      stroke={message.senderType !== "supplier" ? "#E8EBF1" : "none"}
+                                      strokeWidth={message.senderType !== "supplier" ? "1" : undefined}
+                                    />
+                                  </svg>
                                 </div>
                               </div>
                             </div>

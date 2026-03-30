@@ -2983,7 +2983,7 @@ export default function Home() {
                               : message.from === "ai"
                                 ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
                               : message.from === "client"
-                                ? "bg-[#EFEFF4] text-[#1E1E1E]"
+                                ? "rounded-tl-[6px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                 : message.from === "supplier"
                                   ? "bg-[#EAF8EF] text-[#166534]"
                                   : "bg-[#EFEFF4] text-[#1E1E1E]"

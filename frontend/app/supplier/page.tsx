@@ -2064,7 +2064,7 @@ export default function SupplierPage() {
                                   className={`max-w-[68%] min-w-[200px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                      : "bg-[#EFEFF4] text-[#1E1E1E]"
+                                      : "rounded-tl-[6px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
                                   <div className="space-y-1.5">

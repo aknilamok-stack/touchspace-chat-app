@@ -2061,7 +2061,7 @@ export default function SupplierPage() {
                               }`}
                             >
                               <div
-                                className="group relative inline-block w-fit max-w-[50%]"
+                                className="group relative inline-block w-fit max-w-[461px]"
                                 onMouseEnter={() => setHoveredMessageId(message.id)}
                                 onMouseLeave={() => setHoveredMessageId("")}
                               >
@@ -2108,13 +2108,14 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`relative inline-block min-h-[30px] min-w-[76px] max-w-full rounded-[18px] px-[10px] pb-[18px] pt-[6px] align-top text-[15px] leading-[1.35] shadow-sm transition ${
+                                  style={{ width: "fit-content", maxWidth: "450px" }}
+                                  className={`relative inline-block min-h-[30px] min-w-[80px] max-w-full rounded-[15px] px-[10px] pb-[4px] pt-[4px] align-top text-[15px] leading-[22px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
-                                  <div className="min-w-0 max-w-full space-y-1">
+                                  <div className="min-w-0 max-w-full">
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2123,20 +2124,21 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1 flex min-w-0 max-w-full items-start gap-2 self-stretch rounded-[12px] px-0.5 py-0.5 text-left transition ${
+                                        className={`mb-1 block min-w-0 max-w-full rounded-[12px] px-0.5 py-0.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
                                         }`}
                                       >
-                                        <span
-                                          className={`mt-0.5 h-8 w-[3px] shrink-0 rounded-full ${
-                                            message.senderType === "supplier"
-                                              ? "bg-white/55"
-                                              : "bg-[#0A84FF]"
-                                          }`}
-                                        />
-                                        <div className="min-w-0">
+                                        <div className="flex min-w-0 items-start gap-2">
+                                          <span
+                                            className={`mt-0.5 h-[20px] w-[3px] shrink-0 rounded-full ${
+                                              message.senderType === "supplier"
+                                                ? "bg-white/55"
+                                                : "bg-[#0A84FF]"
+                                            }`}
+                                          />
+                                          <div className="min-w-0">
                                           <p
                                             className={`text-[10px] font-semibold ${
                                               message.senderType === "supplier"
@@ -2147,7 +2149,7 @@ export default function SupplierPage() {
                                             Ответ
                                           </p>
                                           <p
-                                            className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[16px] ${
+                                            className={`mt-0.5 line-clamp-2 text-[12px] leading-[16px] [overflow-wrap:break-word] [word-break:normal] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/82"
                                                 : "text-[#5A6270]"
@@ -2155,6 +2157,7 @@ export default function SupplierPage() {
                                           >
                                             {message.replyToContent ?? replyMap[message.id]?.replyToContent}
                                           </p>
+                                        </div>
                                         </div>
                                       </button>
                                     ) : null}
@@ -2168,7 +2171,7 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
+                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[44px] leading-[22px] [overflow-wrap:break-word] [word-break:normal]">
                                         {message.displayContent}
                                       </p>
                                     )}
@@ -2184,6 +2187,20 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
+                                  <span
+                                    aria-hidden="true"
+                                    className={`absolute bottom-0 h-[20px] w-[11px] ${
+                                      message.senderType === "supplier"
+                                        ? "-right-[8px] rounded-br-[14px] bg-[#0A84FF]"
+                                        : "-left-[8px] rounded-bl-[14px] border-l border-b border-[#E8EBF1] bg-white"
+                                    }`}
+                                    style={{
+                                      clipPath:
+                                        message.senderType === "supplier"
+                                          ? "polygon(0 0, 100% 0, 100% 100%, 0 72%)"
+                                          : "polygon(0 0, 100% 0, 100% 72%, 0 100%)",
+                                    }}
+                                  />
                                 </div>
                               </div>
                             </div>

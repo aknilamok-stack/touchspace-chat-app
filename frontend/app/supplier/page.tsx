@@ -2061,9 +2061,7 @@ export default function SupplierPage() {
                               }`}
                             >
                               <div
-                                className={`group flex items-center gap-2 ${
-                                  message.senderType === "supplier" ? "flex-row-reverse" : ""
-                                }`}
+                                className="group relative inline-block w-fit max-w-[50%]"
                                 onMouseEnter={() => setHoveredMessageId(message.id)}
                                 onMouseLeave={() => setHoveredMessageId("")}
                               >
@@ -2072,10 +2070,12 @@ export default function SupplierPage() {
                                     setReplyTarget(message);
                                     composerTextareaRef.current?.focus();
                                   }}
-                                  className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
+                                  className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
                                     hoveredMessageId === message.id
                                       ? "opacity-100"
                                       : "pointer-events-none opacity-0"
+                                  } ${
+                                    message.senderType === "supplier" ? "-left-10" : "-right-10"
                                   } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
                                   aria-label="Ответить"
                                 >
@@ -2107,15 +2107,14 @@ export default function SupplierPage() {
                                   ) : null}
                                 </button>
 
-                                <div className="max-w-[50%] shrink-0">
-                                  <div
-                                    className={`relative inline-flex min-h-[30px] min-w-[76px] w-auto max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
-                                      message.senderType === "supplier"
-                                        ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                        : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
-                                    }`}
-                                  >
-                                    <div className="min-w-0 max-w-full space-y-1">
+                                <div
+                                  className={`relative inline-block min-h-[30px] min-w-[76px] max-w-full rounded-[18px] px-[10px] pb-[18px] pt-[6px] align-top text-[15px] leading-[1.35] shadow-sm transition ${
+                                    message.senderType === "supplier"
+                                      ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                      : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                  }`}
+                                >
+                                  <div className="min-w-0 max-w-full space-y-1">
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2185,7 +2184,6 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
-                                </div>
                                 </div>
                               </div>
                             </div>

@@ -3007,9 +3007,7 @@ export default function Home() {
                       }`}
                     >
                       <div
-                        className={`group flex items-center gap-2 ${
-                          message.from === "manager" ? "flex-row-reverse" : ""
-                        }`}
+                        className="group relative inline-block w-fit max-w-[50%]"
                         onMouseEnter={() => setHoveredMessageId(message.id)}
                         onMouseLeave={() => setHoveredMessageId("")}
                       >
@@ -3018,10 +3016,12 @@ export default function Home() {
                             setReplyTarget(message);
                             composerTextareaRef.current?.focus();
                           }}
-                          className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
+                          className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
                             hoveredMessageId === message.id
                               ? "opacity-100"
                               : "pointer-events-none opacity-0"
+                          } ${
+                            message.from === "manager" ? "-left-10" : "-right-10"
                           } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
                           aria-label="Ответить"
                         >
@@ -3053,21 +3053,20 @@ export default function Home() {
                           ) : null}
                         </button>
 
-                        <div className="max-w-[50%] shrink-0">
-                          <div
-                            className={`relative inline-flex min-h-[30px] min-w-[76px] w-auto max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
-                              message.from === "manager"
-                                ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                : message.from === "ai"
-                                  ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
-                                : message.from === "client"
-                                  ? "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
-                                  : message.from === "supplier"
-                                    ? "bg-[#EAF8EF] text-[#166534]"
-                                    : "bg-[#EFEFF4] text-[#1E1E1E]"
-                            }`}
-                          >
-                            <div className="min-w-0 max-w-full space-y-1">
+                        <div
+                          className={`relative inline-block min-h-[30px] min-w-[76px] max-w-full rounded-[18px] px-[10px] pb-[18px] pt-[6px] align-top text-[15px] leading-[1.35] shadow-sm transition ${
+                            message.from === "manager"
+                              ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                              : message.from === "ai"
+                                ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
+                              : message.from === "client"
+                                ? "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                : message.from === "supplier"
+                                  ? "bg-[#EAF8EF] text-[#166534]"
+                                  : "bg-[#EFEFF4] text-[#1E1E1E]"
+                          }`}
+                        >
+                          <div className="min-w-0 max-w-full space-y-1">
                             {message.from === "ai" || message.from === "supplier" ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
@@ -3138,7 +3137,6 @@ export default function Home() {
                               {message.time ? <p className="shrink-0">{message.time}</p> : null}
                             </div>
                           </div>
-                        </div>
                         </div>
                       </div>
                     </div>

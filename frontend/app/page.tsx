@@ -3143,16 +3143,18 @@ export default function Home() {
                           {message.from === "manager" || message.from === "client" ? (
                             <span
                               aria-hidden="true"
-                              className={`absolute bottom-0 h-[20px] w-[11px] ${
+                              className={`absolute h-[14px] w-[10px] ${
                                 message.from === "manager"
-                                  ? "-right-[8px] rounded-br-[14px] bg-[#0A84FF]"
-                                  : "-left-[8px] rounded-bl-[14px] border-l border-b border-[#E8EBF1] bg-white"
+                                  ? "-right-[5px] bottom-[2px] bg-[#0A84FF]"
+                                  : "-left-[5px] bottom-[2px] border-l border-b border-[#E8EBF1] bg-white"
                               }`}
                               style={{
                                 clipPath:
                                   message.from === "manager"
-                                    ? "polygon(0 0, 100% 0, 100% 100%, 0 72%)"
-                                    : "polygon(0 0, 100% 0, 100% 72%, 0 100%)",
+                                    ? "polygon(0 0, 100% 100%, 0 100%)"
+                                    : "polygon(100% 0, 100% 100%, 0 100%)",
+                                borderBottomRightRadius: message.from === "manager" ? "10px" : undefined,
+                                borderBottomLeftRadius: message.from === "client" ? "10px" : undefined,
                               }}
                             />
                           ) : null}

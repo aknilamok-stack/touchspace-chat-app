@@ -2,8 +2,16 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiUrl, getApiBaseUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
+import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  type ChatAttachmentPayload,
+  getChatAttachmentSelectionSummary,
+  parseChatAttachmentPayloads,
+  validateChatAttachmentFiles,
+} from "@/lib/chat-attachments";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
 const clientSeenMessageMapStorageKey = "touchspace_client_seen_message_map";
@@ -47,31 +55,7 @@ type Message = {
 
 type ClientVisibleMessage = Message & {
   displayContent: string;
-  attachmentUrl?: string;
-  attachmentName?: string;
-  attachmentCaption?: string;
-};
-
-const tryParseAttachmentPayload = (content: string) => {
-  try {
-    const parsed = JSON.parse(content) as {
-      url?: string;
-      name?: string;
-      caption?: string;
-    };
-
-    if (!parsed?.url || !parsed?.name) {
-      return null;
-    }
-
-    return {
-      url: parsed.url.startsWith("http") ? parsed.url : `${getApiBaseUrl()}${parsed.url}`,
-      name: parsed.name,
-      caption: parsed.caption || "",
-    };
-  } catch {
-    return null;
-  }
+  attachments: ChatAttachmentPayload[];
 };
 
 const formatMessageTime = (createdAt: string) =>
@@ -104,7 +88,7 @@ export default function ClientPage() {
   const [isWidgetOpen, setIsWidgetOpen] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachmentName, setAttachmentName] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState("");
   const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
@@ -763,7 +747,7 @@ export default function ClientPage() {
       await loadTicketContext(newTicket, true);
       setDraftText("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       return newTicket;
     } catch (createError) {
       console.error("Ошибка создания обращения:", createError);
@@ -819,7 +803,7 @@ export default function ClientPage() {
     const contentToSend = overrideText ?? draftText;
 
     const hasTextToSend = Boolean(contentToSend.trim());
-    const hasAttachmentToSend = Boolean(selectedFile);
+    const hasAttachmentToSend = selectedFiles.length > 0;
 
     if (!hasTextToSend && !hasAttachmentToSend) {
       return;
@@ -831,7 +815,7 @@ export default function ClientPage() {
     if (!targetTicket && hasTextToSend && !hasAttachmentToSend) {
       setDraftText("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setShowEmojiPicker(false);
       await handleCreateTicket(contentToSend);
       return;
@@ -840,7 +824,7 @@ export default function ClientPage() {
     if (!targetTicket && hasAttachmentToSend) {
       const bootstrapText = hasTextToSend
         ? contentToSend
-        : `Отправлено вложение: ${selectedFile?.name ?? "файл"}`;
+        : `Отправлены вложения: ${attachmentName || "файлы"}`;
 
       targetTicket = await handleCreateTicket(bootstrapText);
       textAlreadyUsedForBootstrap = true;
@@ -876,12 +860,17 @@ export default function ClientPage() {
       });
     }
 
-    if (selectedFile) {
+    if (selectedFiles.length > 0) {
       optimisticMessages.push({
         id: optimisticAttachmentMessageId,
         content: JSON.stringify({
-          name: selectedFile.name,
-          url: "",
+          attachments: selectedFiles.map((file) => ({
+            name: file.name,
+            url: "",
+            mimeType: file.type,
+            size: file.size,
+            caption: "",
+          })),
         }),
         senderType: "client",
         messageType: "attachment",
@@ -932,9 +921,11 @@ export default function ClientPage() {
         );
       }
 
-      if (selectedFile) {
+      if (selectedFiles.length > 0) {
         const formData = new FormData();
-        formData.append("file", selectedFile);
+        selectedFiles.forEach((file) => {
+          formData.append("files", file);
+        });
         formData.append("ticketId", targetTicket.id);
         formData.append("senderType", "client");
         formData.append("senderId", clientSession.clientId);
@@ -961,7 +952,7 @@ export default function ClientPage() {
       }
 
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
 
       void loadTicketContext(targetTicket, shouldMarkMessagesAsRead);
 
@@ -1007,18 +998,18 @@ export default function ClientPage() {
         ) {
           const attachmentPayload =
             message.messageType === "attachment"
-              ? tryParseAttachmentPayload(message.content)
-              : null;
+              ? parseChatAttachmentPayloads(message.content)
+              : [];
 
           return [
             {
               ...message,
-              displayContent: attachmentPayload
-                ? attachmentPayload.name
+              displayContent: attachmentPayload.length > 0
+                ? attachmentPayload.length === 1
+                  ? attachmentPayload[0].name
+                  : `${attachmentPayload.length} файлов`
                 : message.content,
-              attachmentUrl: attachmentPayload?.url,
-              attachmentName: attachmentPayload?.name,
-              attachmentCaption: attachmentPayload?.caption,
+              attachments: attachmentPayload,
             },
           ];
         }
@@ -1032,6 +1023,7 @@ export default function ClientPage() {
             {
               ...message,
               displayContent: "Запрос передан поставщику. Ожидайте.",
+              attachments: [],
             },
           ];
         }
@@ -1041,6 +1033,7 @@ export default function ClientPage() {
             {
               ...message,
               displayContent: "Поставщик завершил диалог. Менеджер TouchSpace подключен.",
+              attachments: [],
             },
           ];
         }
@@ -1050,6 +1043,7 @@ export default function ClientPage() {
             {
               ...message,
               displayContent: message.content,
+              attachments: [],
             },
           ];
         }
@@ -1059,6 +1053,7 @@ export default function ClientPage() {
             {
               ...message,
               displayContent: "AI передал диалог менеджеру TouchSpace.",
+              attachments: [],
             },
           ];
         }
@@ -1067,6 +1062,7 @@ export default function ClientPage() {
           {
             ...message,
             displayContent: message.content,
+            attachments: [],
           },
         ];
       }),
@@ -1304,22 +1300,16 @@ export default function ClientPage() {
                                 ) : null}
                               </div>
                             </div>
-                            {message.attachmentUrl ? (
-                              <a
-                                href={message.attachmentUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={`mt-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                            {message.attachments.length > 0 ? (
+                              <ChatAttachmentList
+                                attachments={message.attachments}
+                                tone={
                                   message.senderType === "client"
-                                    ? "border-white/20 bg-white/10 text-white"
-                                    : "border-[#CFE0FF] bg-white text-[#0A84FF]"
-                                }`}
-                              >
-                                <span>📎</span>
-                                <span className="max-w-[180px] truncate">
-                                  {message.attachmentName}
-                                </span>
-                              </a>
+                                    ? "outgoing"
+                                    : "incoming"
+                                }
+                                className="mt-2"
+                              />
                             ) : null}
                             </div>
                           </div>
@@ -1475,7 +1465,10 @@ export default function ClientPage() {
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-xs text-[#1E1E1E]">
                     <span className="max-w-[180px] truncate">{attachmentName}</span>
                     <button
-                      onClick={() => setAttachmentName("")}
+                      onClick={() => {
+                        setAttachmentName("");
+                        setSelectedFiles([]);
+                      }}
                       className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
                     >
                       ×
@@ -1531,7 +1524,7 @@ export default function ClientPage() {
                       void handleSendMessage();
                     }}
                     disabled={
-                      (!draftText.trim() && !selectedFile) ||
+                      (!draftText.trim() && selectedFiles.length === 0) ||
                       isCreatingTicket ||
                       isSendingMessage
                     }
@@ -1580,11 +1573,24 @@ export default function ClientPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    multiple
+                    accept={CHAT_ATTACHMENT_ACCEPT}
                     className="hidden"
                     onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      setSelectedFile(file ?? null);
-                      setAttachmentName(file?.name ?? "");
+                      const files = Array.from(event.target.files ?? []);
+                      const validationMessage = validateChatAttachmentFiles(files);
+
+                      if (validationMessage) {
+                        setError(validationMessage);
+                        setSelectedFiles([]);
+                        setAttachmentName("");
+                        event.target.value = "";
+                        return;
+                      }
+
+                      setError("");
+                      setSelectedFiles(files);
+                      setAttachmentName(getChatAttachmentSelectionSummary(files));
                       event.target.value = "";
                     }}
                   />

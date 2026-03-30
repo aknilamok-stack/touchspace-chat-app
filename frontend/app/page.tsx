@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
-import { ChatAttachmentCard } from "@/components/chat/attachment-card";
+import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import {
   clearAuthSession,
   type ManagerPresence,
@@ -15,8 +15,9 @@ import {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   type ChatAttachmentPayload,
-  parseChatAttachmentPayload,
-  validateChatAttachmentFile,
+  getChatAttachmentSelectionSummary,
+  parseChatAttachmentPayloads,
+  validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
 import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
 
@@ -96,6 +97,7 @@ type ChatMessage = {
   createdAt: string;
   supplierName?: string;
   attachment?: ChatAttachmentPayload | null;
+  attachments?: ChatAttachmentPayload[];
 };
 
 type ChatSupplierRequest = {
@@ -443,12 +445,16 @@ const getStatusBadgeClass = (rawStatus?: string) => {
 };
 
 const formatMessage = (msg: ApiMessage): ChatMessage => {
-  const attachment = parseChatAttachmentPayload(msg.content);
+  const attachments = parseChatAttachmentPayloads(msg.content);
 
   return {
     id: msg.id,
     text:
-      msg.messageType === "attachment" && attachment ? attachment.name : msg.content,
+      msg.messageType === "attachment" && attachments.length > 0
+        ? attachments.length === 1
+          ? attachments[0].name
+          : `${attachments.length} файлов`
+        : msg.content,
     messageType: msg.messageType,
     from:
       msg.senderType === "client"
@@ -467,7 +473,8 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
       minute: "2-digit",
     }),
     createdAt: msg.createdAt,
-    attachment,
+    attachment: attachments[0] ?? null,
+    attachments,
   };
 };
 
@@ -602,7 +609,7 @@ export default function Home() {
   const [quickReplySearch, setQuickReplySearch] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
@@ -1576,12 +1583,12 @@ export default function Home() {
 
   useEffect(() => {
     setAttachmentName("");
-    setSelectedFile(null);
+    setSelectedFiles([]);
   }, [activeChatId]);
 
   const handleSendMessage = async () => {
     const hasTextToSend = Boolean(messageText.trim());
-    const hasAttachmentToSend = Boolean(selectedFile);
+    const hasAttachmentToSend = selectedFiles.length > 0;
 
     if ((!hasTextToSend && !hasAttachmentToSend) || !activeChatId) {
       return;
@@ -1648,9 +1655,11 @@ export default function Home() {
         createdMessages.push(formatMessage(newMessage));
       }
 
-      if (selectedFile) {
+      if (selectedFiles.length > 0) {
         const formData = new FormData();
-        formData.append("file", selectedFile);
+        selectedFiles.forEach((file) => {
+          formData.append("files", file);
+        });
         formData.append("ticketId", activeChatId);
         formData.append("senderType", "manager");
         formData.append("managerId", currentManagerId);
@@ -1698,7 +1707,7 @@ export default function Home() {
       await refreshNotificationCandidates();
       setMessageText("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       lastTypingSentAtRef.current = 0;
       requestAnimationFrame(() => {
         scrollManagerChatToBottom("smooth");
@@ -2713,9 +2722,9 @@ export default function Home() {
                             {message.from === "supplier" &&
                               `Поставщик: ${message.senderName || "Поставщик"}`}
                           </p>
-                          {message.attachment ? (
-                            <ChatAttachmentCard
-                              attachment={message.attachment}
+                          {message.attachments && message.attachments.length > 0 ? (
+                            <ChatAttachmentList
+                              attachments={message.attachments}
                               tone={message.from === "manager" ? "outgoing" : "incoming"}
                             />
                           ) : (
@@ -2824,7 +2833,7 @@ export default function Home() {
                     <button
                       onClick={() => {
                         setAttachmentName("");
-                        setSelectedFile(null);
+                        setSelectedFiles([]);
                       }}
                       className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
                     >
@@ -3021,32 +3030,34 @@ export default function Home() {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    multiple
                     accept={CHAT_ATTACHMENT_ACCEPT}
                     className="hidden"
                     onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) {
-                        setSelectedFile(null);
+                      const files = Array.from(event.target.files ?? []);
+
+                      if (files.length === 0) {
+                        setSelectedFiles([]);
                         setAttachmentName("");
                         event.target.value = "";
                         return;
                       }
 
-                      const validationMessage = validateChatAttachmentFile(file);
+                      const validationMessage = validateChatAttachmentFiles(files);
 
                       if (validationMessage) {
                         setToast({
                           message: validationMessage,
                           tone: "error",
                         });
-                        setSelectedFile(null);
+                        setSelectedFiles([]);
                         setAttachmentName("");
                         event.target.value = "";
                         return;
                       }
 
-                      setSelectedFile(file);
-                      setAttachmentName(file.name);
+                      setSelectedFiles(files);
+                      setAttachmentName(getChatAttachmentSelectionSummary(files));
                       event.target.value = "";
                     }}
                   />
@@ -3054,7 +3065,7 @@ export default function Home() {
 
                 <button
                   onClick={handleSendMessage}
-                  disabled={!messageText.trim() && !selectedFile}
+                  disabled={!messageText.trim() && selectedFiles.length === 0}
                   onMouseEnter={() => setHoveredComposerAction("send")}
                   onMouseLeave={() => setHoveredComposerAction(null)}
                   className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"

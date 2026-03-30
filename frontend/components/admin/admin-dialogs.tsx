@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChatAttachmentCard } from "@/components/chat/attachment-card";
+import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatDuration } from "@/lib/admin-format";
-import { parseChatAttachmentPayload } from "@/lib/chat-attachments";
+import { parseChatAttachmentPayloads } from "@/lib/chat-attachments";
 import {
   AdminButton,
   AdminCards,
@@ -214,7 +214,7 @@ export function AdminDialogs() {
               <div className="grid gap-3">
                 <p className="text-sm font-semibold text-slate-950">История сообщений</p>
                 {(detail.messages ?? []).map((message: any) => {
-                  const attachment = parseChatAttachmentPayload(message.content);
+                  const attachments = parseChatAttachmentPayloads(message.content);
 
                   return (
                     <div key={message.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -222,9 +222,9 @@ export function AdminDialogs() {
                         <p className="text-sm font-medium text-slate-900">{getRoleLabel(message.senderRole ?? message.senderType)}</p>
                         <p className="text-xs text-slate-500">{formatDateTime(message.createdAt)}</p>
                       </div>
-                      {attachment ? (
-                        <ChatAttachmentCard
-                          attachment={attachment}
+                      {attachments.length > 0 ? (
+                        <ChatAttachmentList
+                          attachments={attachments}
                           tone="neutral"
                           className="mt-3"
                         />

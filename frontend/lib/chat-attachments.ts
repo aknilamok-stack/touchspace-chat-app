@@ -1,9 +1,11 @@
 import { getApiBaseUrl } from "@/lib/api";
 
-export const CHAT_ATTACHMENT_MAX_SIZE = 15 * 1024 * 1024;
+export const CHAT_ATTACHMENT_MAX_SIZE = 5 * 1024 * 1024;
 export const CHAT_ATTACHMENT_MAX_SIZE_MB = Math.round(
   CHAT_ATTACHMENT_MAX_SIZE / (1024 * 1024)
 );
+export const CHAT_ATTACHMENT_MAX_FILES = 5;
+export const CHAT_ATTACHMENT_MAX_TOTAL_SIZE = 5 * 1024 * 1024;
 export const CHAT_ATTACHMENT_ACCEPT = [
   "image/*",
   ".pdf",
@@ -29,35 +31,63 @@ export type ChatAttachmentPayload = {
   size?: number;
 };
 
-export const parseChatAttachmentPayload = (
-  content: string
-): ChatAttachmentPayload | null => {
-  try {
-    const parsed = JSON.parse(content) as {
-      url?: string;
-      name?: string;
-      caption?: string;
-      mimeType?: string;
-      size?: number;
-    };
-
-    if (!parsed?.url || !parsed?.name) {
-      return null;
-    }
-
-    return {
-      url: parsed.url.startsWith("http")
-        ? parsed.url
-        : `${getApiBaseUrl()}${parsed.url}`,
-      name: parsed.name,
-      caption: parsed.caption || "",
-      mimeType: parsed.mimeType || "",
-      size: typeof parsed.size === "number" ? parsed.size : undefined,
-    };
-  } catch {
+const normalizeAttachmentPayload = (payload: {
+  url?: string;
+  name?: string;
+  caption?: string;
+  mimeType?: string;
+  size?: number;
+}): ChatAttachmentPayload | null => {
+  if (!payload?.url || !payload?.name) {
     return null;
   }
+
+  return {
+    url: payload.url.startsWith("http")
+      ? payload.url
+      : `${getApiBaseUrl()}${payload.url}`,
+    name: payload.name,
+    caption: payload.caption || "",
+    mimeType: payload.mimeType || "",
+    size: typeof payload.size === "number" ? payload.size : undefined,
+  };
 };
+
+export const parseChatAttachmentPayloads = (content: string): ChatAttachmentPayload[] => {
+  try {
+    const parsed = JSON.parse(content) as
+      | {
+          attachments?: Array<{
+            url?: string;
+            name?: string;
+            caption?: string;
+            mimeType?: string;
+            size?: number;
+          }>;
+        }
+      | {
+          url?: string;
+          name?: string;
+          caption?: string;
+          mimeType?: string;
+          size?: number;
+        };
+
+    if (Array.isArray((parsed as { attachments?: unknown[] }).attachments)) {
+      return ((parsed as { attachments: Array<any> }).attachments ?? [])
+        .map((attachment) => normalizeAttachmentPayload(attachment))
+        .filter((attachment): attachment is ChatAttachmentPayload => Boolean(attachment));
+    }
+
+    const singleAttachment = normalizeAttachmentPayload(parsed as any);
+    return singleAttachment ? [singleAttachment] : [];
+  } catch {
+    return [];
+  }
+};
+
+export const parseChatAttachmentPayload = (content: string): ChatAttachmentPayload | null =>
+  parseChatAttachmentPayloads(content)[0] ?? null;
 
 export const formatChatAttachmentSize = (size?: number) => {
   if (!size || Number.isNaN(size)) {
@@ -118,9 +148,35 @@ export const getChatAttachmentKind = (
   return "file";
 };
 
-export const validateChatAttachmentFile = (file: File) => {
-  if (file.size > CHAT_ATTACHMENT_MAX_SIZE) {
+export const getChatAttachmentSelectionSummary = (files: File[]) => {
+  if (files.length === 0) {
+    return "";
+  }
+
+  if (files.length === 1) {
+    return files[0].name;
+  }
+
+  return `${files.length} файлов`;
+};
+
+export const validateChatAttachmentFiles = (files: File[]) => {
+  if (files.length === 0) {
+    return "";
+  }
+
+  if (files.length > CHAT_ATTACHMENT_MAX_FILES) {
+    return `Можно прикрепить не больше ${CHAT_ATTACHMENT_MAX_FILES} файлов за раз.`;
+  }
+
+  if (files.some((file) => file.size > CHAT_ATTACHMENT_MAX_SIZE)) {
     return `Файл больше ${CHAT_ATTACHMENT_MAX_SIZE_MB} МБ. Выберите вложение поменьше.`;
+  }
+
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+
+  if (totalSize > CHAT_ATTACHMENT_MAX_TOTAL_SIZE) {
+    return `Суммарный размер вложений в одном сообщении не должен превышать ${CHAT_ATTACHMENT_MAX_SIZE_MB} МБ.`;
   }
 
   return "";

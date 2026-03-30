@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
-import { ChatAttachmentCard } from "@/components/chat/attachment-card";
+import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import {
   clearAuthSession,
   managerAccounts,
@@ -15,8 +15,9 @@ import {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   type ChatAttachmentPayload,
-  parseChatAttachmentPayload,
-  validateChatAttachmentFile,
+  getChatAttachmentSelectionSummary,
+  parseChatAttachmentPayloads,
+  validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
 import { fetchManagerStatuses } from "@/lib/manager-presence";
 
@@ -76,6 +77,7 @@ type TicketMessageApi = {
 type TicketMessage = TicketMessageApi & {
   displayContent: string;
   attachment?: ChatAttachmentPayload | null;
+  attachments?: ChatAttachmentPayload[];
 };
 
 type Ticket = {
@@ -161,15 +163,18 @@ const formatDateTimeLabel = (createdAt: string) =>
   });
 
 const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
-  const attachment = parseChatAttachmentPayload(message.content);
+  const attachments = parseChatAttachmentPayloads(message.content);
 
   return {
     ...message,
     displayContent:
-      message.messageType === "attachment" && attachment
-        ? attachment.name
+      message.messageType === "attachment" && attachments.length > 0
+        ? attachments.length === 1
+          ? attachments[0].name
+          : `${attachments.length} файлов`
         : message.content,
-    attachment,
+    attachment: attachments[0] ?? null,
+    attachments,
   };
 };
 
@@ -548,7 +553,7 @@ export default function SupplierPage() {
   const [quickReplySearch, setQuickReplySearch] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingReply, setIsSendingReply] = useState(false);
@@ -946,7 +951,7 @@ export default function SupplierPage() {
       setReplyText("");
       setReplyError("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       return;
     }
 
@@ -980,7 +985,7 @@ export default function SupplierPage() {
 
   useEffect(() => {
     setAttachmentName("");
-    setSelectedFile(null);
+    setSelectedFiles([]);
   }, [selectedRequestId]);
 
   useEffect(() => {
@@ -1319,7 +1324,7 @@ export default function SupplierPage() {
       setActiveQueueTab("completed");
       setReplyText("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setShowQuickReplies(false);
       setShowEmojiPicker(false);
     } catch (error) {
@@ -1331,7 +1336,7 @@ export default function SupplierPage() {
 
   const handleSendReply = async () => {
     const hasTextToSend = Boolean(replyText.trim());
-    const hasAttachmentToSend = Boolean(selectedFile);
+    const hasAttachmentToSend = selectedFiles.length > 0;
 
     if (
       !selectedRequest ||
@@ -1365,9 +1370,11 @@ export default function SupplierPage() {
         }
       }
 
-      if (selectedFile) {
+      if (selectedFiles.length > 0) {
         const formData = new FormData();
-        formData.append("file", selectedFile);
+        selectedFiles.forEach((file) => {
+          formData.append("files", file);
+        });
         formData.append("ticketId", selectedRequest.ticketId);
         formData.append("senderType", "supplier");
         formData.append("senderId", supplierId);
@@ -1395,7 +1402,7 @@ export default function SupplierPage() {
       });
       setReplyText("");
       setAttachmentName("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       requestAnimationFrame(() => {
         scrollSupplierChatToBottom("smooth");
       });
@@ -1856,9 +1863,9 @@ export default function SupplierPage() {
                                     {message.senderType === "client" && "Клиент"}
                                     {message.senderType === "supplier" && "Поставщик"}
                                   </p>
-                                  {message.attachment ? (
-                                    <ChatAttachmentCard
-                                      attachment={message.attachment}
+                                  {message.attachments && message.attachments.length > 0 ? (
+                                    <ChatAttachmentList
+                                      attachments={message.attachments}
                                       tone={
                                         message.senderType === "supplier"
                                           ? "outgoing"
@@ -1936,7 +1943,7 @@ export default function SupplierPage() {
                           <button
                             onClick={() => {
                               setAttachmentName("");
-                              setSelectedFile(null);
+                              setSelectedFiles([]);
                             }}
                             className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
                           >
@@ -2123,30 +2130,31 @@ export default function SupplierPage() {
                         <input
                           ref={fileInputRef}
                           type="file"
+                          multiple
                           accept={CHAT_ATTACHMENT_ACCEPT}
                           className="hidden"
                           onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) {
-                              setSelectedFile(null);
+                            const files = Array.from(event.target.files ?? []);
+                            if (files.length === 0) {
+                              setSelectedFiles([]);
                               setAttachmentName("");
                               event.target.value = "";
                               return;
                             }
 
-                            const validationMessage = validateChatAttachmentFile(file);
+                            const validationMessage = validateChatAttachmentFiles(files);
 
                             if (validationMessage) {
                               setReplyError(validationMessage);
-                              setSelectedFile(null);
+                              setSelectedFiles([]);
                               setAttachmentName("");
                               event.target.value = "";
                               return;
                             }
 
                             setReplyError("");
-                            setSelectedFile(file);
-                            setAttachmentName(file.name);
+                            setSelectedFiles(files);
+                            setAttachmentName(getChatAttachmentSelectionSummary(files));
                             event.target.value = "";
                           }}
                         />
@@ -2154,7 +2162,7 @@ export default function SupplierPage() {
 
                       <button
                         onClick={handleSendReply}
-                        disabled={isSendingReply || (!replyText.trim() && !selectedFile)}
+                        disabled={isSendingReply || (!replyText.trim() && selectedFiles.length === 0)}
                         onMouseEnter={() => setHoveredComposerAction("send")}
                         onMouseLeave={() => setHoveredComposerAction(null)}
                         className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"

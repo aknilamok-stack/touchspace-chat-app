@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
@@ -410,7 +410,7 @@ export class MessagesService {
   }
 
   async createAttachment(
-    file: any,
+    files: any[],
     ticketId: string,
     senderType: string,
     managerId?: string,
@@ -419,8 +419,23 @@ export class MessagesService {
     senderName?: string,
     caption?: string,
   ) {
-    if (!file) {
+    if (!files?.length) {
       throw new NotFoundException('Attachment file is required');
+    }
+
+    if (files.length > 5) {
+      throw new BadRequestException('Можно прикрепить не больше 5 файлов за раз');
+    }
+
+    const totalSize = files.reduce(
+      (sum, file) => sum + (typeof file?.size === 'number' ? file.size : 0),
+      0,
+    );
+
+    if (totalSize > 5 * 1024 * 1024) {
+      throw new BadRequestException(
+        'Суммарный размер вложений в одном сообщении не должен превышать 5 МБ',
+      );
     }
 
     const actorId = senderId ?? managerId;
@@ -434,12 +449,16 @@ export class MessagesService {
       });
     }
 
-    const attachmentPayload = JSON.stringify({
+    const trimmedCaption = caption?.trim() || '';
+    const attachments = files.map((file) => ({
       name: file.originalname,
       url: `/uploads/${file.filename}`,
       mimeType: file.mimetype,
       size: file.size,
-      caption: caption?.trim() || '',
+      caption: trimmedCaption,
+    }));
+    const attachmentPayload = JSON.stringify({
+      attachments,
     });
 
     return this.prisma.$transaction(async (tx) => {

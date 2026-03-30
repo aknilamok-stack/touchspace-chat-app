@@ -1,14 +1,15 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Post,
   Query,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'node:path';
 import { MessagesService } from './messages.service';
@@ -43,7 +44,7 @@ export class MessagesController {
 
   @Post('messages/attachment')
   @UseInterceptors(
-    FileInterceptor('file', {
+    FilesInterceptor('files', 5, {
       storage: diskStorage({
         destination: './uploads',
         filename: (_request, file, callback) => {
@@ -59,12 +60,13 @@ export class MessagesController {
         },
       }),
       limits: {
-        fileSize: 15 * 1024 * 1024,
+        fileSize: 5 * 1024 * 1024,
+        files: 5,
       },
     }),
   )
   createAttachment(
-    @UploadedFile() file: any,
+    @UploadedFiles() files: any[],
     @Body()
     body: {
       ticketId: string;
@@ -76,8 +78,12 @@ export class MessagesController {
       caption?: string;
     },
   ) {
+    if (!files?.length) {
+      throw new BadRequestException('At least one attachment file is required');
+    }
+
     return this.messagesService.createAttachment(
-      file,
+      files,
       body.ticketId,
       body.senderType,
       body.managerId,

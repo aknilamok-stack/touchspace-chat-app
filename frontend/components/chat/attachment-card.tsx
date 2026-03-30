@@ -125,3 +125,32 @@ export function ChatAttachmentCard({
     </div>
   );
 }
+
+type ChatAttachmentListProps = {
+  attachments: ChatAttachmentPayload[];
+  tone?: "incoming" | "outgoing" | "neutral";
+  className?: string;
+};
+
+export function ChatAttachmentList({
+  attachments,
+  tone = "incoming",
+  className = "",
+}: ChatAttachmentListProps) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`grid gap-2 ${className}`.trim()}>
+      {attachments.map((attachment, index) => (
+        <ChatAttachmentCard
+          key={`${attachment.url}-${attachment.name}-${index}`}
+          attachment={attachment}
+          tone={tone}
+          className={index === 0 ? "mt-0" : ""}
+        />
+      ))}
+    </div>
+  );
+}

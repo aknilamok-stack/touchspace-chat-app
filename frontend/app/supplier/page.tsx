@@ -678,13 +678,13 @@ export default function SupplierPage() {
   const supplierEmptyState =
     activeQueueTab === "requires_reply" || activeQueueTab === "new"
       ? {
-          imageSrc: "/icons/vhodyshie.png",
+          imageSrc: "/icons/vhodyshie.webp",
           title: "Новые обращения",
           description:
             "Все новые сообщения и запросы, которые ещё ждут обработки, отображаются в этой вкладке.",
         }
       : {
-          imageSrc: "/icons/moi.png",
+          imageSrc: "/icons/moi.webp",
           title: "Мои диалоги",
           description:
             "Все диалоги, в которых вы участвуете и уже обрабатываете, остаются под рукой в текущей вкладке.",
@@ -2108,14 +2108,14 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`max-w-[76%] min-w-[280px] rounded-[24px] px-4 py-3 text-base leading-6 shadow-sm transition sm:min-w-[320px] ${
+                                  className={`max-w-[72%] min-w-[185px] rounded-[22px] px-4 py-2.5 text-[15px] leading-6 shadow-sm transition sm:min-w-[220px] ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
-                                  <div className="space-y-1.5">
-                                    <p className="mb-1 text-xs opacity-60">
+                                  <div className="space-y-1">
+                                    <p className="mb-0.5 text-[11px] opacity-60">
                                       {message.senderType === "client" && "Клиент"}
                                       {message.senderType === "supplier" && "Поставщик"}
                                     </p>
@@ -2127,14 +2127,14 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-2 flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition ${
+                                        className={`mb-1.5 flex w-full items-start gap-2.5 rounded-[14px] px-2.5 py-2 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
                                         }`}
                                       >
                                         <span
-                                          className={`mt-0.5 h-9 w-[3px] shrink-0 rounded-full ${
+                                          className={`mt-0.5 h-8 w-[3px] shrink-0 rounded-full ${
                                             message.senderType === "supplier"
                                               ? "bg-white/55"
                                               : "bg-[#0A84FF]"
@@ -2142,7 +2142,7 @@ export default function SupplierPage() {
                                         />
                                         <div className="min-w-0">
                                           <p
-                                            className={`text-[11px] font-semibold ${
+                                            className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/78"
                                                 : "text-[#0A84FF]"
@@ -2595,22 +2595,23 @@ export default function SupplierPage() {
               </aside>
             </>
           ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-10 py-10">
-              <div className="mx-auto flex max-w-[520px] flex-col items-center text-center">
-                <div className="relative h-[220px] w-[220px]">
+            <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-8">
+              <div className="mx-auto flex max-w-[420px] flex-col items-center text-center">
+                <div className="relative h-[160px] w-[160px]">
                   <Image
                     src={supplierEmptyState.imageSrc}
                     alt={supplierEmptyState.title}
                     fill
                     className="object-contain"
-                    sizes="220px"
+                    sizes="160px"
                     priority
+                    unoptimized
                   />
                 </div>
-                <h3 className="mt-6 text-[24px] font-semibold text-[#1E1E1E]">
+                <h3 className="mt-4 text-[16px] font-semibold text-[#1E1E1E]">
                   {supplierEmptyState.title}
                 </h3>
-                <p className="mt-3 max-w-[460px] text-[18px] leading-8 text-[#8E8E93]">
+                <p className="mt-2 max-w-[360px] text-[13px] leading-6 text-[#8E8E93]">
                   {supplierEmptyState.description}
                 </p>
               </div>

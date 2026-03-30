@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { AppRuntimeHub } from "@/components/pwa/app-runtime-hub";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -35,7 +34,6 @@ export default function RootLayout({
     <html lang="ru" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-[radial-gradient(circle_at_top,#eef4ff_0%,#f8fafc_48%,#e8eef8_100%)] text-slate-950">
         {children}
-        <AppRuntimeHub />
       </body>
     </html>
   );

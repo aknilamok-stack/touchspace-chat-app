@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChatAttachmentCard } from "@/components/chat/attachment-card";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatDuration } from "@/lib/admin-format";
+import { parseChatAttachmentPayload } from "@/lib/chat-attachments";
 import {
   AdminButton,
   AdminCards,
@@ -211,15 +213,27 @@ export function AdminDialogs() {
 
               <div className="grid gap-3">
                 <p className="text-sm font-semibold text-slate-950">История сообщений</p>
-                {(detail.messages ?? []).map((message: any) => (
-                  <div key={message.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <p className="text-sm font-medium text-slate-900">{getRoleLabel(message.senderRole ?? message.senderType)}</p>
-                      <p className="text-xs text-slate-500">{formatDateTime(message.createdAt)}</p>
+                {(detail.messages ?? []).map((message: any) => {
+                  const attachment = parseChatAttachmentPayload(message.content);
+
+                  return (
+                    <div key={message.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-sm font-medium text-slate-900">{getRoleLabel(message.senderRole ?? message.senderType)}</p>
+                        <p className="text-xs text-slate-500">{formatDateTime(message.createdAt)}</p>
+                      </div>
+                      {attachment ? (
+                        <ChatAttachmentCard
+                          attachment={attachment}
+                          tone="neutral"
+                          className="mt-3"
+                        />
+                      ) : (
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{message.content}</p>
+                      )}
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-700">{message.content}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="grid gap-3">

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
+import { ChatAttachmentCard } from "@/components/chat/attachment-card";
 import {
   clearAuthSession,
   type ManagerPresence,
@@ -11,6 +12,12 @@ import {
   readAuthSession,
   writeAuthSession,
 } from "@/lib/auth";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  type ChatAttachmentPayload,
+  parseChatAttachmentPayload,
+  validateChatAttachmentFile,
+} from "@/lib/chat-attachments";
 import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
@@ -81,12 +88,14 @@ type ApiTicket = {
 type ChatMessage = {
   id: string;
   text: string;
+  messageType?: string;
   from: MessageRole;
   senderName?: string | null;
   status: string;
   time: string;
   createdAt: string;
   supplierName?: string;
+  attachment?: ChatAttachmentPayload | null;
 };
 
 type ChatSupplierRequest = {
@@ -433,27 +442,34 @@ const getStatusBadgeClass = (rawStatus?: string) => {
   return "bg-[#F2F2F7] text-[#6C6C70]";
 };
 
-const formatMessage = (msg: ApiMessage): ChatMessage => ({
-  id: msg.id,
-  text: msg.content,
-  from:
-    msg.senderType === "client"
-      ? "client"
-      : msg.senderType === "ai"
-        ? "ai"
-      : msg.senderType === "supplier"
-        ? "supplier"
-        : msg.senderType === "system"
-          ? "system"
-          : "manager",
-  status: msg.status,
-  senderName: msg.senderName ?? null,
-  time: new Date(msg.createdAt).toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }),
-  createdAt: msg.createdAt,
-});
+const formatMessage = (msg: ApiMessage): ChatMessage => {
+  const attachment = parseChatAttachmentPayload(msg.content);
+
+  return {
+    id: msg.id,
+    text:
+      msg.messageType === "attachment" && attachment ? attachment.name : msg.content,
+    messageType: msg.messageType,
+    from:
+      msg.senderType === "client"
+        ? "client"
+        : msg.senderType === "ai"
+          ? "ai"
+        : msg.senderType === "supplier"
+          ? "supplier"
+          : msg.senderType === "system"
+            ? "system"
+            : "manager",
+    status: msg.status,
+    senderName: msg.senderName ?? null,
+    time: new Date(msg.createdAt).toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    createdAt: msg.createdAt,
+    attachment,
+  };
+};
 
 const getMessageDayKey = (createdAt: string) => {
   const date = new Date(createdAt);
@@ -586,6 +602,7 @@ export default function Home() {
   const [quickReplySearch, setQuickReplySearch] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
@@ -1480,8 +1497,18 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
+  useEffect(() => {
+    setAttachmentName("");
+    setSelectedFile(null);
+  }, [activeChatId]);
+
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !activeChatId) return;
+    const hasTextToSend = Boolean(messageText.trim());
+    const hasAttachmentToSend = Boolean(selectedFile);
+
+    if ((!hasTextToSend && !hasAttachmentToSend) || !activeChatId) {
+      return;
+    }
 
     try {
       if (
@@ -1517,42 +1544,76 @@ export default function Home() {
         }
       }
 
-      const response = await fetch(apiUrl("/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketId: activeChatId,
-          content: messageText,
-          senderType: "manager",
-          managerId: currentManagerId,
-          managerName: currentManagerName,
-        }),
-      });
+      const createdMessages: ChatMessage[] = [];
 
-      const newMessage = await response.json();
+      if (hasTextToSend) {
+        const response = await fetch(apiUrl("/messages"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticketId: activeChatId,
+            content: messageText,
+            senderType: "manager",
+            managerId: currentManagerId,
+            managerName: currentManagerName,
+          }),
+        });
 
-      setChatData((prevChats) =>
-        prevChats.map((chat) =>
-          chat.id === activeChatId
-            ? {
-                ...chat,
-                status: getStatusLabel("waiting_client"),
-                headerStatus: getStatusLabel("waiting_client"),
-                rawStatus: "waiting_client",
-                assignedManagerId: chat.assignedManagerId ?? currentManagerId,
-                assignedManagerName: chat.assignedManagerName ?? currentManagerName,
-                messages: [
-                  ...chat.messages,
-                  {
-                    ...formatMessage(newMessage),
-                  },
-                ],
-              }
-            : chat
-        )
-      );
+        if (!response.ok) {
+          throw new Error(
+            await extractApiErrorMessage(response, "Не удалось отправить сообщение")
+          );
+        }
+
+        const newMessage = (await response.json()) as ApiMessage;
+        createdMessages.push(formatMessage(newMessage));
+      }
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("ticketId", activeChatId);
+        formData.append("senderType", "manager");
+        formData.append("managerId", currentManagerId);
+        formData.append("managerName", currentManagerName);
+
+        const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!attachmentResponse.ok) {
+          throw new Error(
+            await extractApiErrorMessage(
+              attachmentResponse,
+              "Не удалось отправить вложение"
+            )
+          );
+        }
+
+        const attachmentMessage = (await attachmentResponse.json()) as ApiMessage;
+        createdMessages.push(formatMessage(attachmentMessage));
+      }
+
+      if (createdMessages.length > 0) {
+        setChatData((prevChats) =>
+          prevChats.map((chat) =>
+            chat.id === activeChatId
+              ? {
+                  ...chat,
+                  status: getStatusLabel("waiting_client"),
+                  headerStatus: getStatusLabel("waiting_client"),
+                  rawStatus: "waiting_client",
+                  assignedManagerId: chat.assignedManagerId ?? currentManagerId,
+                  assignedManagerName: chat.assignedManagerName ?? currentManagerName,
+                  messages: [...chat.messages, ...createdMessages],
+                }
+              : chat
+          )
+        );
+      }
 
       setFilter("in_progress");
       const refreshedTickets = await fetchTickets();
@@ -1560,11 +1621,13 @@ export default function Home() {
       await refreshNotificationCandidates();
       setMessageText("");
       setAttachmentName("");
+      setSelectedFile(null);
       lastTypingSentAtRef.current = 0;
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
       setToast({
-        message: "Не удалось отправить сообщение",
+        message:
+          error instanceof Error ? error.message : "Не удалось отправить сообщение",
         tone: "error",
       });
     }
@@ -2564,10 +2627,16 @@ export default function Home() {
                             {message.from === "manager" && "Менеджер"}
                             {message.from === "ai" && "AI-помощник"}
                             {message.from === "supplier" &&
-                              "supplierName" in message &&
-                              `Поставщик: ${message.supplierName}`}
+                              `Поставщик: ${message.senderName || "Поставщик"}`}
                           </p>
-                          <p className="break-words">{message.text}</p>
+                          {message.attachment ? (
+                            <ChatAttachmentCard
+                              attachment={message.attachment}
+                              tone={message.from === "manager" ? "outgoing" : "incoming"}
+                            />
+                          ) : (
+                            <p className="break-words">{message.text}</p>
+                          )}
                           <div
                             className={`flex items-center gap-3 text-[10px] ${
                               message.from === "manager"
@@ -2652,7 +2721,10 @@ export default function Home() {
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
                     <span className="truncate max-w-[240px]">{attachmentName}</span>
                     <button
-                      onClick={() => setAttachmentName("")}
+                      onClick={() => {
+                        setAttachmentName("");
+                        setSelectedFile(null);
+                      }}
                       className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
                     >
                       ×
@@ -2848,10 +2920,32 @@ export default function Home() {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    accept={CHAT_ATTACHMENT_ACCEPT}
                     className="hidden"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
-                      setAttachmentName(file?.name ?? "");
+                      if (!file) {
+                        setSelectedFile(null);
+                        setAttachmentName("");
+                        event.target.value = "";
+                        return;
+                      }
+
+                      const validationMessage = validateChatAttachmentFile(file);
+
+                      if (validationMessage) {
+                        setToast({
+                          message: validationMessage,
+                          tone: "error",
+                        });
+                        setSelectedFile(null);
+                        setAttachmentName("");
+                        event.target.value = "";
+                        return;
+                      }
+
+                      setSelectedFile(file);
+                      setAttachmentName(file.name);
                       event.target.value = "";
                     }}
                   />
@@ -2859,7 +2953,7 @@ export default function Home() {
 
                 <button
                   onClick={handleSendMessage}
-                  disabled={!messageText.trim()}
+                  disabled={!messageText.trim() && !selectedFile}
                   onMouseEnter={() => setHoveredComposerAction("send")}
                   onMouseLeave={() => setHoveredComposerAction(null)}
                   className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"

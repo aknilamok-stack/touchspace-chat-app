@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
+import { ChatAttachmentCard } from "@/components/chat/attachment-card";
 import {
   clearAuthSession,
   managerAccounts,
@@ -11,6 +12,12 @@ import {
   readAuthSession,
   supplierAccounts,
 } from "@/lib/auth";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  type ChatAttachmentPayload,
+  parseChatAttachmentPayload,
+  validateChatAttachmentFile,
+} from "@/lib/chat-attachments";
 import { fetchManagerStatuses } from "@/lib/manager-presence";
 
 const defaultSupplierAccount = supplierAccounts[0] ?? {
@@ -55,13 +62,20 @@ type SupplierRequest = {
   createdAt: string;
 };
 
-type TicketMessage = {
+type TicketMessageApi = {
   id: string;
   content: string;
   senderType: string;
+  senderName?: string | null;
+  messageType?: string;
   status: string;
   ticketId: string;
   createdAt: string;
+};
+
+type TicketMessage = TicketMessageApi & {
+  displayContent: string;
+  attachment?: ChatAttachmentPayload | null;
 };
 
 type Ticket = {
@@ -145,6 +159,19 @@ const formatDateTimeLabel = (createdAt: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+
+const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
+  const attachment = parseChatAttachmentPayload(message.content);
+
+  return {
+    ...message,
+    displayContent:
+      message.messageType === "attachment" && attachment
+        ? attachment.name
+        : message.content,
+    attachment,
+  };
+};
 
 const supplierQueueTabs: Array<{
   id: SupplierQueueTab;
@@ -309,7 +336,8 @@ const fetchTicketMessagesSnapshot = async (
     throw new Error("Не удалось загрузить сообщения тикета");
   }
 
-  return response.json();
+  const data = (await response.json()) as TicketMessageApi[];
+  return data.map(formatTicketMessage);
 };
 
 const fetchMessagesMapForRequests = async (requests: SupplierRequest[]) => {
@@ -483,6 +511,7 @@ const areMessagesEqual = (
     return (
       message.id === nextMessage?.id &&
       message.content === nextMessage.content &&
+      message.messageType === nextMessage.messageType &&
       message.status === nextMessage.status &&
       message.senderType === nextMessage.senderType &&
       message.createdAt === nextMessage.createdAt
@@ -519,6 +548,7 @@ export default function SupplierPage() {
   const [quickReplySearch, setQuickReplySearch] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingReply, setIsSendingReply] = useState(false);
@@ -795,7 +825,8 @@ export default function SupplierPage() {
       throw new Error("Не удалось загрузить сообщения тикета");
     }
 
-    return response.json();
+    const data = (await response.json()) as TicketMessageApi[];
+    return data.map(formatTicketMessage);
   };
 
   const syncSupplierRequests = (requests: SupplierRequest[]) => {
@@ -882,6 +913,8 @@ export default function SupplierPage() {
       setTicketMessages([]);
       setReplyText("");
       setReplyError("");
+      setAttachmentName("");
+      setSelectedFile(null);
       return;
     }
 
@@ -912,6 +945,11 @@ export default function SupplierPage() {
 
     void loadMessages();
   }, [authReady, selectedRequest]);
+
+  useEffect(() => {
+    setAttachmentName("");
+    setSelectedFile(null);
+  }, [selectedRequestId]);
 
   useEffect(() => {
     if (!authReady) {
@@ -1202,6 +1240,7 @@ export default function SupplierPage() {
       setActiveQueueTab("completed");
       setReplyText("");
       setAttachmentName("");
+      setSelectedFile(null);
       setShowQuickReplies(false);
       setShowEmojiPicker(false);
     } catch (error) {
@@ -1212,7 +1251,14 @@ export default function SupplierPage() {
   };
 
   const handleSendReply = async () => {
-    if (!selectedRequest || !replyText.trim() || isSupplierDialogResolved) {
+    const hasTextToSend = Boolean(replyText.trim());
+    const hasAttachmentToSend = Boolean(selectedFile);
+
+    if (
+      !selectedRequest ||
+      (!hasTextToSend && !hasAttachmentToSend) ||
+      isSupplierDialogResolved
+    ) {
       return;
     }
 
@@ -1220,22 +1266,42 @@ export default function SupplierPage() {
     setReplyError("");
 
     try {
-      const response = await fetch(apiUrl("/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketId: selectedRequest.ticketId,
-          content: replyText,
-          senderType: "supplier",
-          senderId: supplierId,
-          senderName: supplierName,
-        }),
-      });
+      if (hasTextToSend) {
+        const response = await fetch(apiUrl("/messages"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticketId: selectedRequest.ticketId,
+            content: replyText,
+            senderType: "supplier",
+            senderId: supplierId,
+            senderName: supplierName,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Не удалось отправить ответ поставщика");
+        if (!response.ok) {
+          throw new Error("Не удалось отправить ответ поставщика");
+        }
+      }
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("ticketId", selectedRequest.ticketId);
+        formData.append("senderType", "supplier");
+        formData.append("senderId", supplierId);
+        formData.append("senderName", supplierName);
+
+        const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!attachmentResponse.ok) {
+          throw new Error("Не удалось отправить вложение");
+        }
       }
 
       const data = await fetchTicketMessages(selectedRequest.ticketId);
@@ -1250,9 +1316,14 @@ export default function SupplierPage() {
       });
       setReplyText("");
       setAttachmentName("");
+      setSelectedFile(null);
     } catch (error) {
       console.error("Ошибка отправки ответа поставщика:", error);
-      setReplyError("Не удалось отправить ответ поставщика");
+      setReplyError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось отправить ответ поставщика"
+      );
     } finally {
       setIsSendingReply(false);
     }
@@ -1699,7 +1770,18 @@ export default function SupplierPage() {
                                     {message.senderType === "client" && "Клиент"}
                                     {message.senderType === "supplier" && "Поставщик"}
                                   </p>
-                                  <p className="break-words">{message.content}</p>
+                                  {message.attachment ? (
+                                    <ChatAttachmentCard
+                                      attachment={message.attachment}
+                                      tone={
+                                        message.senderType === "supplier"
+                                          ? "outgoing"
+                                          : "incoming"
+                                      }
+                                    />
+                                  ) : (
+                                    <p className="break-words">{message.displayContent}</p>
+                                  )}
                                   <div
                                     className={`flex items-center gap-3 text-[10px] ${
                                       message.senderType === "supplier"
@@ -1749,7 +1831,10 @@ export default function SupplierPage() {
                         <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
                           <span className="max-w-[240px] truncate">{attachmentName}</span>
                           <button
-                            onClick={() => setAttachmentName("")}
+                            onClick={() => {
+                              setAttachmentName("");
+                              setSelectedFile(null);
+                            }}
                             className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
                           >
                             ×
@@ -1935,10 +2020,30 @@ export default function SupplierPage() {
                         <input
                           ref={fileInputRef}
                           type="file"
+                          accept={CHAT_ATTACHMENT_ACCEPT}
                           className="hidden"
                           onChange={(event) => {
                             const file = event.target.files?.[0];
-                            setAttachmentName(file?.name ?? "");
+                            if (!file) {
+                              setSelectedFile(null);
+                              setAttachmentName("");
+                              event.target.value = "";
+                              return;
+                            }
+
+                            const validationMessage = validateChatAttachmentFile(file);
+
+                            if (validationMessage) {
+                              setReplyError(validationMessage);
+                              setSelectedFile(null);
+                              setAttachmentName("");
+                              event.target.value = "";
+                              return;
+                            }
+
+                            setReplyError("");
+                            setSelectedFile(file);
+                            setAttachmentName(file.name);
                             event.target.value = "";
                           }}
                         />
@@ -1946,7 +2051,7 @@ export default function SupplierPage() {
 
                       <button
                         onClick={handleSendReply}
-                        disabled={isSendingReply || !replyText.trim()}
+                        disabled={isSendingReply || (!replyText.trim() && !selectedFile)}
                         onMouseEnter={() => setHoveredComposerAction("send")}
                         onMouseLeave={() => setHoveredComposerAction(null)}
                         className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"

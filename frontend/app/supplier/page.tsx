@@ -2108,7 +2108,8 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`inline-flex w-fit min-w-0 max-w-[min(520px,65%)] flex-col rounded-[18px] px-[14px] py-[10px] text-[15px] leading-[21px] shadow-sm transition ${
+                                  style={{ width: "fit-content", maxWidth: "min(520px, 50%)" }}
+                                  className={`relative inline-flex shrink-0 min-w-0 flex-col rounded-[18px] px-[12px] pb-[24px] pt-[9px] text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
@@ -2123,7 +2124,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1.5 flex min-w-0 self-stretch items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
+                                        className={`mb-1.5 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2168,12 +2169,12 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                      <p className="min-w-0 whitespace-pre-wrap pr-[72px] [overflow-wrap:anywhere] [word-break:normal]">
                                         {message.displayContent}
                                       </p>
                                     )}
                                     <div
-                                      className={`mt-1.5 inline-flex items-center gap-1.5 self-end text-[11px] leading-none ${
+                                      className={`absolute bottom-[8px] right-[12px] inline-flex items-center gap-1.5 text-[11px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
                                           : "text-[#8E8E93]"

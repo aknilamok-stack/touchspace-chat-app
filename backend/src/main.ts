@@ -15,15 +15,18 @@ async function bootstrap() {
     'https://b2b.touchspace.biz',
     'https://touchspace.biz',
   ];
+  const configuredAllowedOrigins = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   if (!existsSync(uploadsDir)) {
     mkdirSync(uploadsDir, { recursive: true });
   }
 
-  const allowedOrigins = (process.env.CORS_ORIGIN ?? defaultAllowedOrigins.join(','))
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = Array.from(
+    new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]),
+  );
   const allowVercelPreviews = (process.env.ALLOW_VERCEL_PREVIEWS ?? 'false') === 'true';
   const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 

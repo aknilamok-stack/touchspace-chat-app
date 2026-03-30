@@ -565,11 +565,16 @@ export default function SupplierPage() {
   const [deepLinkRequestId, setDeepLinkRequestId] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const supplierMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const supplierIsNearBottomRef = useRef(true);
+  const previousSelectedRequestIdRef = useRef("");
+  const previousVisibleMessageCountRef = useRef(0);
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -694,6 +699,30 @@ export default function SupplierPage() {
   const filteredQuickReplies = QUICK_REPLIES.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
+
+  const scrollSupplierChatToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    supplierIsNearBottomRef.current = true;
+    setShowScrollToLatest(false);
+  };
+
+  const updateSupplierScrollState = () => {
+    const viewport = messagesViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const isNearBottom = distanceToBottom < 96;
+
+    supplierIsNearBottomRef.current = isNearBottom;
+
+    if (isNearBottom) {
+      setShowScrollToLatest(false);
+    }
+  };
 
   const readSupplierStatus = (): ManagerPresence => {
     if (typeof window === "undefined") {
@@ -1027,8 +1056,40 @@ export default function SupplierPage() {
   }, [deepLinkRequestId, deepLinkTicketId, supplierRequestCards]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [ticketMessages.length]);
+    const currentRequestId = selectedRequestId;
+    const currentMessageCount = visibleSupplierMessages.length;
+    const requestChanged = previousSelectedRequestIdRef.current !== currentRequestId;
+
+    if (requestChanged) {
+      previousSelectedRequestIdRef.current = currentRequestId;
+      previousVisibleMessageCountRef.current = currentMessageCount;
+      setShowScrollToLatest(false);
+
+      if (currentRequestId) {
+        requestAnimationFrame(() => {
+          scrollSupplierChatToBottom("auto");
+        });
+      }
+
+      return;
+    }
+
+    if (currentMessageCount <= previousVisibleMessageCountRef.current) {
+      previousVisibleMessageCountRef.current = currentMessageCount;
+      return;
+    }
+
+    previousVisibleMessageCountRef.current = currentMessageCount;
+
+    if (supplierIsNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        scrollSupplierChatToBottom("smooth");
+      });
+      return;
+    }
+
+    setShowScrollToLatest(true);
+  }, [selectedRequestId, visibleSupplierMessages.length]);
 
   useEffect(() => {
     if (!quickRepliesRef.current || (!showQuickReplies && !showEmojiPicker)) {
@@ -1317,6 +1378,9 @@ export default function SupplierPage() {
       setReplyText("");
       setAttachmentName("");
       setSelectedFile(null);
+      requestAnimationFrame(() => {
+        scrollSupplierChatToBottom("smooth");
+      });
     } catch (error) {
       console.error("Ошибка отправки ответа поставщика:", error);
       setReplyError(
@@ -1702,7 +1766,11 @@ export default function SupplierPage() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+                <div
+                  ref={messagesViewportRef}
+                  onScroll={updateSupplierScrollState}
+                  className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+                >
                   <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
                     <div className="flex justify-center py-1">
                       <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
@@ -1814,6 +1882,21 @@ export default function SupplierPage() {
                     <div ref={messagesEndRef} />
                   </div>
                 </div>
+
+                {showScrollToLatest ? (
+                  <div className="pointer-events-none absolute bottom-[118px] right-[344px] z-30">
+                    <button
+                      type="button"
+                      onClick={() => scrollSupplierChatToBottom("smooth")}
+                      className="pointer-events-auto inline-flex h-12 items-center gap-2 rounded-full bg-[#0A84FF] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(10,132,255,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0077F2]"
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
+                        ↓
+                      </span>
+                      Новое сообщение
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="border-t border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="mx-auto w-full max-w-3xl">

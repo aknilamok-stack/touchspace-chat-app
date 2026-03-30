@@ -640,8 +640,10 @@ export default function Home() {
   const [clientTypingPreview, setClientTypingPreview] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
   const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -651,6 +653,9 @@ export default function Home() {
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const titleFlashIntervalRef = useRef<number | null>(null);
   const defaultDocumentTitleRef = useRef("TouchSpace");
+  const managerIsNearBottomRef = useRef(true);
+  const previousActiveChatIdRef = useRef("");
+  const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const availableManagers = BASE_MANAGERS.map((manager) => ({
@@ -1064,6 +1069,30 @@ export default function Home() {
   }).length;
   const onlineManagers = availableManagers.filter((manager) => manager.status === "online");
 
+  const scrollManagerChatToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    managerIsNearBottomRef.current = true;
+    setShowScrollToLatest(false);
+  };
+
+  const updateManagerScrollState = useCallback(() => {
+    const viewport = messagesViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const isNearBottom = distanceToBottom < 96;
+
+    managerIsNearBottomRef.current = isNearBottom;
+
+    if (isNearBottom) {
+      setShowScrollToLatest(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!authReady || !currentManagerId) {
       return;
@@ -1295,8 +1324,40 @@ export default function Home() {
   }, [activeChatId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeChat]);
+    const currentChatId = activeChatId;
+    const currentMessageCount = activeChat?.messages.length ?? 0;
+    const chatChanged = previousActiveChatIdRef.current !== currentChatId;
+
+    if (chatChanged) {
+      previousActiveChatIdRef.current = currentChatId;
+      previousActiveChatMessageCountRef.current = currentMessageCount;
+      setShowScrollToLatest(false);
+
+      if (currentChatId) {
+        requestAnimationFrame(() => {
+          scrollManagerChatToBottom("auto");
+        });
+      }
+
+      return;
+    }
+
+    if (currentMessageCount <= previousActiveChatMessageCountRef.current) {
+      previousActiveChatMessageCountRef.current = currentMessageCount;
+      return;
+    }
+
+    previousActiveChatMessageCountRef.current = currentMessageCount;
+
+    if (managerIsNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        scrollManagerChatToBottom("smooth");
+      });
+      return;
+    }
+
+    setShowScrollToLatest(true);
+  }, [activeChatId, activeChat?.messages.length]);
 
   useEffect(() => {
     if (!authReady) {
@@ -1623,6 +1684,9 @@ export default function Home() {
       setAttachmentName("");
       setSelectedFile(null);
       lastTypingSentAtRef.current = 0;
+      requestAnimationFrame(() => {
+        scrollManagerChatToBottom("smooth");
+      });
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
       setToast({
@@ -2565,7 +2629,11 @@ export default function Home() {
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div
+            ref={messagesViewportRef}
+            onScroll={updateManagerScrollState}
+            className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+          >
             <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
             {activeChat?.messages.map((message, index) => {
               const previousMessage = activeChat.messages[index - 1];
@@ -2678,6 +2746,21 @@ export default function Home() {
               >
                 {toast.message}
               </div>
+            </div>
+          ) : null}
+
+          {showScrollToLatest ? (
+            <div className="pointer-events-none absolute bottom-[118px] right-[360px] z-30">
+              <button
+                type="button"
+                onClick={() => scrollManagerChatToBottom("smooth")}
+                className="pointer-events-auto inline-flex h-12 items-center gap-2 rounded-full bg-[#0A84FF] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(10,132,255,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0077F2]"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
+                  ↓
+                </span>
+                Новое сообщение
+              </button>
             </div>
           ) : null}
 

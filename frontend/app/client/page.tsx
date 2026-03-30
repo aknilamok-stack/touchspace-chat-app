@@ -47,6 +47,8 @@ type Message = {
   content: string;
   senderType: string;
   senderName?: string | null;
+  replyToMessageId?: string | null;
+  replyToContent?: string | null;
   messageType?: string;
   status: string;
   ticketId: string;
@@ -905,6 +907,8 @@ export default function ClientPage() {
             senderType: "client",
             senderId: clientSession.clientId,
             senderName: clientSession.clientName,
+            replyToMessageId: replyTarget?.id,
+            replyToContent: replyTarget?.content,
           }),
         });
 
@@ -930,6 +934,10 @@ export default function ClientPage() {
         formData.append("senderType", "client");
         formData.append("senderId", clientSession.clientId);
         formData.append("senderName", clientSession.clientName);
+        if (replyTarget?.id) {
+          formData.append("replyToMessageId", replyTarget.id);
+          formData.append("replyToContent", replyTarget.content);
+        }
 
         const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
           method: "POST",
@@ -1252,7 +1260,7 @@ export default function ClientPage() {
                                   : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
                               }`}
                             >
-                            {replyMap[message.id] ? (
+                            {message.replyToContent || replyMap[message.id] ? (
                               <div
                                 className={`mt-2 rounded-[14px] border px-3 py-2 text-xs ${
                                   message.senderType === "client"
@@ -1262,7 +1270,7 @@ export default function ClientPage() {
                               >
                                 <p className="font-medium">Ответ на сообщение</p>
                                 <p className="mt-1 line-clamp-2">
-                                  {replyMap[message.id].replyToContent}
+                                  {message.replyToContent ?? replyMap[message.id]?.replyToContent}
                                 </p>
                               </div>
                             ) : null}

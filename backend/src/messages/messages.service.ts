@@ -123,6 +123,8 @@ export class MessagesService {
     managerName?: string,
     senderId?: string,
     senderName?: string,
+    replyToMessageId?: string,
+    replyToContent?: string,
   ) {
     const actorId = senderId ?? managerId;
     const actorName = senderName ?? managerName;
@@ -194,6 +196,8 @@ export class MessagesService {
           senderType,
           senderRole: senderType,
           senderProfileId: actorId ?? null,
+          replyToMessageId: replyToMessageId?.trim() || null,
+          replyToContent: replyToContent?.trim() || null,
           status: 'sent',
           deliveryStatus: 'sent',
           messageType: 'text',
@@ -418,6 +422,8 @@ export class MessagesService {
     senderId?: string,
     senderName?: string,
     caption?: string,
+    replyToMessageId?: string,
+    replyToContent?: string,
   ) {
     if (!files?.length) {
       throw new NotFoundException('Attachment file is required');
@@ -469,6 +475,8 @@ export class MessagesService {
           senderType,
           senderRole: senderType,
           senderProfileId: actorId ?? null,
+          replyToMessageId: replyToMessageId?.trim() || null,
+          replyToContent: replyToContent?.trim() || null,
           status: 'sent',
           deliveryStatus: 'sent',
           messageType: 'attachment',

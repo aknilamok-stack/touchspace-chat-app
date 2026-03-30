@@ -42,6 +42,8 @@ type ApiMessage = {
   content: string;
   senderType: string;
   senderName?: string | null;
+  replyToMessageId?: string | null;
+  replyToContent?: string | null;
   messageType?: string;
   status: string;
   createdAt: string;
@@ -97,6 +99,8 @@ type ChatMessage = {
   messageType?: string;
   from: MessageRole;
   senderName?: string | null;
+  replyToMessageId?: string | null;
+  replyToContent?: string | null;
   status: string;
   time: string;
   createdAt: string;
@@ -475,6 +479,8 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
             : "manager",
     status: msg.status,
     senderName: msg.senderName ?? null,
+    replyToMessageId: msg.replyToMessageId ?? null,
+    replyToContent: msg.replyToContent ?? null,
     time: new Date(msg.createdAt).toLocaleTimeString("ru-RU", {
       hour: "2-digit",
       minute: "2-digit",
@@ -1822,6 +1828,8 @@ export default function Home() {
             senderType: "manager",
             managerId: currentManagerId,
             managerName: currentManagerName,
+            replyToMessageId: replyTarget?.id,
+            replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
           }),
         });
 
@@ -1844,6 +1852,10 @@ export default function Home() {
         formData.append("senderType", "manager");
         formData.append("managerId", currentManagerId);
         formData.append("managerName", currentManagerName);
+        if (replyTarget?.id) {
+          formData.append("replyToMessageId", replyTarget.id);
+          formData.append("replyToContent", getReplyPreviewContent(replyTarget));
+        }
 
         const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
           method: "POST",
@@ -2985,9 +2997,13 @@ export default function Home() {
                               {message.from === "supplier" &&
                                 `Поставщик: ${message.senderName || "Поставщик"}`}
                             </p>
-                            {replyMap[message.id] ? (
+                            {message.replyToContent || replyMap[message.id] ? (
                               <div
-                                onClick={() => focusReplyMessage(replyMap[message.id].replyToId)}
+                                onClick={() =>
+                                  focusReplyMessage(
+                                    message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
+                                  )
+                                }
                                 className={`rounded-[14px] border px-3 py-2 text-xs ${
                                   message.from === "manager"
                                     ? "border-white/20 bg-white/10 text-white/80"
@@ -2996,7 +3012,7 @@ export default function Home() {
                               >
                                 <p className="font-medium">Ответ на сообщение</p>
                                 <p className="mt-1 line-clamp-2">
-                                  {replyMap[message.id].replyToContent}
+                                  {message.replyToContent ?? replyMap[message.id]?.replyToContent}
                                 </p>
                               </div>
                             ) : null}

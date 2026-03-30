@@ -106,6 +106,8 @@ model Message {
   content         String
   senderType      String
   senderRole      String?
+  replyToMessageId String?
+  replyToContent  String?
   status          String    @default("sent")
   deliveryStatus  String    @default("sent")
   messageType     String    @default("text")

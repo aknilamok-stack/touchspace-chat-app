@@ -69,6 +69,8 @@ type TicketMessageApi = {
   content: string;
   senderType: string;
   senderName?: string | null;
+  replyToMessageId?: string | null;
+  replyToContent?: string | null;
   messageType?: string;
   status: string;
   ticketId: string;
@@ -178,6 +180,8 @@ const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
           ? attachments[0].name
           : `${attachments.length} файлов`
         : message.content,
+    replyToMessageId: message.replyToMessageId ?? null,
+    replyToContent: message.replyToContent ?? null,
     attachment: attachments[0] ?? null,
     attachments,
   };
@@ -1466,6 +1470,8 @@ export default function SupplierPage() {
             senderType: "supplier",
             senderId: supplierId,
             senderName: supplierName,
+            replyToMessageId: replyTarget?.id,
+            replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
           }),
         });
 
@@ -1486,6 +1492,10 @@ export default function SupplierPage() {
         formData.append("senderType", "supplier");
         formData.append("senderId", supplierId);
         formData.append("senderName", supplierName);
+        if (replyTarget?.id) {
+          formData.append("replyToMessageId", replyTarget.id);
+          formData.append("replyToContent", getReplyPreviewContent(replyTarget));
+        }
 
         const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
           method: "POST",
@@ -2062,9 +2072,13 @@ export default function SupplierPage() {
                                       {message.senderType === "client" && "Клиент"}
                                       {message.senderType === "supplier" && "Поставщик"}
                                     </p>
-                                    {replyMap[message.id] ? (
+                                    {message.replyToContent || replyMap[message.id] ? (
                                       <div
-                                        onClick={() => focusReplyMessage(replyMap[message.id].replyToId)}
+                                        onClick={() =>
+                                          focusReplyMessage(
+                                            message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
+                                          )
+                                        }
                                         className={`rounded-[14px] border px-3 py-2 text-xs ${
                                           message.senderType === "supplier"
                                             ? "border-white/20 bg-white/10 text-white/80"
@@ -2073,7 +2087,7 @@ export default function SupplierPage() {
                                       >
                                         <p className="font-medium">Ответ на сообщение</p>
                                         <p className="mt-1 line-clamp-2">
-                                          {replyMap[message.id].replyToContent}
+                                          {message.replyToContent ?? replyMap[message.id]?.replyToContent}
                                         </p>
                                       </div>
                                     ) : null}

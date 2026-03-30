@@ -29,6 +29,8 @@ export class MessagesController {
       managerName?: string;
       senderId?: string;
       senderName?: string;
+      replyToMessageId?: string;
+      replyToContent?: string;
     },
   ) {
     return this.messagesService.create(
@@ -39,6 +41,8 @@ export class MessagesController {
       body.managerName,
       body.senderId,
       body.senderName,
+      body.replyToMessageId,
+      body.replyToContent,
     );
   }
 
@@ -76,6 +80,8 @@ export class MessagesController {
       senderId?: string;
       senderName?: string;
       caption?: string;
+      replyToMessageId?: string;
+      replyToContent?: string;
     },
   ) {
     if (!files?.length) {
@@ -91,6 +97,8 @@ export class MessagesController {
       body.senderId,
       body.senderName,
       body.caption,
+      body.replyToMessageId,
+      body.replyToContent,
     );
   }
 

@@ -690,6 +690,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
   const [filter, setFilter] = useState<"incoming" | "in_progress" | "all">("incoming");
+  const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
 
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(suppliers[0]);
@@ -748,6 +749,27 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const managerEmptyState =
+    filter === "incoming"
+      ? {
+          imageSrc: "/icons/vhodyshie.png",
+          title: "Входящие обращения",
+          description:
+            'Все новые сообщения, которые никто не взял в работу, отображаются во вкладке "Входящие".',
+        }
+      : filter === "in_progress"
+        ? {
+            imageSrc: "/icons/moi.png",
+            title: "Мои диалоги",
+            description:
+              'Все диалоги, в которых вы участвуете, попадают во вкладку "Мои".',
+          }
+        : {
+            imageSrc: "/icons/moi.png",
+            title: "Все обращения",
+            description:
+              "Здесь можно быстро открыть любой диалог из общей очереди и истории работы.",
+          };
   const availableManagers = BASE_MANAGERS.map((manager) => ({
     ...manager,
     status: managerStatuses[manager.id] ?? "offline",
@@ -1051,6 +1073,10 @@ export default function Home() {
         return currentActiveChatId;
       }
 
+      if (isChatPaneDismissed) {
+        return "";
+      }
+
       return formattedChats[0].id;
     });
   };
@@ -1298,6 +1324,7 @@ export default function Home() {
     }
 
     if (chatData.some((chat) => chat.id === deepLinkTicketId)) {
+      setIsChatPaneDismissed(false);
       setActiveChatId(deepLinkTicketId);
     }
   }, [deepLinkTicketId, chatData]);
@@ -1971,6 +1998,7 @@ export default function Home() {
       ]);
 
       setActiveChatId(ticketId);
+      setIsChatPaneDismissed(false);
       syncTickets(tickets);
       await refreshNotificationCandidates();
       applyMessagesToTicket(ticketId, messages);
@@ -2586,6 +2614,7 @@ export default function Home() {
                   <button
                     key={chat.id}
                     onClick={() => {
+                      setIsChatPaneDismissed(false);
                       setActiveChatId(chat.id);
                       setIsSupplierFormOpen(false);
                     }}
@@ -2650,6 +2679,7 @@ export default function Home() {
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
+                              setIsChatPaneDismissed(false);
                               setActiveChatId(chat.id);
                               void handleClaimIncoming(chat.id);
                             }}
@@ -2774,6 +2804,29 @@ export default function Home() {
 
             {activeChat ? (
               <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsChatPaneDismissed(true);
+                      setActiveChatId("");
+                      setReplyTarget(null);
+                      setShowQuickReplies(false);
+                      setShowEmojiPicker(false);
+                      setIsSupplierFormOpen(false);
+                    }}
+                    onMouseEnter={() => setHoveredHeaderAction("close")}
+                    onMouseLeave={() => setHoveredHeaderAction(null)}
+                    className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E5E5EA] bg-white text-[#8E8E93] transition duration-200 hover:bg-[#F7F8FB] hover:text-[#1E1E1E]"
+                  >
+                    ✕
+                  </button>
+                  {hoveredHeaderAction === "close" && (
+                    <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)] whitespace-nowrap">
+                      Закрыть
+                    </div>
+                  )}
+                </div>
+
                 {activeChat.rawStatus === "new" &&
                 !activeChat.assignedManagerId &&
                 !activeChat.aiEnabled ? (
@@ -2817,6 +2870,29 @@ export default function Home() {
             )}
           </div>
 
+          {!activeChat ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-10 py-10">
+              <div className="mx-auto flex max-w-[520px] flex-col items-center text-center">
+                <div className="relative h-[220px] w-[220px]">
+                  <Image
+                    src={managerEmptyState.imageSrc}
+                    alt={managerEmptyState.title}
+                    fill
+                    className="object-contain"
+                    sizes="220px"
+                    priority
+                  />
+                </div>
+                <h3 className="mt-6 text-[24px] font-semibold text-[#1E1E1E]">
+                  {managerEmptyState.title}
+                </h3>
+                <p className="mt-3 max-w-[440px] text-[18px] leading-8 text-[#8E8E93]">
+                  {managerEmptyState.description}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
           {activeChat?.invitedManagerNames.length ? (
             <div className="border-b border-[#EDEDF1] bg-white px-6 py-3">
               <div className="mx-auto flex w-full max-w-3xl items-center gap-2 text-sm text-[#6C6C70]">
@@ -2977,13 +3053,13 @@ export default function Home() {
                         </button>
 
                         <div
-                          className={`max-w-[68%] min-w-[200px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
+                          className={`max-w-[76%] min-w-[280px] rounded-[24px] px-4 py-3 text-base leading-6 shadow-sm transition sm:min-w-[320px] ${
                             message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
                                 ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
                               : message.from === "client"
-                                ? "rounded-tl-[6px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                ? "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                 : message.from === "supplier"
                                   ? "bg-[#EAF8EF] text-[#166534]"
                                   : "bg-[#EFEFF4] text-[#1E1E1E]"
@@ -3005,7 +3081,7 @@ export default function Home() {
                                     message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                   )
                                 }
-                                className={`mb-2 flex w-full items-start gap-2 rounded-[14px] px-2 py-2 text-left transition ${
+                                className={`mb-2 flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition ${
                                   message.from === "manager"
                                     ? "hover:bg-white/10"
                                     : "hover:bg-[#F2F7FF]"
@@ -3024,7 +3100,7 @@ export default function Home() {
                                         : "text-[#0A84FF]"
                                     }`}
                                   >
-                                    Ответ на сообщение
+                                    Ответ
                                   </p>
                                   <p
                                     className={`mt-0.5 line-clamp-2 break-words text-[13px] leading-5 ${
@@ -3426,8 +3502,11 @@ export default function Home() {
               )}
             </div>
           </div>
+            </>
+          )}
         </section>
 
+        {activeChat ? (
         <aside className="flex h-full w-[320px] flex-col overflow-y-auto border-l border-[#E5E5EA] bg-[#FBFBFD] px-4 py-5">
           <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
@@ -3726,6 +3805,7 @@ export default function Home() {
             </div>
           </div>
         </aside>
+        ) : null}
       </div>
 
       {isInviteModalOpen && (

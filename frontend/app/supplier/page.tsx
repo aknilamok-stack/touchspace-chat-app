@@ -552,6 +552,7 @@ export default function SupplierPage() {
   const [ticketsById, setTicketsById] = useState<Record<string, Ticket>>({});
   const [activeQueueTab, setActiveQueueTab] = useState<SupplierQueueTab>("requires_reply");
   const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
   const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
   const [ticketMessagesByTicketId, setTicketMessagesByTicketId] = useState<
     Record<string, TicketMessage[]>
@@ -674,6 +675,20 @@ export default function SupplierPage() {
     selectedRequest
       ? supplierRequestCards.find((card) => card.request.id === selectedRequest.id) ?? null
       : null;
+  const supplierEmptyState =
+    activeQueueTab === "requires_reply" || activeQueueTab === "new"
+      ? {
+          imageSrc: "/icons/vhodyshie.png",
+          title: "Новые обращения",
+          description:
+            "Все новые сообщения и запросы, которые ещё ждут обработки, отображаются в этой вкладке.",
+        }
+      : {
+          imageSrc: "/icons/moi.png",
+          title: "Мои диалоги",
+          description:
+            "Все диалоги, в которых вы участвуете и уже обрабатываете, остаются под рукой в текущей вкладке.",
+        };
   const selectedClientLabel =
     selectedTicket?.clientId?.trim() ||
     selectedTicket?.title?.trim() ||
@@ -1151,12 +1166,17 @@ export default function SupplierPage() {
         return currentSelectedRequestId;
       }
 
+      if (isChatPaneDismissed) {
+        return "";
+      }
+
       return supplierRequestCards[0]?.request.id ?? "";
     });
-  }, [supplierRequestCards]);
+  }, [supplierRequestCards, isChatPaneDismissed]);
 
   useEffect(() => {
     if (deepLinkRequestId && supplierRequestCards.some((card) => card.request.id === deepLinkRequestId)) {
+      setIsChatPaneDismissed(false);
       setSelectedRequestId(deepLinkRequestId);
       return;
     }
@@ -1164,6 +1184,7 @@ export default function SupplierPage() {
     if (deepLinkTicketId) {
       const linkedRequest = supplierRequestCards.find((card) => card.request.ticketId === deepLinkTicketId);
       if (linkedRequest) {
+        setIsChatPaneDismissed(false);
         setSelectedRequestId(linkedRequest.request.id);
       }
     }
@@ -1740,7 +1761,10 @@ export default function SupplierPage() {
               activeTabRequests.map((card) => (
                 <button
                   key={card.request.id}
-                  onClick={() => setSelectedRequestId(card.request.id)}
+                  onClick={() => {
+                    setIsChatPaneDismissed(false);
+                    setSelectedRequestId(card.request.id);
+                  }}
                   className={`w-full rounded-[14px] border bg-white p-[14px] text-left transition ${
                     selectedRequestId === card.request.id
                       ? "border-[2px] border-[#0A84FF] shadow-[0_10px_24px_rgba(10,132,255,0.08)]"
@@ -1915,6 +1939,29 @@ export default function SupplierPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <button
+                        onClick={() => {
+                          setIsChatPaneDismissed(true);
+                          setSelectedRequestId("");
+                          setReplyTarget(null);
+                          setShowQuickReplies(false);
+                          setShowEmojiPicker(false);
+                          setReplyError("");
+                        }}
+                        onMouseEnter={() => setHoveredHeaderAction("close")}
+                        onMouseLeave={() => setHoveredHeaderAction(null)}
+                        className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E5E5EA] bg-white text-[#8E8E93] transition duration-200 hover:bg-[#F7F8FB] hover:text-[#1E1E1E]"
+                      >
+                        ✕
+                      </button>
+                      {hoveredHeaderAction === "close" ? (
+                        <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                          Закрыть
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="relative">
+                      <button
                         onClick={handleResolveTicket}
                         disabled={isResolvingTicket || selectedTicket?.status === "resolved"}
                         onMouseEnter={() => setHoveredHeaderAction("resolve")}
@@ -2061,10 +2108,10 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`max-w-[68%] min-w-[200px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
+                                  className={`max-w-[76%] min-w-[280px] rounded-[24px] px-4 py-3 text-base leading-6 shadow-sm transition sm:min-w-[320px] ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                      : "rounded-tl-[6px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                      : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
                                   <div className="space-y-1.5">
@@ -2080,7 +2127,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-2 flex w-full items-start gap-2 rounded-[14px] px-2 py-2 text-left transition ${
+                                        className={`mb-2 flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2101,7 +2148,7 @@ export default function SupplierPage() {
                                                 : "text-[#0A84FF]"
                                             }`}
                                           >
-                                            Ответ на сообщение
+                                            Ответ
                                           </p>
                                           <p
                                             className={`mt-0.5 line-clamp-2 break-words text-[13px] leading-5 ${
@@ -2548,8 +2595,25 @@ export default function SupplierPage() {
               </aside>
             </>
           ) : (
-            <div className="flex h-full flex-1 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-[#FBFCFD] p-10 text-center text-gray-500">
-              Выберите supplier request слева, чтобы увидеть его контекст.
+            <div className="flex min-h-0 flex-1 items-center justify-center px-10 py-10">
+              <div className="mx-auto flex max-w-[520px] flex-col items-center text-center">
+                <div className="relative h-[220px] w-[220px]">
+                  <Image
+                    src={supplierEmptyState.imageSrc}
+                    alt={supplierEmptyState.title}
+                    fill
+                    className="object-contain"
+                    sizes="220px"
+                    priority
+                  />
+                </div>
+                <h3 className="mt-6 text-[24px] font-semibold text-[#1E1E1E]">
+                  {supplierEmptyState.title}
+                </h3>
+                <p className="mt-3 max-w-[460px] text-[18px] leading-8 text-[#8E8E93]">
+                  {supplierEmptyState.description}
+                </p>
+              </div>
             </div>
           )}
         </section>

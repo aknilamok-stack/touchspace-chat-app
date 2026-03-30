@@ -3054,7 +3054,7 @@ export default function Home() {
                         </button>
 
                         <div
-                          className={`max-w-[72%] min-w-[185px] rounded-[22px] px-4 py-2.5 text-[15px] leading-6 shadow-sm transition sm:min-w-[220px] ${
+                          className={`w-fit max-w-[72%] rounded-[20px] px-3.5 py-2 text-[15px] leading-6 shadow-sm transition ${
                             message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
@@ -3082,7 +3082,7 @@ export default function Home() {
                                     message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                   )
                                 }
-                                className={`mb-1.5 flex w-full items-start gap-2.5 rounded-[14px] px-2.5 py-2 text-left transition ${
+                                className={`mb-1 flex w-full items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
                                   message.from === "manager"
                                     ? "hover:bg-white/10"
                                     : "hover:bg-[#F2F7FF]"
@@ -3104,7 +3104,7 @@ export default function Home() {
                                     Ответ
                                   </p>
                                   <p
-                                    className={`mt-0.5 line-clamp-2 break-words text-[13px] leading-5 ${
+                                    className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-[18px] ${
                                       message.from === "manager"
                                         ? "text-white/82"
                                         : "text-[#5A6270]"

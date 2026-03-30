@@ -29,6 +29,7 @@ const supplierId = defaultSupplierAccount.id;
 const supplierName = defaultSupplierAccount.name;
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
+const supplierReplyMapStorageKey = "touchspace_supplier_reply_map";
 const supplierStatusLabels: Record<ManagerPresence, string> = {
   online: "В сети",
   break: "На перерыве",
@@ -78,6 +79,10 @@ type TicketMessage = TicketMessageApi & {
   displayContent: string;
   attachment?: ChatAttachmentPayload | null;
   attachments?: ChatAttachmentPayload[];
+};
+type ReplyMeta = {
+  replyToId: string;
+  replyToContent: string;
 };
 
 type Ticket = {
@@ -176,6 +181,16 @@ const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
     attachment: attachments[0] ?? null,
     attachments,
   };
+};
+
+const getReplyPreviewContent = (message: TicketMessage) => {
+  if (message.attachments && message.attachments.length > 0) {
+    return message.attachments.length === 1
+      ? message.attachments[0].name
+      : `${message.attachments.length} файлов`;
+  }
+
+  return message.displayContent;
 };
 
 const supplierQueueTabs: Array<{
@@ -548,9 +563,16 @@ export default function SupplierPage() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState("");
+  const [isQuickReplyModalOpen, setIsQuickReplyModalOpen] = useState(false);
+  const [newQuickReplyText, setNewQuickReplyText] = useState("");
+  const [replyTarget, setReplyTarget] = useState<TicketMessage | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState("");
+  const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
+  const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -581,6 +603,8 @@ export default function SupplierPage() {
   const supplierIsNearBottomRef = useRef(true);
   const previousSelectedRequestIdRef = useRef("");
   const previousVisibleMessageCountRef = useRef(0);
+  const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const highlightedReplyTimeoutRef = useRef<number | null>(null);
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -702,9 +726,66 @@ export default function SupplierPage() {
       completed: 0,
     }
   );
-  const filteredQuickReplies = QUICK_REPLIES.filter((phrase) =>
+  const filteredQuickReplies = quickReplies.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
+
+  const readReplyMap = (ticketId: string) => {
+    if (typeof window === "undefined") {
+      return {} as Record<string, ReplyMeta>;
+    }
+
+    const rawValue = window.localStorage.getItem(supplierReplyMapStorageKey);
+
+    if (!rawValue) {
+      return {} as Record<string, ReplyMeta>;
+    }
+
+    try {
+      const parsed = JSON.parse(rawValue) as Record<string, Record<string, ReplyMeta>>;
+      return parsed[ticketId] ?? {};
+    } catch {
+      window.localStorage.removeItem(supplierReplyMapStorageKey);
+      return {} as Record<string, ReplyMeta>;
+    }
+  };
+
+  const writeReplyMap = (ticketId: string, nextReplyMap: Record<string, ReplyMeta>) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const rawValue = window.localStorage.getItem(supplierReplyMapStorageKey);
+    const parsed = rawValue
+      ? (JSON.parse(rawValue) as Record<string, Record<string, ReplyMeta>>)
+      : {};
+
+    parsed[ticketId] = nextReplyMap;
+    window.localStorage.setItem(supplierReplyMapStorageKey, JSON.stringify(parsed));
+  };
+
+  const focusReplyMessage = (messageId: string) => {
+    const element = messageElementsRef.current[messageId];
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    setHighlightedReplyMessageId(messageId);
+
+    if (highlightedReplyTimeoutRef.current) {
+      window.clearTimeout(highlightedReplyTimeoutRef.current);
+    }
+
+    highlightedReplyTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedReplyMessageId("");
+    }, 1800);
+  };
 
   const scrollSupplierChatToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -987,6 +1068,27 @@ export default function SupplierPage() {
     setAttachmentName("");
     setSelectedFiles([]);
   }, [selectedRequestId]);
+
+  useEffect(() => {
+    if (!selectedRequest?.ticketId) {
+      setReplyMap({});
+      setReplyTarget(null);
+      return;
+    }
+
+    setReplyMap(readReplyMap(selectedRequest.ticketId));
+    setReplyTarget(null);
+    setHoveredMessageId("");
+    setHighlightedReplyMessageId("");
+  }, [selectedRequest?.ticketId]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightedReplyTimeoutRef.current) {
+        window.clearTimeout(highlightedReplyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!authReady) {
@@ -1350,6 +1452,8 @@ export default function SupplierPage() {
     setReplyError("");
 
     try {
+      const createdMessages: TicketMessage[] = [];
+
       if (hasTextToSend) {
         const response = await fetch(apiUrl("/messages"), {
           method: "POST",
@@ -1368,6 +1472,9 @@ export default function SupplierPage() {
         if (!response.ok) {
           throw new Error("Не удалось отправить ответ поставщика");
         }
+
+        const createdMessage = (await response.json()) as TicketMessageApi;
+        createdMessages.push(formatTicketMessage(createdMessage));
       }
 
       if (selectedFiles.length > 0) {
@@ -1388,6 +1495,23 @@ export default function SupplierPage() {
         if (!attachmentResponse.ok) {
           throw new Error("Не удалось отправить вложение");
         }
+
+        const createdAttachmentMessage = (await attachmentResponse.json()) as TicketMessageApi;
+        createdMessages.push(formatTicketMessage(createdAttachmentMessage));
+      }
+
+      if (replyTarget && createdMessages.length > 0) {
+        const nextReplyMap = {
+          ...replyMap,
+          [createdMessages[0].id]: {
+            replyToId: replyTarget.id,
+            replyToContent: getReplyPreviewContent(replyTarget),
+          },
+        };
+
+        setReplyMap(nextReplyMap);
+        writeReplyMap(selectedRequest.ticketId, nextReplyMap);
+        setReplyTarget(null);
       }
 
       const data = await fetchTicketMessages(selectedRequest.ticketId);
@@ -1403,6 +1527,7 @@ export default function SupplierPage() {
       setReplyText("");
       setAttachmentName("");
       setSelectedFiles([]);
+      setHoveredMessageId("");
       requestAnimationFrame(() => {
         scrollSupplierChatToBottom("smooth");
       });
@@ -1419,15 +1544,32 @@ export default function SupplierPage() {
   };
 
   const handleAddQuickReply = () => {
-    const nextPhrase = window.prompt("Введите новую быструю фразу");
+    setShowQuickReplies(false);
+    setShowEmojiPicker(false);
+    setNewQuickReplyText("");
+    setIsQuickReplyModalOpen(true);
+  };
 
-    if (!nextPhrase?.trim()) {
+  const handleSaveQuickReply = () => {
+    const normalizedPhrase = newQuickReplyText.trim();
+
+    if (!normalizedPhrase) {
       return;
     }
 
-    setReplyText(nextPhrase.trim());
+    setQuickReplies((currentReplies) => {
+      const withoutDuplicate = currentReplies.filter(
+        (phrase) => phrase.toLowerCase() !== normalizedPhrase.toLowerCase()
+      );
+
+      return [normalizedPhrase, ...withoutDuplicate];
+    });
+
+    setReplyText(normalizedPhrase);
     setShowQuickReplies(false);
     setQuickReplySearch("");
+    setNewQuickReplyText("");
+    setIsQuickReplyModalOpen(false);
   };
 
   if (!authReady) {
@@ -1835,7 +1977,17 @@ export default function SupplierPage() {
                             getMessageDayKey(message.createdAt);
 
                         return (
-                          <div key={message.id}>
+                          <div
+                            key={message.id}
+                            ref={(element) => {
+                              messageElementsRef.current[message.id] = element;
+                            }}
+                            className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
+                              highlightedReplyMessageId === message.id
+                                ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                                : "bg-transparent shadow-none"
+                            }`}
+                          >
                             {shouldShowDateSeparator && (
                               <div className="flex justify-center py-1">
                                 <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
@@ -1852,44 +2004,107 @@ export default function SupplierPage() {
                               }`}
                             >
                               <div
-                                className={`max-w-[46%] min-w-[112px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
-                                  message.senderType === "supplier"
-                                    ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                    : "bg-[#EFEFF4] text-[#1E1E1E]"
+                                className={`group flex items-center gap-2 ${
+                                  message.senderType === "supplier" ? "flex-row-reverse" : ""
                                 }`}
+                                onMouseEnter={() => setHoveredMessageId(message.id)}
+                                onMouseLeave={() => setHoveredMessageId("")}
                               >
-                                <div className="space-y-1.5">
-                                  <p className="mb-1 text-xs opacity-60">
-                                    {message.senderType === "client" && "Клиент"}
-                                    {message.senderType === "supplier" && "Поставщик"}
-                                  </p>
-                                  {message.attachments && message.attachments.length > 0 ? (
-                                    <ChatAttachmentList
-                                      attachments={message.attachments}
-                                      tone={
-                                        message.senderType === "supplier"
-                                          ? "outgoing"
-                                          : "incoming"
-                                      }
-                                    />
-                                  ) : (
-                                    <p className="break-words">{message.displayContent}</p>
-                                  )}
-                                  <div
-                                    className={`flex items-center gap-3 text-[10px] ${
-                                      message.senderType === "supplier"
-                                        ? "justify-between text-white/65"
-                                        : "justify-end text-[#8E8E93]"
-                                    }`}
+                                <button
+                                  onClick={() => {
+                                    setReplyTarget(message);
+                                    composerTextareaRef.current?.focus();
+                                  }}
+                                  className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
+                                    hoveredMessageId === message.id
+                                      ? "opacity-100"
+                                      : "pointer-events-none opacity-0"
+                                  } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
+                                  aria-label="Ответить"
+                                >
+                                  <svg
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
                                   >
-                                    {message.senderType === "supplier" ? (
-                                      <p className="min-w-0 truncate text-left">
-                                        {getMessageStatusLabel(message.status)}
-                                      </p>
-                                    ) : null}
-                                    <p className="shrink-0">
-                                      {new Date(message.createdAt).toLocaleTimeString()}
+                                    <path
+                                      d="M8.25 5.5L4.5 9.25L8.25 13"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                    <path
+                                      d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                  {hoveredMessageId === message.id ? (
+                                    <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                                      Ответить
+                                    </span>
+                                  ) : null}
+                                </button>
+
+                                <div
+                                  className={`max-w-[46%] min-w-[112px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
+                                    message.senderType === "supplier"
+                                      ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                      : "bg-[#EFEFF4] text-[#1E1E1E]"
+                                  }`}
+                                >
+                                  <div className="space-y-1.5">
+                                    <p className="mb-1 text-xs opacity-60">
+                                      {message.senderType === "client" && "Клиент"}
+                                      {message.senderType === "supplier" && "Поставщик"}
                                     </p>
+                                    {replyMap[message.id] ? (
+                                      <div
+                                        onClick={() => focusReplyMessage(replyMap[message.id].replyToId)}
+                                        className={`rounded-[14px] border px-3 py-2 text-xs ${
+                                          message.senderType === "supplier"
+                                            ? "border-white/20 bg-white/10 text-white/80"
+                                            : "border-[#E3E7EF] bg-[#F7F8FB] text-[#6C6C70]"
+                                        } cursor-pointer transition hover:-translate-y-0.5 hover:border-[#BFD7FF]`}
+                                      >
+                                        <p className="font-medium">Ответ на сообщение</p>
+                                        <p className="mt-1 line-clamp-2">
+                                          {replyMap[message.id].replyToContent}
+                                        </p>
+                                      </div>
+                                    ) : null}
+                                    {message.attachments && message.attachments.length > 0 ? (
+                                      <ChatAttachmentList
+                                        attachments={message.attachments}
+                                        tone={
+                                          message.senderType === "supplier"
+                                            ? "outgoing"
+                                            : "incoming"
+                                        }
+                                      />
+                                    ) : (
+                                      <p className="break-words">{message.displayContent}</p>
+                                    )}
+                                    <div
+                                      className={`flex items-center gap-3 text-[10px] ${
+                                        message.senderType === "supplier"
+                                          ? "justify-between text-white/65"
+                                          : "justify-end text-[#8E8E93]"
+                                      }`}
+                                    >
+                                      {message.senderType === "supplier" ? (
+                                        <p className="min-w-0 truncate text-left">
+                                          {getMessageStatusLabel(message.status)}
+                                        </p>
+                                      ) : null}
+                                      <p className="shrink-0">
+                                        {new Date(message.createdAt).toLocaleTimeString()}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -1950,6 +2165,27 @@ export default function SupplierPage() {
                             ×
                           </button>
                         </div>
+                      </div>
+                    ) : null}
+
+                    {replyTarget ? (
+                      <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => focusReplyMessage(replyTarget.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="text-xs font-semibold text-[#0A84FF]">Ответ на сообщение</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-[#5A6270]">
+                            {getReplyPreviewContent(replyTarget)}
+                          </p>
+                        </button>
+                        <button
+                          onClick={() => setReplyTarget(null)}
+                          className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                        >
+                          ×
+                        </button>
                       </div>
                     ) : null}
 
@@ -2431,6 +2667,70 @@ export default function SupplierPage() {
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
               >
                 {isTransferringDialog ? "Передаём..." : "Передать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isQuickReplyModalOpen ? (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-[rgba(15,23,42,0.14)] p-6">
+          <div className="w-full max-w-[520px] rounded-[30px] border border-[#E7E8EE] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                  Быстрые фразы
+                </p>
+                <h3 className="mt-2 text-[22px] font-semibold text-[#1E1E1E]">
+                  Новая фраза
+                </h3>
+                <p className="mt-1 text-sm text-[#8E8E93]">
+                  Добавьте шаблон ответа, чтобы быстрее отвечать в похожих ситуациях.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsQuickReplyModalOpen(false);
+                  setNewQuickReplyText("");
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F2F4F7] text-lg text-[#6C6C70] transition hover:bg-[#E8ECF3] hover:text-[#1E1E1E]"
+              >
+                ×
+              </button>
+            </div>
+
+            <textarea
+              value={newQuickReplyText}
+              onChange={(event) => setNewQuickReplyText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSaveQuickReply();
+                }
+              }}
+              rows={4}
+              className="mt-5 min-h-[132px] w-full resize-none rounded-[24px] border border-[#D9E1EC] bg-[#FBFCFE] px-4 py-3 text-[15px] leading-6 text-[#1E1E1E] outline-none transition focus:border-[#0A84FF] focus:bg-white"
+              placeholder="Например: Проверяю наличие и вернусь к вам через несколько минут."
+              autoFocus
+            />
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsQuickReplyModalOpen(false);
+                  setNewQuickReplyText("");
+                }}
+                className="rounded-[18px] border border-[#D7DCE5] bg-white px-5 py-3 text-sm font-medium text-[#6C6C70] transition hover:border-[#C8D0DC] hover:text-[#1E1E1E]"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveQuickReply}
+                disabled={!newQuickReplyText.trim()}
+                className="rounded-[18px] bg-[#0A84FF] px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(10,132,255,0.22)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                Добавить фразу
               </button>
             </div>
           </div>

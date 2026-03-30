@@ -29,8 +29,13 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
   "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
 };
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
+const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
+type ReplyMeta = {
+  replyToId: string;
+  replyToContent: string;
+};
 
 type ApiMessage = {
   id: string;
@@ -113,6 +118,8 @@ type ChatSupplierRequest = {
   responseTime: number | null;
   responseBreached: boolean;
 };
+
+type SupplierRequestPeriodFilter = "today" | "yesterday" | "week" | "month" | "all";
 
 type ChatItem = {
   id: string;
@@ -478,6 +485,16 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
   };
 };
 
+const getReplyPreviewContent = (message: ChatMessage) => {
+  if (message.attachments && message.attachments.length > 0) {
+    return message.attachments.length === 1
+      ? message.attachments[0].name
+      : `${message.attachments.length} файлов`;
+  }
+
+  return message.text;
+};
+
 const getMessageDayKey = (createdAt: string) => {
   const date = new Date(createdAt);
   const year = date.getFullYear();
@@ -564,6 +581,50 @@ const formatRelativeClaimTime = (value?: string | null) => {
   return `${days} дн назад`;
 };
 
+const matchesSupplierRequestPeriod = (
+  createdAt: string,
+  filter: SupplierRequestPeriodFilter
+) => {
+  if (filter === "all") {
+    return true;
+  }
+
+  const createdDate = new Date(createdAt);
+
+  if (Number.isNaN(createdDate.getTime())) {
+    return false;
+  }
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfWeek.getDate() - 6);
+  const startOfMonth = new Date(startOfToday);
+  startOfMonth.setMonth(startOfMonth.getMonth() - 1);
+
+  if (filter === "today") {
+    return createdDate >= startOfToday && createdDate < startOfTomorrow;
+  }
+
+  if (filter === "yesterday") {
+    return createdDate >= startOfYesterday && createdDate < startOfToday;
+  }
+
+  if (filter === "week") {
+    return createdDate >= startOfWeek;
+  }
+
+  if (filter === "month") {
+    return createdDate >= startOfMonth;
+  }
+
+  return true;
+};
+
 const formatTicket = (ticket: ApiTicket): ChatItem => ({
   id: ticket.id,
   title: ticket.title,
@@ -604,12 +665,21 @@ export default function Home() {
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [activeChatId, setActiveChatId] = useState("");
   const [messageText, setMessageText] = useState("");
+  const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState("");
+  const [isQuickReplyModalOpen, setIsQuickReplyModalOpen] = useState(false);
+  const [newQuickReplyText, setNewQuickReplyText] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [supplierRequestSupplierFilter, setSupplierRequestSupplierFilter] =
+    useState<string>("all");
+  const [supplierRequestStatusFilter, setSupplierRequestStatusFilter] =
+    useState<string>("all");
+  const [supplierRequestPeriodFilter, setSupplierRequestPeriodFilter] =
+    useState<SupplierRequestPeriodFilter>("all");
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
@@ -643,6 +713,10 @@ export default function Home() {
     ticketId: string;
     until: number;
   } | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState("");
+  const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
+  const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState("");
   const [isClientTyping, setIsClientTyping] = useState(false);
   const [clientTypingPreview, setClientTypingPreview] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
@@ -656,6 +730,8 @@ export default function Home() {
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
@@ -674,7 +750,7 @@ export default function Home() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
-  const filteredQuickReplies = QUICK_REPLIES.filter((phrase) =>
+  const filteredQuickReplies = quickReplies.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
 
@@ -753,6 +829,63 @@ export default function Home() {
     } catch (error) {
       console.error("Не удалось воспроизвести звук уведомления:", error);
     }
+  };
+
+  const readReplyMap = (ticketId: string) => {
+    if (typeof window === "undefined") {
+      return {} as Record<string, ReplyMeta>;
+    }
+
+    const rawValue = window.localStorage.getItem(managerReplyMapStorageKey);
+
+    if (!rawValue) {
+      return {} as Record<string, ReplyMeta>;
+    }
+
+    try {
+      const parsed = JSON.parse(rawValue) as Record<string, Record<string, ReplyMeta>>;
+      return parsed[ticketId] ?? {};
+    } catch {
+      window.localStorage.removeItem(managerReplyMapStorageKey);
+      return {} as Record<string, ReplyMeta>;
+    }
+  };
+
+  const writeReplyMap = (ticketId: string, nextReplyMap: Record<string, ReplyMeta>) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const rawValue = window.localStorage.getItem(managerReplyMapStorageKey);
+    const parsed = rawValue
+      ? (JSON.parse(rawValue) as Record<string, Record<string, ReplyMeta>>)
+      : {};
+
+    parsed[ticketId] = nextReplyMap;
+    window.localStorage.setItem(managerReplyMapStorageKey, JSON.stringify(parsed));
+  };
+
+  const focusReplyMessage = (messageId: string) => {
+    const element = messageElementsRef.current[messageId];
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    setHighlightedReplyMessageId(messageId);
+
+    if (highlightedReplyTimeoutRef.current) {
+      window.clearTimeout(highlightedReplyTimeoutRef.current);
+    }
+
+    highlightedReplyTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedReplyMessageId("");
+    }, 1800);
   };
 
   useEffect(() => {
@@ -1076,6 +1209,26 @@ export default function Home() {
     return isChatMine(chat) && !chat.aiEnabled;
   }).length;
   const onlineManagers = availableManagers.filter((manager) => manager.status === "online");
+  const availableSupplierRequestSuppliers = Array.from(
+    new Set((activeChat?.supplierRequests ?? []).map((request) => request.supplierName))
+  );
+  const availableSupplierRequestStatuses = Array.from(
+    new Set((activeChat?.supplierRequests ?? []).map((request) => request.status))
+  );
+  const filteredSupplierRequests = (activeChat?.supplierRequests ?? []).filter((request) => {
+    const matchesSupplier =
+      supplierRequestSupplierFilter === "all" ||
+      request.supplierName === supplierRequestSupplierFilter;
+    const matchesStatus =
+      supplierRequestStatusFilter === "all" ||
+      request.status === supplierRequestStatusFilter;
+    const matchesPeriod = matchesSupplierRequestPeriod(
+      request.createdAtRaw,
+      supplierRequestPeriodFilter
+    );
+
+    return matchesSupplier && matchesStatus && matchesPeriod;
+  });
 
   const scrollManagerChatToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -1586,6 +1739,33 @@ export default function Home() {
     setSelectedFiles([]);
   }, [activeChatId]);
 
+  useEffect(() => {
+    if (!activeChatId) {
+      setReplyMap({});
+      setReplyTarget(null);
+      return;
+    }
+
+    setReplyMap(readReplyMap(activeChatId));
+    setReplyTarget(null);
+    setHoveredMessageId("");
+    setHighlightedReplyMessageId("");
+  }, [activeChatId]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightedReplyTimeoutRef.current) {
+        window.clearTimeout(highlightedReplyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setSupplierRequestSupplierFilter("all");
+    setSupplierRequestStatusFilter("all");
+    setSupplierRequestPeriodFilter("all");
+  }, [activeChatId]);
+
   const handleSendMessage = async () => {
     const hasTextToSend = Boolean(messageText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
@@ -1684,6 +1864,20 @@ export default function Home() {
       }
 
       if (createdMessages.length > 0) {
+        if (replyTarget) {
+          const nextReplyMap = {
+            ...replyMap,
+            [createdMessages[0].id]: {
+              replyToId: replyTarget.id,
+              replyToContent: getReplyPreviewContent(replyTarget),
+            },
+          };
+
+          setReplyMap(nextReplyMap);
+          writeReplyMap(activeChatId, nextReplyMap);
+          setReplyTarget(null);
+        }
+
         setChatData((prevChats) =>
           prevChats.map((chat) =>
             chat.id === activeChatId
@@ -1708,6 +1902,7 @@ export default function Home() {
       setMessageText("");
       setAttachmentName("");
       setSelectedFiles([]);
+      setHoveredMessageId("");
       lastTypingSentAtRef.current = 0;
       requestAnimationFrame(() => {
         scrollManagerChatToBottom("smooth");
@@ -1785,13 +1980,29 @@ export default function Home() {
   };
 
   const handleAddQuickReply = () => {
-    const phrase = window.prompt("Новая быстрая фраза");
+    setShowQuickReplies(false);
+    setShowEmojiPicker(false);
+    setNewQuickReplyText("");
+    setIsQuickReplyModalOpen(true);
+  };
 
-    if (!phrase?.trim()) {
+  const handleSaveQuickReply = () => {
+    const normalizedPhrase = newQuickReplyText.trim();
+
+    if (!normalizedPhrase) {
       return;
     }
 
-    setMessageText(phrase.trim());
+    setQuickReplies((currentReplies) => {
+      const withoutDuplicate = currentReplies.filter(
+        (phrase) => phrase.toLowerCase() !== normalizedPhrase.toLowerCase()
+      );
+      return [normalizedPhrase, ...withoutDuplicate];
+    });
+    setMessageText(normalizedPhrase);
+    setQuickReplySearch("");
+    setNewQuickReplyText("");
+    setIsQuickReplyModalOpen(false);
     setShowQuickReplies(false);
   };
 
@@ -2414,9 +2625,11 @@ export default function Home() {
                       {getChatPreview(chat)}
                     </p>
 
-                    <div className="mt-3 flex items-center justify-between">
+                    <div className="mt-3 flex items-center">
                       <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${chatTone.pill}`}>
+                        <span
+                          className={`inline-flex min-h-8 items-center justify-center rounded-full px-3 py-1.5 text-center text-xs font-medium leading-4 ${chatTone.pill}`}
+                        >
                           {isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
                         </span>
                         {isIncomingQueueChat ? (
@@ -2434,13 +2647,6 @@ export default function Home() {
                           </button>
                         ) : null}
                       </div>
-                      <span className="text-xs text-[#8E8E93]">
-                        {chat.rawStatus === "resolved"
-                          ? "Решён"
-                          : isIncomingQueueChat
-                            ? "В общей очереди"
-                            : chat.status}
-                      </span>
                     </div>
                   </button>
                 );
@@ -2668,7 +2874,17 @@ export default function Home() {
                   getMessageDayKey(message.createdAt);
 
               return (
-                <div key={message.id}>
+                <div
+                  key={message.id}
+                  ref={(element) => {
+                    messageElementsRef.current[message.id] = element;
+                  }}
+                  className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
+                    highlightedReplyMessageId === message.id
+                      ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                      : "bg-transparent shadow-none"
+                  }`}
+                >
                   {shouldShowDateSeparator && (
                     <div className="flex justify-center py-1">
                       <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
@@ -2702,49 +2918,112 @@ export default function Home() {
                       }`}
                     >
                       <div
-                        className={`max-w-[46%] min-w-[112px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
-                          message.from === "manager"
-                            ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                            : message.from === "ai"
-                              ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
-                            : message.from === "client"
-                              ? "bg-[#EFEFF4] text-[#1E1E1E]"
-                              : message.from === "supplier"
-                                ? "bg-[#EAF8EF] text-[#166534]"
-                                : "bg-[#EFEFF4] text-[#1E1E1E]"
+                        className={`group flex items-center gap-2 ${
+                          message.from === "manager" ? "flex-row-reverse" : ""
                         }`}
+                        onMouseEnter={() => setHoveredMessageId(message.id)}
+                        onMouseLeave={() => setHoveredMessageId("")}
                       >
-                        <div className="space-y-1.5">
-                          <p className="mb-1 text-xs opacity-60">
-                            {message.from === "client" && "Клиент"}
-                            {message.from === "manager" && "Менеджер"}
-                            {message.from === "ai" && "AI-помощник"}
-                            {message.from === "supplier" &&
-                              `Поставщик: ${message.senderName || "Поставщик"}`}
-                          </p>
-                          {message.attachments && message.attachments.length > 0 ? (
-                            <ChatAttachmentList
-                              attachments={message.attachments}
-                              tone={message.from === "manager" ? "outgoing" : "incoming"}
-                            />
-                          ) : (
-                            <p className="break-words">{message.text}</p>
-                          )}
-                          <div
-                            className={`flex items-center gap-3 text-[10px] ${
-                              message.from === "manager"
-                                ? "justify-between text-white/65"
-                                : message.from === "ai"
-                                  ? "justify-end text-[#4C6A92]"
-                                : "justify-end text-[#8E8E93]"
-                            }`}
+                        <button
+                          onClick={() => {
+                            setReplyTarget(message);
+                            composerTextareaRef.current?.focus();
+                          }}
+                          className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
+                            hoveredMessageId === message.id
+                              ? "opacity-100"
+                              : "pointer-events-none opacity-0"
+                          } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
+                          aria-label="Ответить"
+                        >
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            className="h-4 w-4"
+                            aria-hidden="true"
                           >
-                            {message.from === "manager" ? (
-                              <p className="min-w-0 truncate text-left">
-                                {getMessageStatusLabel(message.status)}
-                              </p>
+                            <path
+                              d="M8.25 5.5L4.5 9.25L8.25 13"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          {hoveredMessageId === message.id ? (
+                            <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                              Ответить
+                            </span>
+                          ) : null}
+                        </button>
+
+                        <div
+                          className={`max-w-[46%] min-w-[112px] rounded-[20px] px-4 py-3 text-base leading-6 shadow-sm transition ${
+                            message.from === "manager"
+                              ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                              : message.from === "ai"
+                                ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
+                              : message.from === "client"
+                                ? "bg-[#EFEFF4] text-[#1E1E1E]"
+                                : message.from === "supplier"
+                                  ? "bg-[#EAF8EF] text-[#166534]"
+                                  : "bg-[#EFEFF4] text-[#1E1E1E]"
+                          }`}
+                        >
+                          <div className="space-y-1.5">
+                            <p className="mb-1 text-xs opacity-60">
+                              {message.from === "client" && "Клиент"}
+                              {message.from === "manager" && "Менеджер"}
+                              {message.from === "ai" && "AI-помощник"}
+                              {message.from === "supplier" &&
+                                `Поставщик: ${message.senderName || "Поставщик"}`}
+                            </p>
+                            {replyMap[message.id] ? (
+                              <div
+                                onClick={() => focusReplyMessage(replyMap[message.id].replyToId)}
+                                className={`rounded-[14px] border px-3 py-2 text-xs ${
+                                  message.from === "manager"
+                                    ? "border-white/20 bg-white/10 text-white/80"
+                                    : "border-[#E3E7EF] bg-[#F7F8FB] text-[#6C6C70]"
+                                } cursor-pointer transition hover:-translate-y-0.5 hover:border-[#BFD7FF]`}
+                              >
+                                <p className="font-medium">Ответ на сообщение</p>
+                                <p className="mt-1 line-clamp-2">
+                                  {replyMap[message.id].replyToContent}
+                                </p>
+                              </div>
                             ) : null}
-                            {message.time ? <p className="shrink-0">{message.time}</p> : null}
+                            {message.attachments && message.attachments.length > 0 ? (
+                              <ChatAttachmentList
+                                attachments={message.attachments}
+                                tone={message.from === "manager" ? "outgoing" : "incoming"}
+                              />
+                            ) : (
+                              <p className="break-words">{message.text}</p>
+                            )}
+                            <div
+                              className={`flex items-center gap-3 text-[10px] ${
+                                message.from === "manager"
+                                  ? "justify-between text-white/65"
+                                  : message.from === "ai"
+                                    ? "justify-end text-[#4C6A92]"
+                                    : "justify-end text-[#8E8E93]"
+                              }`}
+                            >
+                              {message.from === "manager" ? (
+                                <p className="min-w-0 truncate text-left">
+                                  {getMessageStatusLabel(message.status)}
+                                </p>
+                              ) : null}
+                              {message.time ? <p className="shrink-0">{message.time}</p> : null}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2840,6 +3119,27 @@ export default function Home() {
                       ×
                     </button>
                   </div>
+                </div>
+              ) : null}
+
+              {replyTarget ? (
+                <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => focusReplyMessage(replyTarget.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="text-xs font-semibold text-[#0A84FF]">Ответ на сообщение</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-[#5A6270]">
+                      {getReplyPreviewContent(replyTarget)}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => setReplyTarget(null)}
+                    className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                  >
+                    ×
+                  </button>
                 </div>
               ) : null}
 
@@ -3225,11 +3525,124 @@ export default function Home() {
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-semibold text-[#1E1E1E]">Запросы поставщикам</p>
               <span className="text-xs text-[#8E8E93]">
-                {activeChat?.supplierRequests.length || 0}
+                {filteredSupplierRequests.length}
               </span>
             </div>
 
-            <div className="space-y-4">
+            {(availableSupplierRequestSuppliers.length > 0 ||
+              availableSupplierRequestStatuses.length > 0) && (
+              <div className="mb-4 space-y-3">
+                {availableSupplierRequestSuppliers.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Поставщик
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSupplierRequestSupplierFilter("all")}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          supplierRequestSupplierFilter === "all"
+                            ? "bg-[#0A84FF] text-white"
+                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                        }`}
+                      >
+                        Все
+                      </button>
+                      {availableSupplierRequestSuppliers.map((supplierName) => (
+                        <button
+                          key={supplierName}
+                          type="button"
+                          onClick={() => setSupplierRequestSupplierFilter(supplierName)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                            supplierRequestSupplierFilter === supplierName
+                              ? "bg-[#0A84FF] text-white"
+                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                          }`}
+                        >
+                          {supplierName}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {availableSupplierRequestStatuses.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Статус
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSupplierRequestStatusFilter("all")}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          supplierRequestStatusFilter === "all"
+                            ? "bg-[#111827] text-white"
+                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                        }`}
+                      >
+                        Все
+                      </button>
+                      {availableSupplierRequestStatuses.map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setSupplierRequestStatusFilter(status)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                            supplierRequestStatusFilter === status
+                              ? "bg-[#111827] text-white"
+                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                          }`}
+                        >
+                          {getStatusLabel(status)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Период
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ["today", "Сегодня"],
+                      ["yesterday", "Вчера"],
+                      ["week", "За неделю"],
+                      ["month", "За месяц"],
+                      ["all", "Все"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setSupplierRequestPeriodFilter(
+                            value as SupplierRequestPeriodFilter
+                          )
+                        }
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          supplierRequestPeriodFilter === value
+                            ? "bg-[#34C759] text-white"
+                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={`space-y-4 ${
+                filteredSupplierRequests.length > 3
+                  ? "max-h-[420px] overflow-y-auto pr-1"
+                  : ""
+              }`}
+            >
               {isLoadingSupplierRequests && (
                 <p className="text-sm text-gray-500">Загружаем запросы...</p>
               )}
@@ -3238,8 +3651,8 @@ export default function Home() {
                 <p className="text-sm text-red-500">{supplierRequestsError}</p>
               )}
 
-              {activeChat?.supplierRequests.length ? (
-                activeChat.supplierRequests.map((request) => (
+              {filteredSupplierRequests.length ? (
+                filteredSupplierRequests.map((request) => (
                   <div
                     key={request.id}
                     className="space-y-3 rounded-[20px] border border-[#ECECF1] bg-[#FCFCFD] p-3"
@@ -3267,7 +3680,9 @@ export default function Home() {
                 ))
               ) : !isLoadingSupplierRequests && !supplierRequestsError ? (
                 <p className="text-sm text-gray-500">
-                  Пока нет запросов поставщикам
+                  {(activeChat?.supplierRequests.length ?? 0) > 0
+                    ? "По выбранным фильтрам запросов не найдено"
+                    : "Пока нет запросов поставщикам"}
                 </p>
               ) : null}
             </div>
@@ -3425,6 +3840,70 @@ export default function Home() {
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
               >
                 {isTransferringDialog ? "Передаём..." : "Передать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isQuickReplyModalOpen && (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-[rgba(15,23,42,0.14)] p-6">
+          <div className="w-full max-w-[520px] rounded-[30px] border border-[#E7E8EE] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                  Быстрые фразы
+                </p>
+                <h3 className="mt-2 text-[22px] font-semibold text-[#1E1E1E]">
+                  Новая фраза
+                </h3>
+                <p className="mt-1 text-sm text-[#8E8E93]">
+                  Добавьте свою заготовку, чтобы потом вставлять её в один клик.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsQuickReplyModalOpen(false);
+                  setNewQuickReplyText("");
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F2F4F7] text-lg text-[#6C6C70] transition hover:bg-[#E8ECF3] hover:text-[#1E1E1E]"
+              >
+                ×
+              </button>
+            </div>
+
+            <textarea
+              value={newQuickReplyText}
+              onChange={(event) => setNewQuickReplyText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSaveQuickReply();
+                }
+              }}
+              rows={4}
+              className="mt-5 min-h-[132px] w-full resize-none rounded-[24px] border border-[#D9E1EC] bg-[#FBFCFE] px-4 py-3 text-[15px] leading-6 text-[#1E1E1E] outline-none transition focus:border-[#0A84FF] focus:bg-white"
+              placeholder="Например: Уточняю информацию и вернусь к вам через несколько минут."
+              autoFocus
+            />
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsQuickReplyModalOpen(false);
+                  setNewQuickReplyText("");
+                }}
+                className="rounded-[18px] border border-[#D7DCE5] bg-white px-5 py-3 text-sm font-medium text-[#6C6C70] transition hover:border-[#C8D0DC] hover:text-[#1E1E1E]"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveQuickReply}
+                disabled={!newQuickReplyText.trim()}
+                className="rounded-[18px] bg-[#0A84FF] px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(10,132,255,0.22)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                Добавить фразу
               </button>
             </div>
           </div>

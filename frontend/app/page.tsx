@@ -641,6 +641,7 @@ export default function Home() {
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
   const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1073,6 +1074,7 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior });
     managerIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
+    setPendingClientMessageCount(0);
   };
 
   const updateManagerScrollState = useCallback(() => {
@@ -1090,6 +1092,7 @@ export default function Home() {
 
     if (isNearBottom) {
       setShowScrollToLatest(false);
+      setPendingClientMessageCount(0);
     }
   }, []);
 
@@ -1332,6 +1335,7 @@ export default function Home() {
       previousActiveChatIdRef.current = currentChatId;
       previousActiveChatMessageCountRef.current = currentMessageCount;
       setShowScrollToLatest(false);
+      setPendingClientMessageCount(0);
 
       if (currentChatId) {
         requestAnimationFrame(() => {
@@ -1342,10 +1346,15 @@ export default function Home() {
       return;
     }
 
-    if (currentMessageCount <= previousActiveChatMessageCountRef.current) {
+    const previousMessageCount = previousActiveChatMessageCountRef.current;
+
+    if (currentMessageCount <= previousMessageCount) {
       previousActiveChatMessageCountRef.current = currentMessageCount;
       return;
     }
+
+    const newlyArrivedMessages =
+      activeChat?.messages.slice(previousMessageCount, currentMessageCount) ?? [];
 
     previousActiveChatMessageCountRef.current = currentMessageCount;
 
@@ -1356,7 +1365,14 @@ export default function Home() {
       return;
     }
 
-    setShowScrollToLatest(true);
+    const newClientMessagesCount = newlyArrivedMessages.filter(
+      (message) => message.from === "client"
+    ).length;
+
+    if (newClientMessagesCount > 0) {
+      setPendingClientMessageCount((current) => current + newClientMessagesCount);
+      setShowScrollToLatest(true);
+    }
   }, [activeChatId, activeChat?.messages.length]);
 
   useEffect(() => {
@@ -2759,7 +2775,9 @@ export default function Home() {
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
                   ↓
                 </span>
-                Новое сообщение
+                {pendingClientMessageCount > 1
+                  ? `${pendingClientMessageCount} новых сообщений`
+                  : "Новое сообщение"}
               </button>
             </div>
           ) : null}

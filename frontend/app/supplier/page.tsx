@@ -566,6 +566,7 @@ export default function SupplierPage() {
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const supplierMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -704,6 +705,7 @@ export default function SupplierPage() {
     messagesEndRef.current?.scrollIntoView({ behavior });
     supplierIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
+    setPendingClientMessageCount(0);
   };
 
   const updateSupplierScrollState = () => {
@@ -721,6 +723,7 @@ export default function SupplierPage() {
 
     if (isNearBottom) {
       setShowScrollToLatest(false);
+      setPendingClientMessageCount(0);
     }
   };
 
@@ -1064,6 +1067,7 @@ export default function SupplierPage() {
       previousSelectedRequestIdRef.current = currentRequestId;
       previousVisibleMessageCountRef.current = currentMessageCount;
       setShowScrollToLatest(false);
+      setPendingClientMessageCount(0);
 
       if (currentRequestId) {
         requestAnimationFrame(() => {
@@ -1074,10 +1078,17 @@ export default function SupplierPage() {
       return;
     }
 
-    if (currentMessageCount <= previousVisibleMessageCountRef.current) {
+    const previousMessageCount = previousVisibleMessageCountRef.current;
+
+    if (currentMessageCount <= previousMessageCount) {
       previousVisibleMessageCountRef.current = currentMessageCount;
       return;
     }
+
+    const newlyArrivedMessages = visibleSupplierMessages.slice(
+      previousMessageCount,
+      currentMessageCount
+    );
 
     previousVisibleMessageCountRef.current = currentMessageCount;
 
@@ -1088,7 +1099,14 @@ export default function SupplierPage() {
       return;
     }
 
-    setShowScrollToLatest(true);
+    const newClientMessagesCount = newlyArrivedMessages.filter(
+      (message) => message.senderType === "client"
+    ).length;
+
+    if (newClientMessagesCount > 0) {
+      setPendingClientMessageCount((current) => current + newClientMessagesCount);
+      setShowScrollToLatest(true);
+    }
   }, [selectedRequestId, visibleSupplierMessages.length]);
 
   useEffect(() => {
@@ -1893,7 +1911,9 @@ export default function SupplierPage() {
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
                         ↓
                       </span>
-                      Новое сообщение
+                      {pendingClientMessageCount > 1
+                        ? `${pendingClientMessageCount} новых сообщений`
+                        : "Новое сообщение"}
                     </button>
                   </div>
                 ) : null}

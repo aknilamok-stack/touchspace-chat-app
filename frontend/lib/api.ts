@@ -26,6 +26,30 @@ const deriveBrowserApiBaseUrl = () => {
   return origin;
 };
 
+const upgradeInsecureBrowserApiUrl = (baseUrl: string) => {
+  if (typeof window === "undefined") {
+    return baseUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(baseUrl);
+
+    if (
+      window.location.protocol === "https:" &&
+      parsedUrl.protocol === "http:" &&
+      parsedUrl.hostname !== "localhost" &&
+      parsedUrl.hostname !== "127.0.0.1"
+    ) {
+      parsedUrl.protocol = "https:";
+      return parsedUrl.toString().replace(/\/$/, "");
+    }
+  } catch {
+    return baseUrl;
+  }
+
+  return baseUrl;
+};
+
 export const getApiBaseUrl = () => {
   const configuredBaseUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
 
@@ -38,14 +62,16 @@ export const getApiBaseUrl = () => {
       const configuredUrl = new URL(configuredBaseUrl);
 
       if (!isClearlyStaleApiHost(configuredUrl.hostname)) {
-        return configuredBaseUrl;
+        return upgradeInsecureBrowserApiUrl(configuredBaseUrl);
       }
     } catch {
       // Ignore malformed env value and fall back to runtime detection.
     }
   }
 
-  return deriveBrowserApiBaseUrl() || configuredBaseUrl || fallbackApiBaseUrl;
+  return upgradeInsecureBrowserApiUrl(
+    deriveBrowserApiBaseUrl() || configuredBaseUrl || fallbackApiBaseUrl
+  );
 };
 
 export const apiUrl = (path: string) => {

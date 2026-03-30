@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiBaseUrl, apiUrl } from "@/lib/api";
+import { apiUrl, getApiBaseUrl } from "@/lib/api";
 import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
 
 const clientActiveTicketStorageKey = "touchspace_client_active_ticket_id";
@@ -65,7 +65,7 @@ const tryParseAttachmentPayload = (content: string) => {
     }
 
     return {
-      url: parsed.url.startsWith("http") ? parsed.url : `${apiBaseUrl}${parsed.url}`,
+      url: parsed.url.startsWith("http") ? parsed.url : `${getApiBaseUrl()}${parsed.url}`,
       name: parsed.name,
       caption: parsed.caption || "",
     };

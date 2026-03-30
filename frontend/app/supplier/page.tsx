@@ -2108,17 +2108,13 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`inline-flex w-fit max-w-[68%] flex-col rounded-[20px] px-3.5 py-2 text-[15px] leading-[21px] shadow-sm transition ${
+                                  className={`inline-flex w-fit min-w-0 max-w-[min(520px,65%)] flex-col rounded-[18px] px-[14px] py-[10px] text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                                   }`}
                                 >
                                   <div className="space-y-1">
-                                    <p className="mb-0.5 text-[11px] opacity-60">
-                                      {message.senderType === "client" && "Клиент"}
-                                      {message.senderType === "supplier" && "Поставщик"}
-                                    </p>
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2127,7 +2123,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1 flex w-full items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
+                                        className={`mb-1.5 flex min-w-0 self-stretch items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2142,7 +2138,7 @@ export default function SupplierPage() {
                                         />
                                         <div className="min-w-0">
                                           <p
-                                            className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                                            className={`text-[10px] font-semibold ${
                                               message.senderType === "supplier"
                                                 ? "text-white/78"
                                                 : "text-[#0A84FF]"
@@ -2177,7 +2173,7 @@ export default function SupplierPage() {
                                       </p>
                                     )}
                                     <div
-                                      className={`mt-1 inline-flex items-center gap-1.5 self-end text-[10px] ${
+                                      className={`mt-1.5 inline-flex items-center gap-1.5 self-end text-[11px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
                                           : "text-[#8E8E93]"

@@ -3054,7 +3054,7 @@ export default function Home() {
                         </button>
 
                         <div
-                          className={`inline-flex w-fit max-w-[68%] flex-col rounded-[20px] px-3.5 py-2 text-[15px] leading-[21px] shadow-sm transition ${
+                          className={`inline-flex w-fit min-w-0 max-w-[min(520px,65%)] flex-col rounded-[18px] px-[14px] py-[10px] text-[15px] leading-[21px] shadow-sm transition ${
                             message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
@@ -3067,13 +3067,13 @@ export default function Home() {
                           }`}
                         >
                           <div className="space-y-1">
-                            <p className="mb-0.5 text-[11px] opacity-60">
-                              {message.from === "client" && "Клиент"}
-                              {message.from === "manager" && "Менеджер"}
-                              {message.from === "ai" && "AI-помощник"}
-                              {message.from === "supplier" &&
-                                `Поставщик: ${message.senderName || "Поставщик"}`}
-                            </p>
+                            {message.from === "ai" || message.from === "supplier" ? (
+                              <p className="mb-0.5 text-[11px] opacity-60">
+                                {message.from === "ai" && "AI-помощник"}
+                                {message.from === "supplier" &&
+                                  `Поставщик: ${message.senderName || "Поставщик"}`}
+                              </p>
+                            ) : null}
                             {message.replyToContent || replyMap[message.id] ? (
                               <button
                                 type="button"
@@ -3082,7 +3082,7 @@ export default function Home() {
                                     message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                   )
                                 }
-                                className={`mb-1 flex w-full items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
+                                className={`mb-1.5 flex min-w-0 self-stretch items-start gap-2 rounded-[12px] px-2 py-1.5 text-left transition ${
                                   message.from === "manager"
                                     ? "hover:bg-white/10"
                                     : "hover:bg-[#F2F7FF]"
@@ -3095,7 +3095,7 @@ export default function Home() {
                                 />
                                 <div className="min-w-0">
                                   <p
-                                    className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                                    className={`text-[10px] font-semibold ${
                                       message.from === "manager"
                                         ? "text-white/78"
                                         : "text-[#0A84FF]"
@@ -3126,7 +3126,7 @@ export default function Home() {
                               </p>
                             )}
                             <div
-                              className={`mt-1 inline-flex items-center gap-1.5 self-end text-[10px] ${
+                              className={`mt-1.5 inline-flex items-center gap-1.5 self-end text-[11px] leading-none ${
                                 message.from === "manager"
                                   ? "text-white/65"
                                   : message.from === "ai"

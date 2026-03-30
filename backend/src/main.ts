@@ -8,12 +8,19 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const uploadsDir = join(process.cwd(), 'uploads');
+  const defaultAllowedOrigins = [
+    'http://localhost:3000',
+    'https://app.aknila.ru',
+    'https://b2btest.touchspace.biz',
+    'https://b2b.touchspace.biz',
+    'https://touchspace.biz',
+  ];
 
   if (!existsSync(uploadsDir)) {
     mkdirSync(uploadsDir, { recursive: true });
   }
 
-  const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? defaultAllowedOrigins.join(','))
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -37,6 +44,7 @@ async function bootstrap() {
 
       callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
     },
+    credentials: true,
   });
 
   app.use('/uploads', express.static(uploadsDir));

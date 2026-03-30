@@ -94,6 +94,7 @@ export default function ClientPage() {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState("");
   const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
+  const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState("");
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
@@ -108,10 +109,12 @@ export default function ClientPage() {
   const [isManagerTyping, setIsManagerTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const lastTypingSentAtRef = useRef(0);
+  const highlightedReplyTimeoutRef = useRef<number | null>(null);
 
   const isResolved = activeTicket?.status === "resolved";
   const aiModeActive = activeTicket?.aiEnabled ?? preferredAiMode;
@@ -126,6 +129,39 @@ export default function ClientPage() {
     activeTicket?.status === "resolved" &&
     activeTicket?.lastResolvedByRole === "manager" &&
     !activeTicket?.managerRatingSubmittedAt;
+
+  const getReplyPreviewContent = (message: Message | ClientVisibleMessage) => {
+    if ("attachments" in message && message.attachments.length > 0) {
+      return message.attachments.length === 1
+        ? message.attachments[0].name
+        : `${message.attachments.length} файлов`;
+    }
+
+    return message.content;
+  };
+
+  const focusReplyMessage = (messageId: string) => {
+    const element = messageElementsRef.current[messageId];
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    setHighlightedReplyMessageId(messageId);
+
+    if (highlightedReplyTimeoutRef.current) {
+      window.clearTimeout(highlightedReplyTimeoutRef.current);
+    }
+
+    highlightedReplyTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedReplyMessageId("");
+    }, 1800);
+  };
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
     const response = await fetch(
@@ -675,6 +711,14 @@ export default function ClientPage() {
   }, [messages.length, isWidgetOpen, isManagerTyping, isAiTyping]);
 
   useEffect(() => {
+    return () => {
+      if (highlightedReplyTimeoutRef.current) {
+        window.clearTimeout(highlightedReplyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!composerRef.current) {
       return;
     }
@@ -1192,7 +1236,17 @@ export default function ClientPage() {
                     getMessageDayKey(message.createdAt);
 
                 return (
-                  <div key={message.id}>
+                  <div
+                    key={message.id}
+                    ref={(element) => {
+                      messageElementsRef.current[message.id] = element;
+                    }}
+                    className={`rounded-[22px] px-1.5 py-1 transition-all duration-500 ${
+                      highlightedReplyMessageId === message.id
+                        ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                        : "bg-transparent shadow-none"
+                    }`}
+                  >
                     {shouldShowDateSeparator ? (
                       <div className="mb-3 flex justify-center">
                         <div className="rounded-full bg-[#EEF1F5] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[#8E8E93]">
@@ -1231,7 +1285,27 @@ export default function ClientPage() {
                             } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
                             aria-label="Ответить"
                           >
-                            ↩
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              className="h-4 w-4"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M8.25 5.5L4.5 9.25L8.25 13"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
                             {hoveredMessageId === message.id ? (
                               <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                                 Ответить
@@ -1261,18 +1335,45 @@ export default function ClientPage() {
                               }`}
                             >
                             {message.replyToContent || replyMap[message.id] ? (
-                              <div
-                                className={`mt-2 rounded-[14px] border px-3 py-2 text-xs ${
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  focusReplyMessage(
+                                    message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
+                                  )
+                                }
+                                className={`mb-2 flex w-full items-start gap-2 rounded-[14px] px-1 py-1 text-left transition ${
                                   message.senderType === "client"
-                                    ? "border-white/20 bg-white/10 text-white/80"
-                                    : "border-[#E3E7EF] bg-[#F7F8FB] text-[#6C6C70]"
+                                    ? "hover:bg-white/10"
+                                    : "hover:bg-[#F2F7FF]"
                                 }`}
                               >
-                                <p className="font-medium">Ответ на сообщение</p>
-                                <p className="mt-1 line-clamp-2">
-                                  {message.replyToContent ?? replyMap[message.id]?.replyToContent}
-                                </p>
-                              </div>
+                                <span
+                                  className={`mt-0.5 h-9 w-[3px] shrink-0 rounded-full ${
+                                    message.senderType === "client" ? "bg-white/55" : "bg-[#0A84FF]"
+                                  }`}
+                                />
+                                <div className="min-w-0">
+                                  <p
+                                    className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                                      message.senderType === "client"
+                                        ? "text-white/78"
+                                        : "text-[#0A84FF]"
+                                    }`}
+                                  >
+                                    Ответ на сообщение
+                                  </p>
+                                  <p
+                                    className={`mt-0.5 line-clamp-2 text-[12px] leading-5 ${
+                                      message.senderType === "client"
+                                        ? "text-white/82"
+                                        : "text-[#5A6270]"
+                                    }`}
+                                  >
+                                    {message.replyToContent ?? replyMap[message.id]?.replyToContent}
+                                  </p>
+                                </div>
+                              </button>
                             ) : null}
                             <div className="mt-1 flex items-end gap-3">
                               <p className="min-w-0 flex-1 break-words leading-6">
@@ -1453,12 +1554,22 @@ export default function ClientPage() {
             <div className="shrink-0 border-t border-[#E7E9EF] bg-white px-4 py-3">
               {replyTarget ? (
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => focusReplyMessage(replyTarget.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <p className="text-xs font-semibold text-[#0A84FF]">Ответ на сообщение</p>
                     <p className="mt-1 line-clamp-2 text-xs text-[#5A6270]">
-                      {replyTarget.content}
+                      {getReplyPreviewContent({
+                        ...replyTarget,
+                        attachments:
+                          replyTarget.messageType === "attachment"
+                            ? parseChatAttachmentPayloads(replyTarget.content)
+                            : [],
+                      } as ClientVisibleMessage)}
                     </p>
-                  </div>
+                  </button>
                   <button
                     onClick={() => setReplyTarget(null)}
                     className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"

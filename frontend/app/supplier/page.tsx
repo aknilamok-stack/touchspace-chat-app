@@ -2073,23 +2073,47 @@ export default function SupplierPage() {
                                       {message.senderType === "supplier" && "Поставщик"}
                                     </p>
                                     {message.replyToContent || replyMap[message.id] ? (
-                                      <div
+                                      <button
+                                        type="button"
                                         onClick={() =>
                                           focusReplyMessage(
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`rounded-[14px] border px-3 py-2 text-xs ${
+                                        className={`mb-2 flex w-full items-start gap-2 rounded-[14px] px-1 py-1 text-left transition ${
                                           message.senderType === "supplier"
-                                            ? "border-white/20 bg-white/10 text-white/80"
-                                            : "border-[#E3E7EF] bg-[#F7F8FB] text-[#6C6C70]"
-                                        } cursor-pointer transition hover:-translate-y-0.5 hover:border-[#BFD7FF]`}
+                                            ? "hover:bg-white/10"
+                                            : "hover:bg-[#F2F7FF]"
+                                        }`}
                                       >
-                                        <p className="font-medium">Ответ на сообщение</p>
-                                        <p className="mt-1 line-clamp-2">
-                                          {message.replyToContent ?? replyMap[message.id]?.replyToContent}
-                                        </p>
-                                      </div>
+                                        <span
+                                          className={`mt-0.5 h-10 w-[3px] shrink-0 rounded-full ${
+                                            message.senderType === "supplier"
+                                              ? "bg-white/55"
+                                              : "bg-[#0A84FF]"
+                                          }`}
+                                        />
+                                        <div className="min-w-0">
+                                          <p
+                                            className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                                              message.senderType === "supplier"
+                                                ? "text-white/78"
+                                                : "text-[#0A84FF]"
+                                            }`}
+                                          >
+                                            Ответ на сообщение
+                                          </p>
+                                          <p
+                                            className={`mt-0.5 line-clamp-2 text-[12px] leading-5 ${
+                                              message.senderType === "supplier"
+                                                ? "text-white/82"
+                                                : "text-[#5A6270]"
+                                            }`}
+                                          >
+                                            {message.replyToContent ?? replyMap[message.id]?.replyToContent}
+                                          </p>
+                                        </div>
+                                      </button>
                                     ) : null}
                                     {message.attachments && message.attachments.length > 0 ? (
                                       <ChatAttachmentList

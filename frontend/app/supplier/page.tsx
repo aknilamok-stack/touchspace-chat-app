@@ -2108,7 +2108,7 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  className={`w-fit max-w-[72%] rounded-[20px] px-3.5 py-2 text-[15px] leading-6 shadow-sm transition ${
+                                  className={`inline-flex w-fit max-w-[68%] flex-col rounded-[20px] px-3.5 py-2 text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                       : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
@@ -2172,17 +2172,19 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="break-words">{message.displayContent}</p>
+                                      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                        {message.displayContent}
+                                      </p>
                                     )}
                                     <div
-                                      className={`flex items-center gap-3 text-[10px] ${
+                                      className={`mt-1 inline-flex items-center gap-1.5 self-end text-[10px] ${
                                         message.senderType === "supplier"
-                                          ? "justify-between text-white/65"
-                                          : "justify-end text-[#8E8E93]"
+                                          ? "text-white/65"
+                                          : "text-[#8E8E93]"
                                       }`}
                                     >
                                       {message.senderType === "supplier" ? (
-                                        <p className="min-w-0 truncate text-left">
+                                        <p className="shrink-0">
                                           {getMessageStatusLabel(message.status)}
                                         </p>
                                       ) : null}

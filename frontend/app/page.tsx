@@ -3054,7 +3054,7 @@ export default function Home() {
                         </button>
 
                         <div
-                          className={`w-fit max-w-[72%] rounded-[20px] px-3.5 py-2 text-[15px] leading-6 shadow-sm transition ${
+                          className={`inline-flex w-fit max-w-[68%] flex-col rounded-[20px] px-3.5 py-2 text-[15px] leading-[21px] shadow-sm transition ${
                             message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
@@ -3121,19 +3121,21 @@ export default function Home() {
                                 tone={message.from === "manager" ? "outgoing" : "incoming"}
                               />
                             ) : (
-                              <p className="break-words">{message.text}</p>
+                              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                {message.text}
+                              </p>
                             )}
                             <div
-                              className={`flex items-center gap-3 text-[10px] ${
+                              className={`mt-1 inline-flex items-center gap-1.5 self-end text-[10px] ${
                                 message.from === "manager"
-                                  ? "justify-between text-white/65"
+                                  ? "text-white/65"
                                   : message.from === "ai"
-                                    ? "justify-end text-[#4C6A92]"
-                                    : "justify-end text-[#8E8E93]"
+                                    ? "text-[#4C6A92]"
+                                    : "text-[#8E8E93]"
                               }`}
                             >
                               {message.from === "manager" ? (
-                                <p className="min-w-0 truncate text-left">
+                                <p className="shrink-0">
                                   {getMessageStatusLabel(message.status)}
                                 </p>
                               ) : null}

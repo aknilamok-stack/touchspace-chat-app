@@ -3053,21 +3053,21 @@ export default function Home() {
                           ) : null}
                         </button>
 
-                        <div
-                          style={{ width: "fit-content", maxWidth: "min(480px, 50%)" }}
-                          className={`relative inline-flex min-h-[30px] min-w-[76px] shrink-0 max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
-                            message.from === "manager"
-                              ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                              : message.from === "ai"
-                                ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
-                              : message.from === "client"
-                                ? "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
-                                : message.from === "supplier"
-                                  ? "bg-[#EAF8EF] text-[#166534]"
-                                  : "bg-[#EFEFF4] text-[#1E1E1E]"
-                          }`}
-                        >
-                          <div className="min-w-0 max-w-full space-y-1">
+                        <div className="max-w-[50%] shrink-0">
+                          <div
+                            className={`relative inline-flex min-h-[30px] min-w-[76px] w-auto max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
+                              message.from === "manager"
+                                ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                : message.from === "ai"
+                                  ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
+                                : message.from === "client"
+                                  ? "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                  : message.from === "supplier"
+                                    ? "bg-[#EAF8EF] text-[#166534]"
+                                    : "bg-[#EFEFF4] text-[#1E1E1E]"
+                            }`}
+                          >
+                            <div className="min-w-0 max-w-full space-y-1">
                             {message.from === "ai" || message.from === "supplier" ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
@@ -3083,7 +3083,7 @@ export default function Home() {
                                     message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                   )
                                 }
-                                className={`mb-1 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-0.5 py-0.5 text-left transition ${
+                                className={`mb-1 flex min-w-0 max-w-full items-start gap-2 self-stretch rounded-[12px] px-0.5 py-0.5 text-left transition ${
                                   message.from === "manager"
                                     ? "hover:bg-white/10"
                                     : "hover:bg-[#F2F7FF]"
@@ -3122,7 +3122,7 @@ export default function Home() {
                                 tone={message.from === "manager" ? "outgoing" : "incoming"}
                               />
                             ) : (
-                              <p className="min-w-0 whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
+                              <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
                                 {message.text}
                               </p>
                             )}
@@ -3138,6 +3138,7 @@ export default function Home() {
                               {message.time ? <p className="shrink-0">{message.time}</p> : null}
                             </div>
                           </div>
+                        </div>
                         </div>
                       </div>
                     </div>

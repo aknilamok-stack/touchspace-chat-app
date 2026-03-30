@@ -2107,15 +2107,15 @@ export default function SupplierPage() {
                                   ) : null}
                                 </button>
 
-                                <div
-                                  style={{ width: "fit-content", maxWidth: "min(480px, 50%)" }}
-                                  className={`relative inline-flex min-h-[30px] min-w-[76px] shrink-0 max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
-                                    message.senderType === "supplier"
-                                      ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                      : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
-                                  }`}
-                                >
-                                  <div className="min-w-0 max-w-full space-y-1">
+                                <div className="max-w-[50%] shrink-0">
+                                  <div
+                                    className={`relative inline-flex min-h-[30px] min-w-[76px] w-auto max-w-full flex-col items-start rounded-[18px] px-[10px] pb-[18px] pt-[6px] text-[15px] leading-[1.35] shadow-sm transition ${
+                                      message.senderType === "supplier"
+                                        ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                        : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 max-w-full space-y-1">
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2124,7 +2124,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1 flex w-full min-w-0 items-start gap-2 rounded-[12px] px-0.5 py-0.5 text-left transition ${
+                                        className={`mb-1 flex min-w-0 max-w-full items-start gap-2 self-stretch rounded-[12px] px-0.5 py-0.5 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2169,7 +2169,7 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="min-w-0 whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
+                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[42px] [overflow-wrap:break-word] [word-break:normal]">
                                         {message.displayContent}
                                       </p>
                                     )}
@@ -2185,6 +2185,7 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
+                                </div>
                                 </div>
                               </div>
                             </div>

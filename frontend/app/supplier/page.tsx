@@ -92,6 +92,13 @@ type ReplyMeta = {
   replyToContent: string;
 };
 
+type ToastTone = "success" | "error" | "info";
+
+type UiToast = {
+  message: string;
+  tone: ToastTone;
+};
+
 type Ticket = {
   id: string;
   title: string;
@@ -593,6 +600,7 @@ export default function SupplierPage() {
   const [isInvitingManager, setIsInvitingManager] = useState(false);
   const [isTransferringDialog, setIsTransferringDialog] = useState(false);
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
+  const [toast, setToast] = useState<UiToast | null>(null);
   const [requestsError, setRequestsError] = useState("");
   const [messagesError, setMessagesError] = useState("");
   const [replyError, setReplyError] = useState("");
@@ -645,6 +653,18 @@ export default function SupplierPage() {
     pinnedRequestIds,
     ticketsById
   );
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setToast(null);
+    }, 3200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1498,6 +1518,10 @@ export default function SupplierPage() {
         ...current,
         [updatedTicket.id]: updatedTicket,
       }));
+      setToast({
+        message: "Диалог отмечен как решённый",
+        tone: "success",
+      });
       setActiveQueueTab("completed");
       setReplyText("");
       setAttachmentName("");
@@ -1506,6 +1530,10 @@ export default function SupplierPage() {
       setShowEmojiPicker(false);
     } catch (error) {
       console.error("Ошибка завершения диалога:", error);
+      setToast({
+        message: "Не удалось отметить диалог как решённый",
+        tone: "error",
+      });
     } finally {
       setIsResolvingTicket(false);
     }
@@ -2253,6 +2281,46 @@ export default function SupplierPage() {
                     <div ref={messagesEndRef} />
                   </div>
                 </div>
+
+                {toast ? (
+                  <div className="pointer-events-none absolute right-[344px] top-[96px] z-30">
+                    <div
+                      className={`min-w-[300px] rounded-[24px] border px-5 py-4 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-sm ${
+                        toast.tone === "error"
+                          ? "border-[#FFD5D5] bg-[#FFF6F6] text-[#C53C3C]"
+                          : toast.tone === "info"
+                            ? "border-[#D6E7FF] bg-[#F6FAFF] text-[#0A84FF]"
+                            : "border-[#BDE9CB] bg-[linear-gradient(135deg,#F1FFF5_0%,#E3F9EA_100%)] text-[#167C3E]"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-semibold ${
+                            toast.tone === "error"
+                              ? "bg-[#FFE3E3] text-[#C53C3C]"
+                              : toast.tone === "info"
+                                ? "bg-[#EAF3FF] text-[#0A84FF]"
+                                : "bg-[#DDF6E5] text-[#1F8B4C]"
+                          }`}
+                        >
+                          {toast.tone === "error" ? "!" : toast.tone === "info" ? "i" : "✓"}
+                        </div>
+                        <div>
+                          <p className="text-[15px] font-semibold leading-none">
+                            {toast.tone === "success"
+                              ? "Диалог завершён"
+                              : toast.tone === "error"
+                                ? "Не удалось сохранить"
+                                : "Обратите внимание"}
+                          </p>
+                          <p className="mt-2 text-sm font-medium leading-[1.35] opacity-90">
+                            {toast.message}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {showScrollToLatest ? (
                   <div className="pointer-events-none absolute bottom-[118px] right-[344px] z-30">

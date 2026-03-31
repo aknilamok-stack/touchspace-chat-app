@@ -1198,6 +1198,23 @@ export default function Home() {
     );
   };
 
+  const applyTicketUpdate = (updatedTicket: ApiTicket) => {
+    const formattedChat = formatTicket(updatedTicket);
+
+    setChatData((prevChats) =>
+      prevChats.map((chat) =>
+        chat.id === updatedTicket.id
+          ? {
+              ...chat,
+              ...formattedChat,
+              messages: chat.messages,
+              supplierRequests: chat.supplierRequests,
+            }
+          : chat
+      )
+    );
+  };
+
   const isChatMine = useCallback(
     (chat: ChatItem) => {
       if (chat.rawStatus === "resolved") {
@@ -2396,16 +2413,8 @@ export default function Home() {
         throw new Error("Не удалось отметить диалог как решённый");
       }
 
-      const [tickets, messages, supplierRequests] = await Promise.all([
-        fetchTickets(),
-        fetchMessages(activeChatId),
-        fetchSupplierRequests(activeChatId),
-      ]);
-
-      syncTickets(tickets);
-      await refreshNotificationCandidates();
-      applyMessagesToTicket(activeChatId, messages);
-      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      const updatedTicket = (await response.json()) as ApiTicket;
+      applyTicketUpdate(updatedTicket);
       setToast({
         message: "Диалог отмечен как решённый",
         tone: "success",
@@ -2414,8 +2423,24 @@ export default function Home() {
         ticketId: activeChatId,
         until: Date.now() + 3 * 60 * 1000,
       });
+      void (async () => {
+        try {
+          const tickets = await fetchTickets();
+          syncTickets(tickets);
+          await refreshNotificationCandidates();
+        } catch (backgroundSyncError) {
+          console.error(
+            "Ошибка фонового обновления после завершения диалога:",
+            backgroundSyncError
+          );
+        }
+      })();
     } catch (error) {
       console.error("Ошибка завершения диалога:", error);
+      setToast({
+        message: "Не удалось отметить диалог как решённый",
+        tone: "error",
+      });
     } finally {
       setIsResolvingTicket(false);
     }
@@ -3335,17 +3360,41 @@ export default function Home() {
           </div>
 
           {toast ? (
-            <div className="pointer-events-none absolute right-[352px] top-[104px] z-30">
+            <div className="pointer-events-none absolute right-[352px] top-[96px] z-30">
               <div
-                className={`rounded-2xl border bg-white px-4 py-3 text-sm font-medium shadow-[0_18px_40px_rgba(15,23,42,0.12)] ${
+                className={`min-w-[300px] rounded-[24px] border px-5 py-4 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-sm ${
                   toast.tone === "error"
-                    ? "border-[#FFD5D5] text-[#C53C3C]"
+                    ? "border-[#FFD5D5] bg-[#FFF6F6] text-[#C53C3C]"
                     : toast.tone === "info"
-                      ? "border-[#D6E7FF] text-[#0A84FF]"
-                      : "border-[#D8F0DE] text-[#1F8B4C]"
+                      ? "border-[#D6E7FF] bg-[#F6FAFF] text-[#0A84FF]"
+                      : "border-[#BDE9CB] bg-[linear-gradient(135deg,#F1FFF5_0%,#E3F9EA_100%)] text-[#167C3E]"
                 }`}
               >
-                {toast.message}
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-semibold ${
+                      toast.tone === "error"
+                        ? "bg-[#FFE3E3] text-[#C53C3C]"
+                        : toast.tone === "info"
+                          ? "bg-[#EAF3FF] text-[#0A84FF]"
+                          : "bg-[#DDF6E5] text-[#1F8B4C]"
+                    }`}
+                  >
+                    {toast.tone === "error" ? "!" : toast.tone === "info" ? "i" : "✓"}
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold leading-none">
+                      {toast.tone === "success"
+                        ? "Диалог завершён"
+                        : toast.tone === "error"
+                          ? "Не удалось сохранить"
+                          : "Обратите внимание"}
+                    </p>
+                    <p className="mt-2 text-sm font-medium leading-[1.35] opacity-90">
+                      {toast.message}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}

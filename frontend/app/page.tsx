@@ -684,7 +684,7 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
 });
 
 const getChatClientDisplayName = (chat?: Pick<ChatItem, "clientId" | "clientName"> | null) =>
-  chat?.clientId?.trim() || chat?.clientName || "Реселлер";
+  chat?.clientName?.trim() || chat?.clientId?.trim() || "Реселлер";
 
 export default function Home() {
   const router = useRouter();

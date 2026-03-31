@@ -386,8 +386,8 @@ const fetchTicketMessagesSnapshot = async (
 };
 
 const getSupplierCardClientLabel = (ticket: Ticket | null, request: SupplierRequest) =>
-  ticket?.clientId?.trim() ||
   ticket?.clientName?.trim() ||
+  ticket?.clientId?.trim() ||
   ticket?.title?.trim() ||
   `Ticket #${request.ticketId}`;
 
@@ -787,6 +787,7 @@ export default function SupplierPage() {
             "Все диалоги, в которых вы участвуете и уже обрабатываете, остаются под рукой в текущей вкладке.",
         };
   const selectedClientLabel =
+    selectedTicket?.clientName?.trim() ||
     selectedTicket?.clientId?.trim() ||
     selectedTicket?.title?.trim() ||
     `Ticket #${selectedRequest?.ticketId ?? ""}`;

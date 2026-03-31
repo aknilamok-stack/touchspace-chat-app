@@ -172,12 +172,6 @@ export class MessagesService {
         if (senderType === 'client' && ticket.status === 'resolved') {
           const reopenedAt = new Date();
 
-          await this.createSystemMessage(
-            tx,
-            ticketId,
-            'Клиент возобновил диалог',
-          );
-
           await tx.ticket.update({
             where: { id: ticketId },
             data: {

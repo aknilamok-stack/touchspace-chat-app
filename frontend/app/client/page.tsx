@@ -60,6 +60,11 @@ type ClientVisibleMessage = Message & {
   attachments: ChatAttachmentPayload[];
 };
 
+const isHiddenClientSystemMessage = (message: Message) =>
+  message.senderType === "system" &&
+  (message.content.startsWith("Диалог отмечен как решённый менеджером") ||
+    message.content === "Клиент возобновил диалог");
+
 const formatMessageTime = (createdAt: string) =>
   new Date(createdAt).toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -107,6 +112,7 @@ export default function ClientPage() {
   const [isEmbeddedWidget, setIsEmbeddedWidget] = useState(false);
   const [hostWidgetOpen, setHostWidgetOpen] = useState(false);
   const [isManagerTyping, setIsManagerTyping] = useState(false);
+  const [isRatingPromptDismissed, setIsRatingPromptDismissed] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
@@ -129,6 +135,8 @@ export default function ClientPage() {
     activeTicket?.status === "resolved" &&
     activeTicket?.lastResolvedByRole === "manager" &&
     !activeTicket?.managerRatingSubmittedAt;
+  const showManagerRatingPrompt =
+    canRateResolvedManager && !isRatingPromptDismissed;
 
   const getReplyPreviewContent = (message: Message | ClientVisibleMessage) => {
     if ("attachments" in message && message.attachments.length > 0) {
@@ -250,7 +258,7 @@ export default function ClientPage() {
       setActiveTicket(ticket);
     }
 
-    setMessages(nextMessages);
+    setMessages(nextMessages.filter((message) => !isHiddenClientSystemMessage(message)));
   };
 
   const clearActiveTicket = () => {
@@ -404,7 +412,9 @@ export default function ClientPage() {
         throw new Error("Не удалось загрузить данные обращения");
       }
 
-      const messagesData = (await messagesResponse.json()) as Message[];
+      const messagesData = ((await messagesResponse.json()) as Message[]).filter(
+        (message) => !isHiddenClientSystemMessage(message)
+      );
       setMessages((currentMessages) =>
         mergeMessagesWithPendingClient(messagesData, currentMessages)
       );
@@ -572,6 +582,10 @@ export default function ClientPage() {
   }, [activeTicket]);
 
   useEffect(() => {
+    setIsRatingPromptDismissed(false);
+  }, [activeTicket?.id, activeTicket?.managerRatingSubmittedAt, activeTicket?.status]);
+
+  useEffect(() => {
     if (!activeTicket) {
       return;
     }
@@ -670,6 +684,10 @@ export default function ClientPage() {
       return;
     }
 
+    if (showManagerRatingPrompt) {
+      setIsRatingPromptDismissed(true);
+    }
+
     const now = Date.now();
 
     if (now - lastTypingSentAtRef.current < 1000) {
@@ -681,7 +699,7 @@ export default function ClientPage() {
     void sendTyping(activeTicket.id, draftText).catch((typingError) => {
       console.error("Ошибка отправки typing-события:", typingError);
     });
-  }, [draftText, activeTicket?.id]);
+  }, [draftText, activeTicket?.id, showManagerRatingPrompt]);
 
   useEffect(() => {
     if (!activeTicket?.id || activeTicket.status === "resolved") {
@@ -892,6 +910,7 @@ export default function ClientPage() {
     setError("");
     setDraftText("");
     setShowEmojiPicker(false);
+    setIsRatingPromptDismissed(true);
     lastTypingSentAtRef.current = 0;
 
     const optimisticTextMessageId = `temp-text-${Date.now()}`;
@@ -1485,7 +1504,7 @@ export default function ClientPage() {
                 </div>
               ) : null}
 
-              {canRateResolvedManager ? (
+              {showManagerRatingPrompt ? (
                 <div className="flex justify-start">
                   <div className="max-w-[88%] rounded-[22px] border border-[#E6EAF2] bg-white px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
                     <div className="flex items-start justify-between gap-4">
@@ -1494,12 +1513,17 @@ export default function ClientPage() {
                           Оцените работу менеджера
                         </p>
                         <p className="mt-1 text-[13px] leading-5 text-[#6F7E93]">
-                          {activeTicket?.lastResolvedByManagerName
-                            ? `${activeTicket.lastResolvedByManagerName} завершил диалог.`
-                            : "Диалог был отмечен как решённый."}{" "}
                           Поделитесь, пожалуйста, впечатлением от общения.
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsRatingPromptDismissed(true)}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E9F2] bg-[#FBFCFE] text-[#8E8E93] transition hover:border-[#D6DDEA] hover:text-[#1E1E1E]"
+                        aria-label="Закрыть окно оценки"
+                      >
+                        ✕
+                      </button>
                     </div>
 
                     <div className="mt-4 flex items-center gap-3">

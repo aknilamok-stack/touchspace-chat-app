@@ -169,14 +169,19 @@ export class MessagesService {
           throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
         }
 
-        if (senderType === 'client' && ticket.status === 'resolved') {
+        const isClientReopeningResolvedDialog =
+          senderType === 'client' && ticket.status === 'resolved';
+
+        if (isClientReopeningResolvedDialog) {
           const reopenedAt = new Date();
 
           await tx.ticket.update({
             where: { id: ticketId },
             data: {
+              status: 'new',
               assignedManagerId: null,
               assignedManagerName: null,
+              handedToManagerAt: null,
               conversationMode: 'manager',
               currentHandlerType: 'manager',
               aiEnabled: false,
@@ -219,7 +224,11 @@ export class MessagesService {
         let nextStatus = ticket.status;
 
         if (senderType === 'client') {
-          nextStatus = managerMessagesCount > 0 ? 'in_progress' : 'new';
+          nextStatus = isClientReopeningResolvedDialog
+            ? 'new'
+            : managerMessagesCount > 0
+              ? 'in_progress'
+              : 'new';
         }
 
         if (senderType === 'manager') {

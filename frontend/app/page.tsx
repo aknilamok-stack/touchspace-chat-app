@@ -79,6 +79,13 @@ type ApiTicket = {
   title: string;
   clientName?: string | null;
   clientId?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  currentUserEmail?: string | null;
+  currentUserPhone?: string | null;
+  superuserEmail?: string | null;
+  superuserPhone?: string | null;
+  canonicalEmail?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
   status?: string;
@@ -160,6 +167,13 @@ type ChatItem = {
   lastMessageAt: string | null;
   clientId: string | null;
   clientName: string;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  currentUserEmail: string | null;
+  currentUserPhone: string | null;
+  superuserEmail: string | null;
+  superuserPhone: string | null;
+  canonicalEmail: string | null;
   avatarColor: string | null;
   avatarEmoji: string | null;
   messages: ChatMessage[];
@@ -675,6 +689,13 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   lastMessageAt: ticket.lastMessageAt ?? null,
   clientId: ticket.clientId?.trim() || null,
   clientName: ticket.clientName?.trim() || ticket.title || "Реселлер",
+  clientEmail: ticket.clientEmail?.trim() || null,
+  clientPhone: ticket.clientPhone?.trim() || null,
+  currentUserEmail: ticket.currentUserEmail?.trim() || null,
+  currentUserPhone: ticket.currentUserPhone?.trim() || null,
+  superuserEmail: ticket.superuserEmail?.trim() || null,
+  superuserPhone: ticket.superuserPhone?.trim() || null,
+  canonicalEmail: ticket.canonicalEmail?.trim() || null,
   avatarColor: ticket.avatarColor ?? null,
   avatarEmoji: ticket.avatarEmoji ?? null,
   messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
@@ -1285,7 +1306,15 @@ export default function Home() {
 
     const searchHaystack = [
       chat.title,
+      chat.clientId ?? "",
       chat.clientName,
+      chat.canonicalEmail ?? "",
+      chat.clientEmail ?? "",
+      chat.currentUserEmail ?? "",
+      chat.superuserEmail ?? "",
+      chat.clientPhone ?? "",
+      chat.currentUserPhone ?? "",
+      chat.superuserPhone ?? "",
       chat.assignedManagerName ?? "",
       chat.lastResolvedByManagerName ?? "",
       chat.invitedManagerNames.join(" "),

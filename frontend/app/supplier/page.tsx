@@ -108,6 +108,13 @@ type Ticket = {
   pinned?: boolean;
   clientId?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  currentUserEmail?: string | null;
+  currentUserPhone?: string | null;
+  superuserEmail?: string | null;
+  superuserPhone?: string | null;
+  canonicalEmail?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
   assignedManagerId?: string | null;
@@ -822,7 +829,15 @@ export default function SupplierPage() {
       card.request.requestText,
       card.managerName,
       card.request.ticketId,
+      ticketsById[card.request.ticketId]?.canonicalEmail ?? "",
+      ticketsById[card.request.ticketId]?.clientEmail ?? "",
+      ticketsById[card.request.ticketId]?.currentUserEmail ?? "",
+      ticketsById[card.request.ticketId]?.superuserEmail ?? "",
+      ticketsById[card.request.ticketId]?.clientPhone ?? "",
+      ticketsById[card.request.ticketId]?.currentUserPhone ?? "",
+      ticketsById[card.request.ticketId]?.superuserPhone ?? "",
       ticketsById[card.request.ticketId]?.clientId ?? "",
+      ticketsById[card.request.ticketId]?.clientName ?? "",
       ticketsById[card.request.ticketId]?.title ?? "",
     ]
       .join(" ")

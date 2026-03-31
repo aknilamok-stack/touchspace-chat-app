@@ -80,6 +80,15 @@ export function ContactCard({
     setIsFormOpen(false);
   };
 
+  const startAddWithType = (type: ContactDraft["type"]) => {
+    setEditingContactId("");
+    setDraft({
+      type,
+      value: "",
+    });
+    setIsFormOpen(true);
+  };
+
   const handleSubmit = async () => {
     if (!draft.value.trim()) {
       return;
@@ -95,6 +104,75 @@ export function ContactCard({
   };
 
   const submitLabel = editingContactId ? "Сохранить" : "Добавить";
+  const primaryEmailContact = contacts.find((contact) => contact.type === "email") ?? null;
+  const primaryPhoneContact = contacts.find((contact) => contact.type === "phone") ?? null;
+  const additionalContacts = contacts.filter(
+    (contact) =>
+      contact.id !== primaryEmailContact?.id && contact.id !== primaryPhoneContact?.id
+  );
+
+  const renderContactRow = (
+    contact: ChatContactItem | null,
+    type: ContactDraft["type"],
+    emptyLabel: string
+  ) => {
+    const isMissingPhone = type === "phone" && !contact;
+
+    return (
+      <div className="rounded-[18px] border border-[#ECECF1] bg-[#FCFCFD] px-3 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[type]}`}
+              >
+                {typeLabel[type]}
+              </span>
+              {contact?.sourceLabel ? (
+                <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
+                  {contact.sourceLabel}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={`mt-2 text-sm ${contact ? "break-words font-medium text-[#1E1E1E]" : "text-[#8E8E93]"}`}
+            >
+              {contact?.value || emptyLabel}
+            </p>
+          </div>
+
+          {canManage && contact?.editable ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => startEdit(contact)}
+                className="rounded-full bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-[#1E1E1E] transition hover:bg-[#E6EEF9]"
+              >
+                Изменить
+              </button>
+              <button
+                type="button"
+                onClick={() => void onDelete?.(contact.id)}
+                className="rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-medium text-[#D63E3E] transition hover:bg-[#FFE5E1]"
+              >
+                Удалить
+              </button>
+            </div>
+          ) : canManage && isMissingPhone ? (
+            <button
+              type="button"
+              onClick={() => startAddWithType("phone")}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F2F7FF] text-sm text-[#0A84FF] transition hover:bg-[#E6F0FF]"
+              aria-label="Добавить телефон"
+              title="Добавить телефон"
+            >
+              ✎
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
@@ -110,59 +188,54 @@ export function ContactCard({
       <div className="mt-4 space-y-3">
         {isLoading ? (
           <p className="text-sm text-[#8E8E93]">Загружаем контакты...</p>
-        ) : contacts.length ? (
-          contacts.map((contact) => (
-            <div
-              key={contact.id}
-              className="rounded-[18px] border border-[#ECECF1] bg-[#FCFCFD] px-3 py-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[contact.type]}`}
-                    >
-                      {typeLabel[contact.type]}
-                    </span>
-                    <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
-                      {contact.sourceLabel}
-                    </span>
-                  </div>
-                  <p className="mt-2 break-all text-sm font-medium text-[#1E1E1E]">
-                    {contact.value}
-                  </p>
-                </div>
-
-                {canManage && contact.editable ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(contact)}
-                      className="rounded-full bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-[#1E1E1E] transition hover:bg-[#E6EEF9]"
-                    >
-                      Изменить
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void onDelete?.(contact.id)}
-                      className="rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-medium text-[#D63E3E] transition hover:bg-[#FFE5E1]"
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ))
         ) : (
-          <div className="rounded-[18px] border border-dashed border-[#D8D9E0] bg-[#FBFBFD] px-4 py-5 text-center">
-            <p className="text-sm font-medium text-[#1E1E1E]">Контактов нет</p>
-            <p className="mt-1 text-xs leading-5 text-[#8E8E93]">
-              {canManage
-                ? "Добавьте email или телефон, чтобы они были под рукой в этом диалоге."
-                : "Для этого диалога пока не добавлены email или телефон."}
-            </p>
-          </div>
+          <>
+            {renderContactRow(primaryEmailContact, "email", "Email не указан")}
+            {renderContactRow(primaryPhoneContact, "phone", "Телефон не указан")}
+            {additionalContacts.map((contact) => (
+              <div
+                key={contact.id}
+                className="rounded-[18px] border border-[#ECECF1] bg-[#FCFCFD] px-3 py-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[contact.type]}`}
+                      >
+                        {typeLabel[contact.type]}
+                      </span>
+                      <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
+                        {contact.sourceLabel}
+                      </span>
+                    </div>
+                    <p className="mt-2 break-words text-sm font-medium text-[#1E1E1E]">
+                      {contact.value}
+                    </p>
+                  </div>
+
+                  {canManage && contact.editable ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(contact)}
+                        className="rounded-full bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-[#1E1E1E] transition hover:bg-[#E6EEF9]"
+                      >
+                        Изменить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void onDelete?.(contact.id)}
+                        className="rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-medium text-[#D63E3E] transition hover:bg-[#FFE5E1]"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 

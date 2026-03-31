@@ -974,6 +974,8 @@ export default function ClientPage() {
             senderType: "client",
             senderId: clientSession.clientId,
             senderName: clientSession.clientName,
+            clientEmail: clientSession.email,
+            clientPhone: clientSession.phone,
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget?.content,
           }),
@@ -1001,6 +1003,12 @@ export default function ClientPage() {
         formData.append("senderType", "client");
         formData.append("senderId", clientSession.clientId);
         formData.append("senderName", clientSession.clientName);
+        if (clientSession.email) {
+          formData.append("clientEmail", clientSession.email);
+        }
+        if (clientSession.phone) {
+          formData.append("clientPhone", clientSession.phone);
+        }
         if (replyTarget?.id) {
           formData.append("replyToMessageId", replyTarget.id);
           formData.append("replyToContent", replyTarget.content);

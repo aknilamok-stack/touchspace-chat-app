@@ -128,6 +128,8 @@ export class MessagesService {
     managerName?: string,
     senderId?: string,
     senderName?: string,
+    clientEmail?: string,
+    clientPhone?: string,
     replyToMessageId?: string,
     replyToContent?: string,
   ) {
@@ -255,6 +257,12 @@ export class MessagesService {
         if (senderType === 'client') {
           ticketUpdateData.clientId = actorId ?? ticket.clientId;
           ticketUpdateData.clientName = actorName ?? ticket.clientName;
+          if (clientEmail?.trim()) {
+            ticketUpdateData.clientEmail = clientEmail.trim();
+          }
+          if (clientPhone?.trim()) {
+            ticketUpdateData.clientPhone = clientPhone.trim();
+          }
           if (ticket.aiEnabled) {
             ticketUpdateData.currentHandlerType = 'ai';
             ticketUpdateData.conversationMode = 'ai';
@@ -459,6 +467,8 @@ export class MessagesService {
     managerName?: string,
     senderId?: string,
     senderName?: string,
+    clientEmail?: string,
+    clientPhone?: string,
     caption?: string,
     replyToMessageId?: string,
     replyToContent?: string,
@@ -530,6 +540,14 @@ export class MessagesService {
           lastMessageAt: message.createdAt,
           closedAt: null,
           status: senderType === 'client' ? 'new' : undefined,
+          clientEmail:
+            senderType === 'client' && clientEmail?.trim()
+              ? clientEmail.trim()
+              : undefined,
+          clientPhone:
+            senderType === 'client' && clientPhone?.trim()
+              ? clientPhone.trim()
+              : undefined,
         },
       });
 

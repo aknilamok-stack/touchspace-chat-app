@@ -29,6 +29,8 @@ export class MessagesController {
       managerName?: string;
       senderId?: string;
       senderName?: string;
+      clientEmail?: string;
+      clientPhone?: string;
       replyToMessageId?: string;
       replyToContent?: string;
     },
@@ -41,6 +43,8 @@ export class MessagesController {
       body.managerName,
       body.senderId,
       body.senderName,
+      body.clientEmail,
+      body.clientPhone,
       body.replyToMessageId,
       body.replyToContent,
     );
@@ -82,6 +86,8 @@ export class MessagesController {
       managerName?: string;
       senderId?: string;
       senderName?: string;
+      clientEmail?: string;
+      clientPhone?: string;
       caption?: string;
       replyToMessageId?: string;
       replyToContent?: string;
@@ -99,6 +105,8 @@ export class MessagesController {
       body.managerName,
       body.senderId,
       body.senderName,
+      body.clientEmail,
+      body.clientPhone,
       body.caption,
       body.replyToMessageId,
       body.replyToContent,

@@ -302,6 +302,9 @@ export class TicketsService {
       select: {
         id: true,
         clientId: true,
+        clientName: true,
+        clientEmail: true,
+        clientPhone: true,
         supplierId: true,
         clientProfile: {
           select: {
@@ -383,18 +386,6 @@ export class TicketsService {
   private buildAutoContacts(
     ticket: Awaited<ReturnType<TicketsService['getTicketWithContactsContext']>>,
   ) {
-    const primaryProfile =
-      ticket.clientProfile ?? ticket.supplierProfile ?? null;
-    const sourceLabel = ticket.clientProfile
-      ? 'Из профиля клиента'
-      : ticket.supplierProfile
-        ? 'Из профиля поставщика'
-        : 'Из профиля';
-
-    if (!primaryProfile) {
-      return [];
-    }
-
     const contacts: Array<{
       id: string;
       type: ContactType;
@@ -406,37 +397,54 @@ export class TicketsService {
       editable: boolean;
     }> = [];
 
-    if (primaryProfile.email?.trim()) {
+    const resolvedEmail = ticket.clientEmail?.trim() || ticket.clientProfile?.email?.trim() || '';
+    const resolvedPhone = ticket.clientPhone?.trim() || ticket.clientProfile?.phone?.trim() || '';
+    const emailSourceLabel = ticket.clientEmail?.trim()
+      ? 'Из данных клиента'
+      : ticket.clientProfile?.email?.trim()
+        ? 'Из профиля клиента'
+        : null;
+    const phoneSourceLabel = ticket.clientPhone?.trim()
+      ? 'Из данных клиента'
+      : ticket.clientProfile?.phone?.trim()
+        ? 'Из профиля клиента'
+        : null;
+
+    if (resolvedEmail && emailSourceLabel) {
       const normalizedEmail = this.normalizeContactValue(
         'email',
-        primaryProfile.email,
+        resolvedEmail,
       );
       contacts.push({
-        id: this.buildProfileContactId(primaryProfile.id, 'email'),
+        id: ticket.clientProfile?.id
+          ? this.buildProfileContactId(ticket.clientProfile.id, 'email')
+          : `ticket:${ticket.id}:email`,
         type: 'email',
         value: normalizedEmail.value,
         normalizedValue: normalizedEmail.normalizedValue,
         label: null,
         source: 'profile',
-        sourceLabel,
-        editable: true,
+        sourceLabel: emailSourceLabel,
+        editable: false,
       });
     }
 
-    if (primaryProfile.phone?.trim()) {
+    if (resolvedPhone && phoneSourceLabel) {
       const normalizedPhone = this.normalizeContactValue(
         'phone',
-        primaryProfile.phone,
+        resolvedPhone,
       );
       contacts.push({
-        id: this.buildProfileContactId(primaryProfile.id, 'phone'),
+        id: ticket.clientProfile?.id
+          ? this.buildProfileContactId(ticket.clientProfile.id, 'phone')
+          : `ticket:${ticket.id}:phone`,
         type: 'phone',
         value: normalizedPhone.value,
         normalizedValue: normalizedPhone.normalizedValue,
         label: null,
         source: 'profile',
-        sourceLabel,
-        editable: true,
+        sourceLabel: phoneSourceLabel,
+        editable: false,
       });
     }
 
@@ -782,6 +790,8 @@ export class TicketsService {
           lastResolvedByManagerName: null,
           clientId: clientId ?? null,
           clientName: clientName ?? null,
+          clientEmail: null,
+          clientPhone: null,
           avatarColor,
           avatarEmoji,
           supplierId: null,
@@ -835,8 +845,6 @@ export class TicketsService {
         id: normalizedClientId,
         fullName: normalizedClientName,
         role: normalizedClientId ? 'client' : null,
-        email: clientEmail,
-        phone: clientPhone,
       });
 
       if (senderId) {
@@ -870,6 +878,8 @@ export class TicketsService {
           lastResolvedByManagerName: null,
           clientId: normalizedClientId,
           clientName: normalizedClientName,
+          clientEmail: clientEmail?.trim() || null,
+          clientPhone: clientPhone?.trim() || null,
           avatarColor,
           avatarEmoji,
           supplierId: senderType === 'supplier' ? (senderId ?? null) : null,

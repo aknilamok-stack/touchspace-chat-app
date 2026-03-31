@@ -72,6 +72,8 @@ model Ticket {
   managerRatingSubmittedAt DateTime?
   clientId                 String?
   clientName               String?
+  clientEmail              String?
+  clientPhone              String?
   avatarColor              String?
   avatarEmoji              String?
   supplierId               String?

@@ -1990,6 +1990,7 @@ export default function SupplierPage() {
                     <div className="relative">
                       <button
                         onClick={() => {
+                          setHoveredHeaderAction(null);
                           setIsChatPaneDismissed(true);
                           setSelectedRequestId("");
                           setReplyTarget(null);
@@ -2005,7 +2006,7 @@ export default function SupplierPage() {
                       </button>
                       {hoveredHeaderAction === "close" ? (
                         <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                          Закрыть
+                          Свернуть
                         </div>
                       ) : null}
                     </div>

@@ -2991,6 +2991,7 @@ export default function Home() {
                 <div className="relative">
                   <button
                     onClick={() => {
+                      setHoveredHeaderAction(null);
                       setIsChatPaneDismissed(true);
                       setActiveChatId("");
                       setReplyTarget(null);
@@ -3006,7 +3007,7 @@ export default function Home() {
                   </button>
                   {hoveredHeaderAction === "close" && (
                     <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)] whitespace-nowrap">
-                      Закрыть
+                      Свернуть
                     </div>
                   )}
                 </div>

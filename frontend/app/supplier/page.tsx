@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
+import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import {
   clearAuthSession,
@@ -20,6 +21,7 @@ import {
   parseChatAttachmentPayloads,
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
+import { formatDialogActivityLabel } from "@/lib/dialog-list";
 import { fetchManagerStatuses } from "@/lib/manager-presence";
 
 const defaultSupplierAccount = supplierAccounts[0] ?? {
@@ -105,8 +107,13 @@ type Ticket = {
   status?: string;
   pinned?: boolean;
   clientId?: string | null;
+  clientName?: string | null;
+  avatarColor?: string | null;
+  avatarEmoji?: string | null;
   assignedManagerId?: string | null;
   assignedManagerName?: string | null;
+  lastResolvedByManagerName?: string | null;
+  lastMessageAt?: string | null;
   invitedManagerNames?: string[];
 };
 
@@ -119,6 +126,7 @@ type SupplierRequestCard = {
   pinned: boolean;
   lastActivityAt: string;
   lastVisibleMessage: TicketMessage | null;
+  ticket: Ticket | null;
 };
 
 type SupplierPanelStatus = {
@@ -349,6 +357,7 @@ const buildSupplierRequestCards = (
         pinned: pinnedRequestIds.includes(request.id),
         lastActivityAt: lastVisibleMessage?.createdAt ?? request.createdAt,
         lastVisibleMessage,
+        ticket: ticketsById[request.ticketId] ?? null,
       } satisfies SupplierRequestCard;
     })
     .sort(
@@ -374,6 +383,66 @@ const fetchTicketMessagesSnapshot = async (
 
   const data = (await response.json()) as TicketMessageApi[];
   return data.map(formatTicketMessage);
+};
+
+const getSupplierCardClientLabel = (ticket: Ticket | null, request: SupplierRequest) =>
+  ticket?.clientId?.trim() ||
+  ticket?.clientName?.trim() ||
+  ticket?.title?.trim() ||
+  `Ticket #${request.ticketId}`;
+
+const getSupplierCardPreview = (card: SupplierRequestCard) => {
+  if (card.lastVisibleMessage) {
+    if (card.lastVisibleMessage.attachments && card.lastVisibleMessage.attachments.length > 0) {
+      return card.lastVisibleMessage.attachments.length === 1
+        ? card.lastVisibleMessage.attachments[0].name
+        : `${card.lastVisibleMessage.attachments.length} файлов`;
+    }
+
+    return card.lastVisibleMessage.displayContent.length > 84
+      ? `${card.lastVisibleMessage.displayContent.slice(0, 84)}...`
+      : card.lastVisibleMessage.displayContent;
+  }
+
+  if (card.request.requestText.trim()) {
+    return card.request.requestText.length > 84
+      ? `${card.request.requestText.slice(0, 84)}...`
+      : card.request.requestText;
+  }
+
+  return "Диалог создан";
+};
+
+const getSupplierCardTone = (queueTab: SupplierQueueTab) => {
+  if (queueTab === "requires_reply") {
+    return {
+      dot: "bg-[#FF6B6B]",
+      pill: "bg-[#FFE6E6] text-[#D63E3E]",
+      label: "Требует ответа",
+    };
+  }
+
+  if (queueTab === "new") {
+    return {
+      dot: "bg-[#0A84FF]",
+      pill: "bg-[#EAF3FF] text-[#0A84FF]",
+      label: "Новый",
+    };
+  }
+
+  if (queueTab === "completed") {
+    return {
+      dot: "bg-[#8E8E93]",
+      pill: "bg-[#F2F2F7] text-[#6C6C70]",
+      label: "Завершён",
+    };
+  }
+
+  return {
+    dot: "bg-[#FFB340]",
+    pill: "bg-[#FFF4DE] text-[#B7791F]",
+    label: "В работе",
+  };
 };
 
 const fetchMessagesMapForRequests = async (requests: SupplierRequest[]) => {
@@ -1837,65 +1906,41 @@ export default function SupplierPage() {
             {!isLoadingRequests &&
               !requestsError &&
               activeTabRequests.map((card) => (
-                <button
+                (() => {
+                  const tone = getSupplierCardTone(card.queueTab);
+                  const managerLabel =
+                    card.ticket?.assignedManagerName?.trim() ||
+                    card.ticket?.lastResolvedByManagerName?.trim() ||
+                    (card.managerName !== "Не указан" ? card.managerName : "Не назначен");
+
+                  return (
+                  <DialogListCard
                   key={card.request.id}
-                  onClick={() => {
-                    setIsChatPaneDismissed(false);
-                    setSelectedRequestId(card.request.id);
-                  }}
-                  className={`w-full rounded-[14px] border bg-white p-[14px] text-left transition ${
-                    selectedRequestId === card.request.id
-                      ? "border-[2px] border-[#0A84FF] shadow-[0_10px_24px_rgba(10,132,255,0.08)]"
-                      : "border-[#E8E8ED] hover:-translate-y-0.5 hover:border-[#D8E4FF] hover:shadow-[0_8px_20px_rgba(15,23,42,0.06)]"
-                  }`}
-                >
-                  <div
-                    className={`${
-                      card.queueTab === "requires_reply"
-                        ? "border-l-[3px] border-[#FF3B30] pl-3"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="inline-flex items-center rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
-                          {card.managerName !== "Не указан"
-                            ? `от менеджера ${card.managerName}`
-                            : "от менеджера"}
-                        </div>
-                        {card.pinned ? (
-                          <span className="text-sm leading-none" title="Закреплён">
-                            📌
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-3 truncate text-[15px] font-semibold text-[#1E1E1E]">
-                        {card.request.supplierName}
-                      </p>
-                    </div>
-
-                    <p className="shrink-0 text-[12px] font-medium text-[#8E8E93]">
-                      {formatTimeLabel(card.lastActivityAt)}
-                    </p>
-                    </div>
-
-                    <p className="mt-2 line-clamp-2 text-[14px] leading-6 text-[#1E1E1E]">
-                      {card.request.requestText}
-                    </p>
-
-                    <div className="mt-3 flex items-center justify-start gap-3">
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        supplierQueueTabs.find((tab) => tab.id === card.queueTab)?.badgeClassName ??
-                        "bg-[#F2F2F7] text-[#6C6C70]"
-                      }`}
-                    >
-                      {supplierQueueTabs.find((tab) => tab.id === card.queueTab)?.label}
-                    </span>
-                    </div>
-                  </div>
-                </button>
+                    active={selectedRequestId === card.request.id}
+                    emphasized={card.queueTab === "requires_reply" || card.queueTab === "new"}
+                    onClick={() => {
+                      setIsChatPaneDismissed(false);
+                      setSelectedRequestId(card.request.id);
+                    }}
+                    title={getSupplierCardClientLabel(card.ticket, card.request)}
+                    identityKey={
+                      card.ticket?.clientId ||
+                      card.ticket?.clientName ||
+                      card.ticket?.title ||
+                      card.request.ticketId
+                    }
+                    avatarColor={card.ticket?.avatarColor}
+                    avatarEmoji={card.ticket?.avatarEmoji}
+                    statusDotClassName={tone.dot}
+                    preview={getSupplierCardPreview(card)}
+                    managerLabel={managerLabel}
+                    timeLabel={formatDialogActivityLabel(card.lastActivityAt)}
+                    statusLabel={tone.label}
+                    statusBadgeClassName={tone.pill}
+                    pinned={card.pinned}
+                  />
+                  );
+                })()
               ))}
 
             {!isLoadingRequests &&

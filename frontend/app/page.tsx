@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
+import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import {
   clearAuthSession,
@@ -20,6 +21,7 @@ import {
   parseChatAttachmentPayloads,
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
+import { formatDialogActivityLabel, getDialogManagerLabel } from "@/lib/dialog-list";
 import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
@@ -77,6 +79,8 @@ type ApiTicket = {
   title: string;
   clientName?: string | null;
   clientId?: string | null;
+  avatarColor?: string | null;
+  avatarEmoji?: string | null;
   status?: string;
   pinned?: boolean;
   invitedManagerNames?: string[];
@@ -94,6 +98,7 @@ type ApiTicket = {
   aiActivatedAt?: string | null;
   aiDeactivatedAt?: string | null;
   handedToManagerAt?: string | null;
+  lastMessageAt?: string | null;
   messages?: ApiMessage[];
   supplierRequests?: ApiSupplierRequest[];
 };
@@ -152,8 +157,11 @@ type ChatItem = {
   aiActivatedAt: string | null;
   aiDeactivatedAt: string | null;
   handedToManagerAt: string | null;
+  lastMessageAt: string | null;
   clientId: string | null;
   clientName: string;
+  avatarColor: string | null;
+  avatarEmoji: string | null;
   messages: ChatMessage[];
   supplierRequests: ChatSupplierRequest[];
 };
@@ -240,15 +248,20 @@ const getMessageStatusLabel = (status?: string) => {
 };
 
 const getChatPreview = (chat: ChatItem) => {
-  const lastMessage = chat.messages.at(-1);
+  const lastMessage = getLastNonSystemMessage(chat) ?? chat.messages.at(-1);
 
   if (!lastMessage) {
-    return "Новое обращение без сообщений";
+    return "Диалог создан";
   }
 
-  return lastMessage.text.length > 48
-    ? `${lastMessage.text.slice(0, 48)}...`
-    : lastMessage.text;
+  const previewSource =
+    lastMessage.attachments && lastMessage.attachments.length > 0
+      ? lastMessage.attachments.length === 1
+        ? lastMessage.attachments[0].name
+        : `${lastMessage.attachments.length} файлов`
+      : lastMessage.text;
+
+  return previewSource.length > 84 ? `${previewSource.slice(0, 84)}...` : previewSource;
 };
 
 const getUnreadCount = (chat: ChatItem) => {
@@ -659,8 +672,11 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   aiActivatedAt: ticket.aiActivatedAt ?? null,
   aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
   handedToManagerAt: ticket.handedToManagerAt ?? null,
+  lastMessageAt: ticket.lastMessageAt ?? null,
   clientId: ticket.clientId?.trim() || null,
   clientName: ticket.clientName?.trim() || ticket.title || "Реселлер",
+  avatarColor: ticket.avatarColor ?? null,
+  avatarEmoji: ticket.avatarEmoji ?? null,
   messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
   supplierRequests: Array.isArray(ticket.supplierRequests)
     ? ticket.supplierRequests.map(formatSupplierRequest)
@@ -2814,88 +2830,50 @@ export default function Home() {
                   chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
 
                 return (
-                  <button
+                  <DialogListCard
                     key={chat.id}
+                    active={isActive}
+                    emphasized={unreadCount > 0}
                     onClick={() => {
                       setIsChatPaneDismissed(false);
                       setActiveChatId(chat.id);
                       setIsSupplierFormOpen(false);
                     }}
-                    className={`w-full rounded-[24px] border p-4 text-left transition ${
-                      isActive
-                        ? "border-[#CFE1FF] bg-[#F3F8FF] shadow-[0_12px_32px_rgba(10,132,255,0.09)]"
-                        : unreadCount > 0
-                          ? "border-[#D6E7FF] bg-[#EEF6FF]"
-                          : "border-[#E6E6EB] bg-white hover:bg-[#FAFAFC]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2.5 w-2.5 rounded-full ${chatTone.dot}`} />
-                          {chat.pinned && (
-                            <span className="text-xs text-[#8E8E93]" title="Закреплён">
-                              📌
-                            </span>
-                          )}
-                          {chat.aiEnabled && (
-                            <span className="rounded-full bg-[#EEF6FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
-                              Ведёт AI
-                            </span>
-                          )}
-                          <p
-                            className={`truncate text-[15px] text-[#1E1E1E] ${
-                              unreadCount > 0 ? "font-semibold" : "font-medium"
-                            }`}
-                          >
-                            {chat.title}
-                          </p>
-                        </div>
-                        <p className="mt-1 text-sm text-[#8E8E93]">
-                          {getChatClientDisplayName(chat)}
-                        </p>
-                      </div>
-
-                      {unreadCount > 0 && (
-                        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#0A84FF] px-2 text-xs font-semibold text-white">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </div>
-
-                    <p
-                      className={`mt-3 text-sm leading-5 ${
-                        unreadCount > 0 ? "font-medium text-[#1E1E1E]" : "text-[#8E8E93]"
-                      }`}
-                    >
-                      {getChatPreview(chat)}
-                    </p>
-
-                    <div className="mt-3 flex items-center">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex min-h-8 items-center justify-center rounded-full px-3 py-1.5 text-center text-xs font-medium leading-4 ${chatTone.pill}`}
+                    title={getChatClientDisplayName(chat)}
+                    identityKey={chat.clientId || chat.clientName || chat.id}
+                    avatarColor={chat.avatarColor}
+                    avatarEmoji={chat.avatarEmoji}
+                    statusDotClassName={chatTone.dot}
+                    preview={getChatPreview(chat)}
+                    managerLabel={getDialogManagerLabel(
+                      chat.assignedManagerName,
+                      chat.lastResolvedByManagerName
+                    )}
+                    timeLabel={formatDialogActivityLabel(
+                      chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
+                    )}
+                    statusLabel={isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
+                    statusBadgeClassName={chatTone.pill}
+                    unreadCount={unreadCount}
+                    pinned={chat.pinned}
+                    footerAction={
+                      isIncomingQueueChat ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setIsChatPaneDismissed(false);
+                            setActiveChatId(chat.id);
+                            void handleClaimIncoming(chat.id);
+                          }}
+                          className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
                         >
-                          {isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
-                        </span>
-                        {isIncomingQueueChat ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setIsChatPaneDismissed(false);
-                              setActiveChatId(chat.id);
-                              void handleClaimIncoming(chat.id);
-                            }}
-                            className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
-                          >
-                            Взять в работу
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </button>
+                          Взять в работу
+                        </button>
+                      ) : undefined
+                    }
+                  />
                 );
               })()
             ))}

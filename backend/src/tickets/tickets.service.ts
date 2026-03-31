@@ -25,6 +25,54 @@ type ResolvedContactValue = {
   normalizedValue: string;
 };
 
+const CLIENT_AVATAR_COLORS = [
+  '#FF6B6B',
+  '#FF8E3C',
+  '#FFB340',
+  '#FFD166',
+  '#7BC96F',
+  '#34C759',
+  '#1CC8A0',
+  '#21C7D9',
+  '#0A84FF',
+  '#4D7CFE',
+  '#6C63FF',
+  '#8B5CF6',
+  '#C084FC',
+  '#EC4899',
+  '#F06292',
+  '#A3A3A3',
+  '#6B7280',
+  '#22A699',
+];
+
+const CLIENT_AVATAR_EMOJIS = [
+  '🦊',
+  '🐺',
+  '🐻',
+  '🐼',
+  '🦉',
+  '🦁',
+  '🐯',
+  '🐨',
+  '🦔',
+  '🐸',
+  '🦋',
+  '🐝',
+  '🌵',
+  '🌿',
+  '🍀',
+  '🌻',
+  '🌷',
+  '🍎',
+  '🍐',
+  '🍊',
+  '🍋',
+  '🍇',
+  '🍒',
+  '🥝',
+];
+
 @Injectable()
 export class TicketsService {
   constructor(
@@ -151,6 +199,100 @@ export class TicketsService {
     return {
       profileId,
       type,
+    };
+  }
+
+  private normalizeClientVisualIdentityKey(...values: Array<string | null | undefined>) {
+    const sourceValue = values.find((value) => value?.trim())?.trim();
+
+    if (!sourceValue) {
+      return '';
+    }
+
+    return sourceValue.toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private getClientVisualIdentityDisplayName(...values: Array<string | null | undefined>) {
+    return values.find((value) => value?.trim())?.trim() ?? null;
+  }
+
+  private async ensureClientVisualIdentity(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    clientKey: string,
+    displayName: string | null,
+  ) {
+    if (!clientKey) {
+      return {
+        avatarColor: null,
+        avatarEmoji: null,
+      };
+    }
+
+    const existingIdentity = await tx.clientVisualIdentity.findUnique({
+      where: { key: clientKey },
+    });
+
+    if (existingIdentity) {
+      if (displayName && existingIdentity.displayName !== displayName) {
+        await tx.clientVisualIdentity.update({
+          where: { key: clientKey },
+          data: { displayName },
+        });
+      }
+
+      return {
+        avatarColor: existingIdentity.avatarColor,
+        avatarEmoji: existingIdentity.avatarEmoji,
+      };
+    }
+
+    const usedPairs = await tx.clientVisualIdentity.findMany({
+      select: {
+        avatarColor: true,
+        avatarEmoji: true,
+      },
+    });
+    const usedPairKeys = new Set(
+      usedPairs.map(({ avatarColor, avatarEmoji }) => `${avatarColor}::${avatarEmoji}`),
+    );
+
+    let avatarColor = '';
+    let avatarEmoji = '';
+
+    for (const color of CLIENT_AVATAR_COLORS) {
+      for (const emoji of CLIENT_AVATAR_EMOJIS) {
+        const pairKey = `${color}::${emoji}`;
+
+        if (!usedPairKeys.has(pairKey)) {
+          avatarColor = color;
+          avatarEmoji = emoji;
+          break;
+        }
+      }
+
+      if (avatarColor && avatarEmoji) {
+        break;
+      }
+    }
+
+    if (!avatarColor || !avatarEmoji) {
+      const fallbackIndex = usedPairs.length;
+      avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
+      avatarEmoji = CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
+    }
+
+    await tx.clientVisualIdentity.create({
+      data: {
+        key: clientKey,
+        displayName,
+        avatarColor,
+        avatarEmoji,
+      },
+    });
+
+    return {
+      avatarColor,
+      avatarEmoji,
     };
   }
 
@@ -600,6 +742,16 @@ export class TicketsService {
     clientName?: string,
   ) {
     const now = new Date();
+    const clientVisualIdentityKey = this.normalizeClientVisualIdentityKey(
+      clientId,
+      clientName,
+      title,
+    );
+    const clientVisualDisplayName = this.getClientVisualIdentityDisplayName(
+      clientId,
+      clientName,
+      title,
+    );
 
     await this.profilesService.ensureProfile({
       id: clientId,
@@ -607,30 +759,40 @@ export class TicketsService {
       role: clientId ? 'client' : null,
     });
 
-    return this.prisma.ticket.create({
-      data: {
-        title,
-        status: 'new',
-        conversationMode: 'manager',
-        currentHandlerType: 'manager',
-        aiEnabled: false,
-        aiResolved: false,
-        invitedManagerIds: [],
-        invitedManagerNames: [],
-        assignedManagerId: null,
-        assignedManagerName: null,
-        lastResolvedByManagerId: null,
-        lastResolvedByManagerName: null,
-        clientId: clientId ?? null,
-        clientName: clientName ?? null,
-        supplierId: null,
-        supplierName: null,
-        firstResponseStartedAt: now,
-        firstResponseAt: null,
-        firstResponseTime: null,
-        firstResponseBreached: false,
-        lastMessageAt: null,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
+        tx,
+        clientVisualIdentityKey,
+        clientVisualDisplayName,
+      );
+
+      return tx.ticket.create({
+        data: {
+          title,
+          status: 'new',
+          conversationMode: 'manager',
+          currentHandlerType: 'manager',
+          aiEnabled: false,
+          aiResolved: false,
+          invitedManagerIds: [],
+          invitedManagerNames: [],
+          assignedManagerId: null,
+          assignedManagerName: null,
+          lastResolvedByManagerId: null,
+          lastResolvedByManagerName: null,
+          clientId: clientId ?? null,
+          clientName: clientName ?? null,
+          avatarColor,
+          avatarEmoji,
+          supplierId: null,
+          supplierName: null,
+          firstResponseStartedAt: now,
+          firstResponseAt: null,
+          firstResponseTime: null,
+          firstResponseBreached: false,
+          lastMessageAt: null,
+        },
+      });
     });
   }
 
@@ -658,6 +820,16 @@ export class TicketsService {
           ? (senderName ?? clientName ?? null)
           : (clientName ?? null);
       const firstResponseTime = senderType === 'manager' ? 0 : null;
+      const clientVisualIdentityKey = this.normalizeClientVisualIdentityKey(
+        normalizedClientId,
+        normalizedClientName,
+        title,
+      );
+      const clientVisualDisplayName = this.getClientVisualIdentityDisplayName(
+        normalizedClientId,
+        normalizedClientName,
+        title,
+      );
 
       await this.profilesService.ensureProfile({
         id: normalizedClientId,
@@ -674,6 +846,12 @@ export class TicketsService {
           role: senderType,
         });
       }
+
+      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
+        tx,
+        clientVisualIdentityKey,
+        clientVisualDisplayName,
+      );
 
       const ticket = await tx.ticket.create({
         data: {
@@ -692,6 +870,8 @@ export class TicketsService {
           lastResolvedByManagerName: null,
           clientId: normalizedClientId,
           clientName: normalizedClientName,
+          avatarColor,
+          avatarEmoji,
           supplierId: senderType === 'supplier' ? (senderId ?? null) : null,
           supplierName: senderType === 'supplier' ? (senderName ?? null) : null,
           firstResponseStartedAt: isClientStart ? now : null,

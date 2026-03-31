@@ -72,6 +72,8 @@ model Ticket {
   managerRatingSubmittedAt DateTime?
   clientId                 String?
   clientName               String?
+  avatarColor              String?
+  avatarEmoji              String?
   supplierId               String?
   supplierName             String?
   priority                 String?
@@ -102,6 +104,17 @@ model Ticket {
   messages                Message[]
   supplierRequests        SupplierRequest[]
   contacts                TicketContact[]
+}
+
+model ClientVisualIdentity {
+  key         String   @id
+  displayName String?
+  avatarColor String
+  avatarEmoji String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([avatarColor, avatarEmoji])
 }
 
 model TicketContact {

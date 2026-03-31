@@ -2478,10 +2478,6 @@ export default function Home() {
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
       setFilter("in_progress");
-      setToast({
-        message: "Диалог снова открыт",
-        tone: "success",
-      });
 
       window.setTimeout(() => {
         composerTextareaRef.current?.focus();
@@ -3360,7 +3356,7 @@ export default function Home() {
           </div>
 
           {toast ? (
-            <div className="pointer-events-none absolute right-[352px] top-[96px] z-30">
+            <div className="pointer-events-none absolute right-[112px] top-[126px] z-30">
               <div
                 className={`min-w-[300px] rounded-[24px] border px-5 py-4 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-sm ${
                   toast.tone === "error"

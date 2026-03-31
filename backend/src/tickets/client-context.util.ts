@@ -22,6 +22,7 @@ type ExistingClientContext = {
   clientId?: string | null;
   clientName?: string | null;
   tradePointExternalId?: string | null;
+  tradePointName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
   currentUserId?: string | null;
@@ -84,6 +85,7 @@ export const resolveTicketClientContext = (
   const tradePointName =
     normalizeString(incoming.tradePointName) ||
     normalizeString(incoming.clientName) ||
+    normalizeString(existing?.tradePointName) ||
     normalizeString(existing?.clientName);
   const tradePointExternalId =
     normalizeString(incoming.tradePointExternalId) ||
@@ -161,6 +163,7 @@ export const resolveTicketClientContext = (
   return {
     clientId: tradePointId,
     clientName: tradePointName,
+    tradePointName,
     tradePointExternalId,
     currentUserId,
     currentUserEmail,

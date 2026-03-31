@@ -79,6 +79,7 @@ type ApiTicket = {
   title: string;
   clientName?: string | null;
   clientId?: string | null;
+  tradePointName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
   currentUserEmail?: string | null;
@@ -167,6 +168,7 @@ type ChatItem = {
   lastMessageAt: string | null;
   clientId: string | null;
   clientName: string;
+  tradePointName?: string | null;
   clientEmail: string | null;
   clientPhone: string | null;
   currentUserEmail: string | null;
@@ -184,6 +186,7 @@ type NotificationCandidate = {
   ticketId: string;
   title: string;
   clientName: string | null;
+  tradePointName?: string | null;
   messageId: string;
   messageText: string;
   createdAt: string;
@@ -688,7 +691,12 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   handedToManagerAt: ticket.handedToManagerAt ?? null,
   lastMessageAt: ticket.lastMessageAt ?? null,
   clientId: ticket.clientId?.trim() || null,
-  clientName: ticket.clientName?.trim() || ticket.title || "Реселлер",
+  clientName:
+    ticket.tradePointName?.trim() ||
+    ticket.clientName?.trim() ||
+    ticket.title ||
+    "Реселлер",
+  tradePointName: ticket.tradePointName?.trim() || null,
   clientEmail: ticket.clientEmail?.trim() || null,
   clientPhone: ticket.clientPhone?.trim() || null,
   currentUserEmail: ticket.currentUserEmail?.trim() || null,
@@ -704,8 +712,13 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
     : [],
 });
 
-const getChatClientDisplayName = (chat?: Pick<ChatItem, "clientId" | "clientName"> | null) =>
-  chat?.clientName?.trim() || chat?.clientId?.trim() || "Реселлер";
+const getChatClientDisplayName = (
+  chat?: Pick<ChatItem, "clientId" | "clientName" | "tradePointName"> | null
+) =>
+  chat?.tradePointName?.trim() ||
+  chat?.clientName?.trim() ||
+  chat?.clientId?.trim() ||
+  "Реселлер";
 
 export default function Home() {
   const router = useRouter();

@@ -73,6 +73,7 @@ model Ticket {
   clientId                 String?
   clientName               String?
   tradePointExternalId     String?
+  tradePointName           String?
   clientEmail              String?
   clientPhone              String?
   currentUserId            String?

@@ -177,6 +177,7 @@ export class MessagesService {
             clientId: true,
             clientName: true,
             tradePointExternalId: true,
+            tradePointName: true,
             clientEmail: true,
             clientPhone: true,
             currentUserId: true,
@@ -309,6 +310,8 @@ export class MessagesService {
             clientContext.clientName ?? ticket.clientName;
           ticketUpdateData.tradePointExternalId =
             clientContext.tradePointExternalId;
+          ticketUpdateData.tradePointName =
+            clientContext.tradePointName ?? ticket.tradePointName;
           ticketUpdateData.clientEmail = clientContext.clientEmail;
           ticketUpdateData.clientPhone = clientContext.clientPhone;
           ticketUpdateData.currentUserId = clientContext.currentUserId;
@@ -598,6 +601,7 @@ export class MessagesService {
           clientId: true,
           clientName: true,
           tradePointExternalId: true,
+          tradePointName: true,
           clientEmail: true,
           clientPhone: true,
           currentUserId: true,
@@ -667,6 +671,7 @@ export class MessagesService {
           clientId: clientContext?.clientId,
           clientName: clientContext?.clientName,
           tradePointExternalId: clientContext?.tradePointExternalId,
+          tradePointName: clientContext?.tradePointName,
           clientEmail: clientContext?.clientEmail,
           clientPhone: clientContext?.clientPhone,
           currentUserId: clientContext?.currentUserId,

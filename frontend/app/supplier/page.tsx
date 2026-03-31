@@ -108,6 +108,7 @@ type Ticket = {
   pinned?: boolean;
   clientId?: string | null;
   clientName?: string | null;
+  tradePointName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
   currentUserEmail?: string | null;
@@ -393,6 +394,7 @@ const fetchTicketMessagesSnapshot = async (
 };
 
 const getSupplierCardClientLabel = (ticket: Ticket | null, request: SupplierRequest) =>
+  ticket?.tradePointName?.trim() ||
   ticket?.clientName?.trim() ||
   ticket?.clientId?.trim() ||
   ticket?.title?.trim() ||
@@ -794,6 +796,7 @@ export default function SupplierPage() {
             "Все диалоги, в которых вы участвуете и уже обрабатываете, остаются под рукой в текущей вкладке.",
         };
   const selectedClientLabel =
+    selectedTicket?.tradePointName?.trim() ||
     selectedTicket?.clientName?.trim() ||
     selectedTicket?.clientId?.trim() ||
     selectedTicket?.title?.trim() ||

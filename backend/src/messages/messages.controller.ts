@@ -60,7 +60,10 @@ export class MessagesController {
             .slice(0, 64);
           const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
           const extension = extname(file.originalname) || '';
-          callback(null, `${safeBaseName || 'attachment'}-${suffix}${extension}`);
+          callback(
+            null,
+            `${safeBaseName || 'attachment'}-${suffix}${extension}`,
+          );
         },
       }),
       limits: {

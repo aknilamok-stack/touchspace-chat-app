@@ -15,6 +15,10 @@ export class ProfilesController {
     @Param('id') id: string,
     @Body() body: { fullName?: string; managerStatus: string },
   ) {
-    return this.profilesService.updateManagerStatus(id, body.managerStatus, body.fullName);
+    return this.profilesService.updateManagerStatus(
+      id,
+      body.managerStatus,
+      body.fullName,
+    );
   }
 }

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -15,7 +23,9 @@ export class NotificationsController {
 
   @Get('manager-candidates')
   getManagerNotificationCandidates(@Query('profileId') profileId: string) {
-    return this.notificationsService.getManagerNotificationCandidates(profileId);
+    return this.notificationsService.getManagerNotificationCandidates(
+      profileId,
+    );
   }
 
   @Patch('preferences')
@@ -32,7 +42,11 @@ export class NotificationsController {
       notifyAdminAlerts?: boolean;
     },
   ) {
-    return this.notificationsService.updatePreferences(body.profileId, body.role, body);
+    return this.notificationsService.updatePreferences(
+      body.profileId,
+      body.role,
+      body,
+    );
   }
 
   @Post('subscriptions/:id/deactivate')

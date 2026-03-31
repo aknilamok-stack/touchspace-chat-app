@@ -65,7 +65,9 @@ export class NotificationsService {
     });
 
     if (!profile) {
-      throw new BadRequestException(`Profile with id "${normalizedProfileId}" not found`);
+      throw new BadRequestException(
+        `Profile with id "${normalizedProfileId}" not found`,
+      );
     }
 
     return profile;
@@ -81,45 +83,46 @@ export class NotificationsService {
       ],
     };
 
-    const [unreadDialogs, aiDialogs, pendingSupplierRequests] = await Promise.all([
-      this.prisma.message.findMany({
-        where: {
-          senderType: {
-            in: ['client', 'supplier'],
+    const [unreadDialogs, aiDialogs, pendingSupplierRequests] =
+      await Promise.all([
+        this.prisma.message.findMany({
+          where: {
+            senderType: {
+              in: ['client', 'supplier'],
+            },
+            status: {
+              in: ['sent', 'delivered'],
+            },
+            ticket: {
+              ...managerScope,
+              aiEnabled: false,
+              status: {
+                notIn: ['resolved', 'closed'],
+              },
+            },
           },
-          status: {
-            in: ['sent', 'delivered'],
-          },
-          ticket: {
+          distinct: ['ticketId'],
+          select: { ticketId: true },
+        }),
+        this.prisma.ticket.count({
+          where: {
             ...managerScope,
-            aiEnabled: false,
+            aiEnabled: true,
             status: {
               notIn: ['resolved', 'closed'],
             },
           },
-        },
-        distinct: ['ticketId'],
-        select: { ticketId: true },
-      }),
-      this.prisma.ticket.count({
-        where: {
-          ...managerScope,
-          aiEnabled: true,
-          status: {
-            notIn: ['resolved', 'closed'],
+        }),
+        this.prisma.supplierRequest.count({
+          where: {
+            createdByManagerId: profileId,
+            firstResponseAt: null,
+            status: {
+              notIn: ['closed', 'cancelled'],
+            },
           },
-        },
-      }),
-      this.prisma.supplierRequest.count({
-        where: {
-          createdByManagerId: profileId,
-          firstResponseAt: null,
-          status: {
-            notIn: ['closed', 'cancelled'],
-          },
-        },
-      }),
-    ]);
+        }),
+      ]);
 
     return {
       unreadDialogs: unreadDialogs.length,
@@ -268,7 +271,11 @@ export class NotificationsService {
         where: {
           profileId: profile.id,
         },
-        orderBy: [{ isActive: 'desc' }, { lastUsedAt: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [
+          { isActive: 'desc' },
+          { lastUsedAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
         select: {
           id: true,
           endpoint: true,
@@ -381,20 +388,32 @@ export class NotificationsService {
           assignedManagerName: ticket.assignedManagerName,
         };
 
-        if (!this.shouldNotifyManagerAboutTicket(profile.id, activeManagerIdsSet, candidate)) {
+        if (
+          !this.shouldNotifyManagerAboutTicket(
+            profile.id,
+            activeManagerIdsSet,
+            candidate,
+          )
+        ) {
           return null;
         }
 
         return candidate;
       })
-      .filter((candidate): candidate is ManagerNotificationCandidate => Boolean(candidate));
+      .filter((candidate): candidate is ManagerNotificationCandidate =>
+        Boolean(candidate),
+      );
 
     return {
       items,
     };
   }
 
-  async updatePreferences(profileId: string, role: string, input: NotificationPreferencesInput) {
+  async updatePreferences(
+    profileId: string,
+    role: string,
+    input: NotificationPreferencesInput,
+  ) {
     await this.ensureSettingsProfile(profileId, role);
 
     const updated = await this.prisma.profile.update({

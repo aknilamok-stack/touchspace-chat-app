@@ -7,7 +7,12 @@ import { SupplierRequestsService } from './supplier-requests.service';
 
 @Module({
   controllers: [SupplierRequestsController],
-  providers: [SupplierRequestsService, PrismaService, ProfilesService, PushService],
+  providers: [
+    SupplierRequestsService,
+    PrismaService,
+    ProfilesService,
+    PushService,
+  ],
   exports: [SupplierRequestsService],
 })
 export class SupplierRequestsModule {}

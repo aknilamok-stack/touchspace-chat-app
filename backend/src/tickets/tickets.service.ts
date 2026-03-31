@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { InviteManagerDto } from './dto/invite-manager.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
@@ -11,6 +16,13 @@ import { readJsonStringArray } from '../prisma-json.util';
 type TicketViewer = {
   viewerType?: string;
   viewerId?: string;
+};
+
+type ContactType = 'email' | 'phone';
+
+type ResolvedContactValue = {
+  value: string;
+  normalizedValue: string;
 };
 
 @Injectable()
@@ -81,7 +93,512 @@ export class TicketsService {
     return undefined;
   }
 
-  async create(title = 'Тестовый тикет', clientId?: string, clientName?: string) {
+  private normalizeContactValue(
+    type: ContactType,
+    rawValue: string,
+  ): ResolvedContactValue {
+    const trimmedValue = rawValue?.trim();
+
+    if (!trimmedValue) {
+      throw new BadRequestException('Contact value is required');
+    }
+
+    if (type === 'email') {
+      const normalizedValue = trimmedValue.toLowerCase();
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailPattern.test(normalizedValue)) {
+        throw new BadRequestException('Некорректный email');
+      }
+
+      return {
+        value: normalizedValue,
+        normalizedValue,
+      };
+    }
+
+    const sanitizedValue = trimmedValue.replace(/[^\d+()\s-]/g, '');
+    const normalizedValue = sanitizedValue.replace(/[^\d+]/g, '');
+    const digitsCount = normalizedValue.replace(/\D/g, '').length;
+
+    if (digitsCount < 5) {
+      throw new BadRequestException('Некорректный телефон');
+    }
+
+    return {
+      value: sanitizedValue,
+      normalizedValue,
+    };
+  }
+
+  private buildProfileContactId(profileId: string, type: ContactType) {
+    return `profile:${profileId}:${type}`;
+  }
+
+  private parseProfileContactId(
+    contactId: string,
+  ): { profileId: string; type: ContactType } | null {
+    const [scope, profileId, type] = contactId.split(':');
+
+    if (
+      scope !== 'profile' ||
+      !profileId ||
+      (type !== 'email' && type !== 'phone')
+    ) {
+      return null;
+    }
+
+    return {
+      profileId,
+      type,
+    };
+  }
+
+  private async getTicketWithContactsContext(ticketId: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        clientId: true,
+        supplierId: true,
+        clientProfile: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        supplierProfile: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+    }
+
+    return ticket;
+  }
+
+  private async assertManagerContactAccess(
+    ticketId: string,
+    managerId?: string,
+    managerName?: string,
+  ) {
+    const normalizedManagerId = managerId?.trim();
+    const normalizedManagerName = managerName?.trim();
+
+    if (!normalizedManagerId || !normalizedManagerName) {
+      throw new BadRequestException('managerId and managerName are required');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        assignedManagerId: true,
+        invitedManagerIds: true,
+        lastResolvedByManagerId: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+    }
+
+    const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
+    const hasAccess =
+      ticket.assignedManagerId === null ||
+      ticket.assignedManagerId === normalizedManagerId ||
+      invitedManagerIds.includes(normalizedManagerId) ||
+      ticket.lastResolvedByManagerId === normalizedManagerId;
+
+    if (!hasAccess) {
+      throw new ConflictException(
+        'Менеджер не может изменять контакты этого диалога',
+      );
+    }
+
+    await this.profilesService.ensureProfile({
+      id: normalizedManagerId,
+      fullName: normalizedManagerName,
+      role: 'manager',
+    });
+
+    return {
+      managerId: normalizedManagerId,
+      managerName: normalizedManagerName,
+    };
+  }
+
+  private buildAutoContacts(
+    ticket: Awaited<ReturnType<TicketsService['getTicketWithContactsContext']>>,
+  ) {
+    const primaryProfile =
+      ticket.clientProfile ?? ticket.supplierProfile ?? null;
+    const sourceLabel = ticket.clientProfile
+      ? 'Из профиля клиента'
+      : ticket.supplierProfile
+        ? 'Из профиля поставщика'
+        : 'Из профиля';
+
+    if (!primaryProfile) {
+      return [];
+    }
+
+    const contacts: Array<{
+      id: string;
+      type: ContactType;
+      value: string;
+      normalizedValue: string;
+      label: string | null;
+      source: 'profile';
+      sourceLabel: string;
+      editable: boolean;
+    }> = [];
+
+    if (primaryProfile.email?.trim()) {
+      const normalizedEmail = this.normalizeContactValue(
+        'email',
+        primaryProfile.email,
+      );
+      contacts.push({
+        id: this.buildProfileContactId(primaryProfile.id, 'email'),
+        type: 'email',
+        value: normalizedEmail.value,
+        normalizedValue: normalizedEmail.normalizedValue,
+        label: null,
+        source: 'profile',
+        sourceLabel,
+        editable: true,
+      });
+    }
+
+    if (primaryProfile.phone?.trim()) {
+      const normalizedPhone = this.normalizeContactValue(
+        'phone',
+        primaryProfile.phone,
+      );
+      contacts.push({
+        id: this.buildProfileContactId(primaryProfile.id, 'phone'),
+        type: 'phone',
+        value: normalizedPhone.value,
+        normalizedValue: normalizedPhone.normalizedValue,
+        label: null,
+        source: 'profile',
+        sourceLabel,
+        editable: true,
+      });
+    }
+
+    return contacts;
+  }
+
+  async getContacts(ticketId: string, viewer?: TicketViewer) {
+    const ticket = await this.getTicketWithContactsContext(ticketId);
+
+    const ticketWhere = this.buildTicketWhere(viewer);
+
+    if (ticketWhere) {
+      const accessibleTicket = await this.prisma.ticket.findFirst({
+        where: {
+          id: ticketId,
+          ...ticketWhere,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!accessibleTicket) {
+        throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+      }
+    }
+
+    const manualContacts = await this.prisma.ticketContact.findMany({
+      where: {
+        ticketId,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+
+    const dedupeKeys = new Set<string>();
+    const autoContacts = this.buildAutoContacts(ticket).filter((contact) => {
+      const dedupeKey = `${contact.type}:${contact.normalizedValue}`;
+
+      if (dedupeKeys.has(dedupeKey)) {
+        return false;
+      }
+
+      dedupeKeys.add(dedupeKey);
+      return true;
+    });
+    const manualContactItems = manualContacts
+      .filter((contact) => {
+        const dedupeKey = `${contact.type}:${contact.normalizedValue}`;
+
+        if (dedupeKeys.has(dedupeKey)) {
+          return false;
+        }
+
+        dedupeKeys.add(dedupeKey);
+        return true;
+      })
+      .map((contact) => ({
+        id: contact.id,
+        type: contact.type as ContactType,
+        value: contact.value,
+        normalizedValue: contact.normalizedValue,
+        label: contact.label,
+        source: 'manual' as const,
+        sourceLabel: 'Добавлено вручную',
+        editable: true,
+      }));
+
+    return {
+      items: [...autoContacts, ...manualContactItems],
+    };
+  }
+
+  async addContact(
+    ticketId: string,
+    managerId: string,
+    managerName: string,
+    type: ContactType,
+    value: string,
+    label?: string | null,
+  ) {
+    const manager = await this.assertManagerContactAccess(
+      ticketId,
+      managerId,
+      managerName,
+    );
+    const resolvedValue = this.normalizeContactValue(type, value);
+
+    await this.prisma.ticketContact.create({
+      data: {
+        ticketId,
+        type,
+        value: resolvedValue.value,
+        normalizedValue: resolvedValue.normalizedValue,
+        label: label?.trim() || null,
+        createdByProfileId: manager.managerId,
+      },
+    });
+
+    return this.getContacts(ticketId, {
+      viewerType: 'manager',
+      viewerId: manager.managerId,
+    });
+  }
+
+  async updateContact(
+    ticketId: string,
+    contactId: string,
+    managerId: string,
+    managerName: string,
+    type?: ContactType,
+    value?: string,
+    label?: string | null,
+  ) {
+    const manager = await this.assertManagerContactAccess(
+      ticketId,
+      managerId,
+      managerName,
+    );
+    const profileContact = this.parseProfileContactId(contactId);
+
+    if (profileContact) {
+      const ticket = await this.getTicketWithContactsContext(ticketId);
+      const primaryProfile =
+        ticket.clientProfile?.id === profileContact.profileId
+          ? ticket.clientProfile
+          : ticket.supplierProfile?.id === profileContact.profileId
+            ? ticket.supplierProfile
+            : null;
+
+      if (!primaryProfile) {
+        throw new NotFoundException(`Contact with id "${contactId}" not found`);
+      }
+
+      const nextType = type ?? profileContact.type;
+
+      if (!value?.trim()) {
+        throw new BadRequestException('Contact value is required');
+      }
+
+      if (nextType !== profileContact.type) {
+        throw new BadRequestException('Нельзя менять тип контакта профиля');
+      }
+
+      const resolvedValue = this.normalizeContactValue(nextType, value);
+
+      await this.prisma.profile.update({
+        where: {
+          id: primaryProfile.id,
+        },
+        data:
+          nextType === 'email'
+            ? {
+                email: resolvedValue.value,
+              }
+            : {
+                phone: resolvedValue.value,
+              },
+      });
+
+      return this.getContacts(ticketId, {
+        viewerType: 'manager',
+        viewerId: manager.managerId,
+      });
+    }
+
+    const existingContact = await this.prisma.ticketContact.findFirst({
+      where: {
+        id: contactId,
+        ticketId,
+      },
+      select: {
+        id: true,
+        type: true,
+        value: true,
+      },
+    });
+
+    if (!existingContact) {
+      throw new NotFoundException(`Contact with id "${contactId}" not found`);
+    }
+
+    const nextType = (type ?? existingContact.type) as ContactType;
+    const updateData: Record<string, unknown> = {};
+
+    if (type) {
+      updateData.type = nextType;
+    }
+
+    if (typeof label === 'string') {
+      updateData.label = label.trim() || null;
+    }
+
+    if (typeof value === 'string') {
+      const resolvedValue = this.normalizeContactValue(nextType, value);
+      updateData.value = resolvedValue.value;
+      updateData.normalizedValue = resolvedValue.normalizedValue;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return this.getContacts(ticketId, {
+        viewerType: 'manager',
+        viewerId: manager.managerId,
+      });
+    }
+
+    if (type && typeof value !== 'string') {
+      const resolvedValue = this.normalizeContactValue(
+        nextType,
+        existingContact.value,
+      );
+      updateData.value = resolvedValue.value;
+      updateData.normalizedValue = resolvedValue.normalizedValue;
+    }
+
+    await this.prisma.ticketContact.update({
+      where: {
+        id: contactId,
+      },
+      data: updateData,
+    });
+
+    return this.getContacts(ticketId, {
+      viewerType: 'manager',
+      viewerId: manager.managerId,
+    });
+  }
+
+  async deleteContact(
+    ticketId: string,
+    contactId: string,
+    managerId: string,
+    managerName: string,
+  ) {
+    const manager = await this.assertManagerContactAccess(
+      ticketId,
+      managerId,
+      managerName,
+    );
+    const profileContact = this.parseProfileContactId(contactId);
+
+    if (profileContact) {
+      const ticket = await this.getTicketWithContactsContext(ticketId);
+      const primaryProfile =
+        ticket.clientProfile?.id === profileContact.profileId
+          ? ticket.clientProfile
+          : ticket.supplierProfile?.id === profileContact.profileId
+            ? ticket.supplierProfile
+            : null;
+
+      if (!primaryProfile) {
+        throw new NotFoundException(`Contact with id "${contactId}" not found`);
+      }
+
+      await this.prisma.profile.update({
+        where: {
+          id: primaryProfile.id,
+        },
+        data:
+          profileContact.type === 'email'
+            ? {
+                email: null,
+              }
+            : {
+                phone: null,
+              },
+      });
+
+      return this.getContacts(ticketId, {
+        viewerType: 'manager',
+        viewerId: manager.managerId,
+      });
+    }
+
+    const existingContact = await this.prisma.ticketContact.findFirst({
+      where: {
+        id: contactId,
+        ticketId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingContact) {
+      throw new NotFoundException(`Contact with id "${contactId}" not found`);
+    }
+
+    await this.prisma.ticketContact.delete({
+      where: {
+        id: contactId,
+      },
+    });
+
+    return this.getContacts(ticketId, {
+      viewerType: 'manager',
+      viewerId: manager.managerId,
+    });
+  }
+
+  async create(
+    title = 'Тестовый тикет',
+    clientId?: string,
+    clientName?: string,
+  ) {
     const now = new Date();
 
     await this.profilesService.ensureProfile({
@@ -125,21 +642,29 @@ export class TicketsService {
     senderName?: string,
     clientId?: string,
     clientName?: string,
+    clientEmail?: string,
+    clientPhone?: string,
     aiEnabled = false,
   ) {
     const createdTicket = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const isClientStart = senderType === 'client';
       const normalizedClientId =
-        senderType === 'client' ? (senderId ?? clientId ?? null) : (clientId ?? null);
+        senderType === 'client'
+          ? (senderId ?? clientId ?? null)
+          : (clientId ?? null);
       const normalizedClientName =
-        senderType === 'client' ? (senderName ?? clientName ?? null) : (clientName ?? null);
+        senderType === 'client'
+          ? (senderName ?? clientName ?? null)
+          : (clientName ?? null);
       const firstResponseTime = senderType === 'manager' ? 0 : null;
 
       await this.profilesService.ensureProfile({
         id: normalizedClientId,
         fullName: normalizedClientName,
         role: normalizedClientId ? 'client' : null,
+        email: clientEmail,
+        phone: clientPhone,
       });
 
       if (senderId) {
@@ -191,7 +716,11 @@ export class TicketsService {
       });
 
       if (aiEnabled) {
-        await this.createSystemMessage(tx, ticket.id, 'AI-помощник подключён к диалогу');
+        await this.createSystemMessage(
+          tx,
+          ticket.id,
+          'AI-помощник подключён к диалогу',
+        );
       }
 
       return {
@@ -214,7 +743,11 @@ export class TicketsService {
   async findAll(viewer?: TicketViewer) {
     return this.prisma.ticket.findMany({
       where: this.buildTicketWhere(viewer),
-      orderBy: [{ pinned: 'desc' }, { lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+      orderBy: [
+        { pinned: 'desc' },
+        { lastMessageAt: 'desc' },
+        { updatedAt: 'desc' },
+      ],
     });
   }
 
@@ -413,7 +946,9 @@ export class TicketsService {
     }
 
     if (ticket.lastResolvedByRole !== 'manager') {
-      throw new BadRequestException('Оценка доступна только для диалога, завершённого менеджером');
+      throw new BadRequestException(
+        'Оценка доступна только для диалога, завершённого менеджером',
+      );
     }
 
     if (ticket.managerRatingSubmittedAt) {
@@ -474,7 +1009,10 @@ export class TicketsService {
         where: { id },
         data: {
           invitedManagerIds: [...invitedManagerIds, inviteManagerDto.managerId],
-          invitedManagerNames: [...invitedManagerNames, inviteManagerDto.managerName],
+          invitedManagerNames: [
+            ...invitedManagerNames,
+            inviteManagerDto.managerName,
+          ],
         },
       });
 
@@ -587,11 +1125,15 @@ export class TicketsService {
     });
 
     if (ticket.aiEnabled) {
-      throw new ConflictException('Диалог сейчас ведёт AI и его нельзя взять как обычный входящий');
+      throw new ConflictException(
+        'Диалог сейчас ведёт AI и его нельзя взять как обычный входящий',
+      );
     }
 
     if (ticket.status === 'resolved' || ticket.status === 'closed') {
-      throw new ConflictException('Диалог уже закрыт и недоступен для взятия в работу');
+      throw new ConflictException(
+        'Диалог уже закрыт и недоступен для взятия в работу',
+      );
     }
 
     if (ticket.assignedManagerId === assignManagerDto.managerId) {
@@ -600,7 +1142,10 @@ export class TicketsService {
       });
     }
 
-    if (ticket.assignedManagerId && ticket.assignedManagerId !== assignManagerDto.managerId) {
+    if (
+      ticket.assignedManagerId &&
+      ticket.assignedManagerId !== assignManagerDto.managerId
+    ) {
       throw new ConflictException(
         `Диалог уже взят в работу менеджером ${ticket.assignedManagerName ?? 'другим менеджером'}`,
       );
@@ -730,7 +1275,11 @@ export class TicketsService {
         },
       });
 
-      await this.createSystemMessage(tx, id, 'AI-помощник отключён. Диалог снова ведёт менеджер');
+      await this.createSystemMessage(
+        tx,
+        id,
+        'AI-помощник отключён. Диалог снова ведёт менеджер',
+      );
 
       return tx.ticket.update({
         where: { id },

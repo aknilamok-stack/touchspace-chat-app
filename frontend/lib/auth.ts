@@ -100,6 +100,7 @@ export type ClientSession = {
   platformUserId?: string;
   platformUserName?: string;
   email?: string;
+  phone?: string;
 };
 
 export function writeClientSession(session: ClientSession) {

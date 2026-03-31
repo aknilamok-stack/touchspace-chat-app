@@ -76,7 +76,8 @@ export class AdminService {
 
     if (explicitFrom || explicitTo) {
       return {
-        from: explicitFrom ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        from:
+          explicitFrom ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
         to: explicitTo ?? now,
       };
     }
@@ -112,7 +113,9 @@ export class AdminService {
   }
 
   private average(values: Array<number | null | undefined>) {
-    const normalized = values.filter((value): value is number => typeof value === 'number');
+    const normalized = values.filter(
+      (value): value is number => typeof value === 'number',
+    );
 
     if (normalized.length === 0) {
       return null;
@@ -140,7 +143,9 @@ export class AdminService {
       : 'offline';
   }
 
-  private buildTopicBuckets(tickets: Array<{ title: string; topicCategory: string | null }>) {
+  private buildTopicBuckets(
+    tickets: Array<{ title: string; topicCategory: string | null }>,
+  ) {
     const buckets = new Map<string, number>();
 
     for (const ticket of tickets) {
@@ -300,7 +305,9 @@ export class AdminService {
     const aiTriggers = this.buildKeywordInsights(
       aiTickets.map((ticket) => ({
         ...ticket,
-        messages: (ticket.messages ?? []).filter((message) => message.senderType === 'client'),
+        messages: (ticket.messages ?? []).filter(
+          (message) => message.senderType === 'client',
+        ),
       })),
     );
 
@@ -376,7 +383,13 @@ export class AdminService {
   }
 
   async getOverview() {
-    const [tickets, supplierRequests, profiles, claimMessages, registrationsPending] = await Promise.all([
+    const [
+      tickets,
+      supplierRequests,
+      profiles,
+      claimMessages,
+      registrationsPending,
+    ] = await Promise.all([
       this.prisma.ticket.findMany({
         select: {
           id: true,
@@ -457,7 +470,9 @@ export class AdminService {
 
     const now = new Date();
     const from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-    const newDialogs = tickets.filter((ticket) => ticket.status === 'new').length;
+    const newDialogs = tickets.filter(
+      (ticket) => ticket.status === 'new',
+    ).length;
     const inProgressDialogs = tickets.filter(
       (ticket) =>
         ticket.status === 'in_progress' ||
@@ -468,7 +483,9 @@ export class AdminService {
       (ticket) => ticket.status === 'resolved' || ticket.status === 'closed',
     ).length;
     const slaBreaches =
-      tickets.filter((ticket) => ticket.slaBreached || ticket.firstResponseBreached).length +
+      tickets.filter(
+        (ticket) => ticket.slaBreached || ticket.firstResponseBreached,
+      ).length +
       supplierRequests.filter((request) => request.responseBreached).length;
 
     const managerLoadMap = new Map<string, number>();
@@ -496,12 +513,17 @@ export class AdminService {
         newDialogs,
         inProgressDialogs,
         resolvedDialogs,
-        avgFirstResponseMs: this.average(tickets.map((ticket) => ticket.firstResponseTime)),
+        avgFirstResponseMs: this.average(
+          tickets.map((ticket) => ticket.firstResponseTime),
+        ),
         avgSupplierResponseMs: this.average(
           supplierRequests.map((request) => request.responseTime),
         ),
-        activeManagers: profiles.filter((profile) => profile.role === 'manager').length,
-        activeSuppliers: profiles.filter((profile) => profile.role === 'supplier').length,
+        activeManagers: profiles.filter((profile) => profile.role === 'manager')
+          .length,
+        activeSuppliers: profiles.filter(
+          (profile) => profile.role === 'supplier',
+        ).length,
         onlineManagers: profiles.filter(
           (profile) =>
             profile.role === 'manager' &&
@@ -538,7 +560,9 @@ export class AdminService {
               profile.managerPresenceHeartbeatAt,
             ),
           }))
-          .sort((left, right) => left.fullName.localeCompare(right.fullName, 'ru')),
+          .sort((left, right) =>
+            left.fullName.localeCompare(right.fullName, 'ru'),
+          ),
         claimAuditTrail: claimMessages.map((message) => ({
           id: message.id,
           ticketId: message.ticketId,
@@ -788,7 +812,8 @@ export class AdminService {
         passwordChangeRequired: user.passwordChangeRequired,
         isActive: user.isActive,
         createdAt: user.createdAt,
-        dialogsCount: user.clientTickets.length + user.assignedManagerTickets.length,
+        dialogsCount:
+          user.clientTickets.length + user.assignedManagerTickets.length,
         supplierRequestsCount: user.supplierRequests.length,
         latestRegistrationStatus: user.registrationRequests[0]?.status ?? null,
       })),
@@ -886,8 +911,12 @@ export class AdminService {
       data: {
         ...(body.role ? { role: body.role } : {}),
         ...(body.status ? { status: body.status } : {}),
-        ...(typeof body.isActive === 'boolean' ? { isActive: body.isActive } : {}),
-        ...(body.companyName !== undefined ? { companyName: body.companyName } : {}),
+        ...(typeof body.isActive === 'boolean'
+          ? { isActive: body.isActive }
+          : {}),
+        ...(body.companyName !== undefined
+          ? { companyName: body.companyName }
+          : {}),
         ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
         ...(body.approvalStatus ? { approvalStatus: body.approvalStatus } : {}),
         ...(body.lastLoginAt !== undefined
@@ -953,7 +982,9 @@ export class AdminService {
         lastMessageAt: dialog.lastMessageAt,
         firstResponseAt: dialog.firstResponseAt,
         firstResponseTime: dialog.firstResponseTime,
-        supplierEscalated: Boolean(dialog.supplierEscalatedAt || dialog.supplierRequests.length),
+        supplierEscalated: Boolean(
+          dialog.supplierEscalatedAt || dialog.supplierRequests.length,
+        ),
         slaBreached:
           dialog.slaBreached ||
           dialog.firstResponseBreached ||
@@ -993,7 +1024,9 @@ export class AdminService {
         supplierResponseTime: this.average(
           dialog.supplierRequests.map((request) => request.responseTime),
         ),
-        supplierEscalated: Boolean(dialog.supplierEscalatedAt || dialog.supplierRequests.length),
+        supplierEscalated: Boolean(
+          dialog.supplierEscalatedAt || dialog.supplierRequests.length,
+        ),
         slaBreached:
           dialog.slaBreached ||
           dialog.firstResponseBreached ||
@@ -1042,7 +1075,8 @@ export class AdminService {
         dialogs: tickets.length,
         newDialogs: tickets.filter((ticket) => ticket.status === 'new').length,
         resolvedDialogs: tickets.filter(
-          (ticket) => ticket.status === 'resolved' || ticket.status === 'closed',
+          (ticket) =>
+            ticket.status === 'resolved' || ticket.status === 'closed',
         ).length,
         overdueDialogs: tickets.filter(
           (ticket) =>
@@ -1050,14 +1084,19 @@ export class AdminService {
             ticket.firstResponseBreached ||
             ticket.supplierRequests.some((request) => request.responseBreached),
         ).length,
-        avgFirstResponseMs: this.average(tickets.map((ticket) => ticket.firstResponseTime)),
-        avgCloseTimeMs: this.average(tickets.map((ticket) => ticket.resolutionTime)),
+        avgFirstResponseMs: this.average(
+          tickets.map((ticket) => ticket.firstResponseTime),
+        ),
+        avgCloseTimeMs: this.average(
+          tickets.map((ticket) => ticket.resolutionTime),
+        ),
         escalatedShare: tickets.length
           ? Number(
               (
                 tickets.filter(
                   (ticket) =>
-                    Boolean(ticket.supplierEscalatedAt) || ticket.supplierRequests.length > 0,
+                    Boolean(ticket.supplierEscalatedAt) ||
+                    ticket.supplierRequests.length > 0,
                 ).length / tickets.length
               ).toFixed(2),
             )
@@ -1065,8 +1104,10 @@ export class AdminService {
         avgMessagesPerDialog: tickets.length
           ? Number(
               (
-                tickets.reduce((total, ticket) => total + ticket.messages.length, 0) /
-                tickets.length
+                tickets.reduce(
+                  (total, ticket) => total + ticket.messages.length,
+                  0,
+                ) / tickets.length
               ).toFixed(1),
             )
           : 0,
@@ -1108,13 +1149,16 @@ export class AdminService {
     const hourDistribution = this.buildHourDistribution(tickets);
     const topTopics = this.buildTopicBuckets(tickets);
     const keywordInsights = this.buildKeywordInsights(tickets);
-    const { aiTickets, aiTopics, aiTriggers } = this.buildAiRequestInsights(tickets);
+    const { aiTickets, aiTopics, aiTriggers } =
+      this.buildAiRequestInsights(tickets);
     const busiestWeekday =
       weekdayDistribution.slice().sort((a, b) => b.count - a.count)[0] ?? null;
     const busiestHour =
       hourDistribution.slice().sort((a, b) => b.count - a.count)[0] ?? null;
     const totalDays = Math.max(
-      Math.ceil((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)),
+      Math.ceil(
+        (range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000),
+      ),
       1,
     );
 
@@ -1126,10 +1170,15 @@ export class AdminService {
         busiestWeekday,
         busiestHour,
         aiDialogs: aiTickets.length,
-        aiShare: tickets.length ? Number(((aiTickets.length / tickets.length) * 100).toFixed(1)) : 0,
+        aiShare: tickets.length
+          ? Number(((aiTickets.length / tickets.length) * 100).toFixed(1))
+          : 0,
         aiResolved: aiTickets.filter((ticket) => ticket.aiResolved).length,
-        aiHandedToManager: aiTickets.filter((ticket) => Boolean(ticket.handedToManagerAt)).length,
-        aiActivations: tickets.filter((ticket) => Boolean(ticket.aiActivatedAt)).length,
+        aiHandedToManager: aiTickets.filter((ticket) =>
+          Boolean(ticket.handedToManagerAt),
+        ).length,
+        aiActivations: tickets.filter((ticket) => Boolean(ticket.aiActivatedAt))
+          .length,
       },
       charts: {
         byHour: hourDistribution,
@@ -1180,7 +1229,8 @@ export class AdminService {
     const items = managers.map((manager) => {
       const relatedTickets = tickets.filter(
         (ticket) =>
-          ticket.assignedManagerId === manager.id || ticket.lastResolvedByManagerId === manager.id,
+          ticket.assignedManagerId === manager.id ||
+          ticket.lastResolvedByManagerId === manager.id,
       );
 
       return {
@@ -1193,20 +1243,30 @@ export class AdminService {
           manager.managerPresenceHeartbeatAt,
         ),
         dialogsInWork: relatedTickets.filter(
-          (ticket) => ticket.assignedManagerId === manager.id && ticket.status !== 'resolved',
+          (ticket) =>
+            ticket.assignedManagerId === manager.id &&
+            ticket.status !== 'resolved',
         ).length,
         handledDialogs: relatedTickets.length,
         avgFirstResponseMs: this.average(
           relatedTickets.map((ticket) => ticket.firstResponseTime),
         ),
-        avgCloseTimeMs: this.average(relatedTickets.map((ticket) => ticket.resolutionTime)),
-        avgRating: this.average(relatedTickets.map((ticket) => ticket.managerRating)),
-        ratingsCount: relatedTickets.filter((ticket) => typeof ticket.managerRating === 'number').length,
+        avgCloseTimeMs: this.average(
+          relatedTickets.map((ticket) => ticket.resolutionTime),
+        ),
+        avgRating: this.average(
+          relatedTickets.map((ticket) => ticket.managerRating),
+        ),
+        ratingsCount: relatedTickets.filter(
+          (ticket) => typeof ticket.managerRating === 'number',
+        ).length,
         slaBreaches: relatedTickets.filter(
           (ticket) => ticket.firstResponseBreached || ticket.slaBreached,
         ).length,
         escalationsToSupplier: relatedTickets.filter(
-          (ticket) => Boolean(ticket.supplierEscalatedAt) || ticket.supplierRequests.length > 0,
+          (ticket) =>
+            Boolean(ticket.supplierEscalatedAt) ||
+            ticket.supplierRequests.length > 0,
         ).length,
         topReasons: this.buildTopicBuckets(relatedTickets),
       };
@@ -1217,9 +1277,12 @@ export class AdminService {
       livePresence: {
         online: items.filter((item) => item.presenceStatus === 'online').length,
         break: items.filter((item) => item.presenceStatus === 'break').length,
-        offline: items.filter((item) => item.presenceStatus === 'offline').length,
+        offline: items.filter((item) => item.presenceStatus === 'offline')
+          .length,
       },
-      items: items.sort((left, right) => right.handledDialogs - left.handledDialogs),
+      items: items.sort(
+        (left, right) => right.handledDialogs - left.handledDialogs,
+      ),
     };
   }
 
@@ -1257,13 +1320,20 @@ export class AdminService {
       period: range,
       metrics: {
         dialogsInWork: tickets.filter(
-          (ticket) => ticket.assignedManagerId === id && ticket.status !== 'resolved',
+          (ticket) =>
+            ticket.assignedManagerId === id && ticket.status !== 'resolved',
         ).length,
         handledDialogs: tickets.length,
-        avgFirstResponseMs: this.average(tickets.map((ticket) => ticket.firstResponseTime)),
-        avgCloseTimeMs: this.average(tickets.map((ticket) => ticket.resolutionTime)),
+        avgFirstResponseMs: this.average(
+          tickets.map((ticket) => ticket.firstResponseTime),
+        ),
+        avgCloseTimeMs: this.average(
+          tickets.map((ticket) => ticket.resolutionTime),
+        ),
         avgRating: this.average(tickets.map((ticket) => ticket.managerRating)),
-        ratingsCount: tickets.filter((ticket) => typeof ticket.managerRating === 'number').length,
+        ratingsCount: tickets.filter(
+          (ticket) => typeof ticket.managerRating === 'number',
+        ).length,
         slaBreaches: tickets.filter(
           (ticket) => ticket.firstResponseBreached || ticket.slaBreached,
         ).length,
@@ -1323,8 +1393,12 @@ export class AdminService {
         avgResponseMs: this.average(
           supplierRequests.map((request) => request.responseTime),
         ),
-        slaBreaches: supplierRequests.filter((request) => request.responseBreached).length,
-        relatedDialogs: new Set(supplierRequests.map((request) => request.ticketId)).size,
+        slaBreaches: supplierRequests.filter(
+          (request) => request.responseBreached,
+        ).length,
+        relatedDialogs: new Set(
+          supplierRequests.map((request) => request.ticketId),
+        ).size,
         topReasons: this.buildTopicBuckets(
           supplierRequests.map((request) => ({
             title: request.ticket.title,
@@ -1336,7 +1410,9 @@ export class AdminService {
 
     return {
       period: range,
-      items: items.sort((left, right) => right.receivedRequests - left.receivedRequests),
+      items: items.sort(
+        (left, right) => right.receivedRequests - left.receivedRequests,
+      ),
     };
   }
 
@@ -1374,9 +1450,13 @@ export class AdminService {
         answeredRequests: requests.filter(
           (request) => request.status === 'answered' || request.firstResponseAt,
         ).length,
-        avgResponseMs: this.average(requests.map((request) => request.responseTime)),
-        slaBreaches: requests.filter((request) => request.responseBreached).length,
-        relatedDialogs: new Set(requests.map((request) => request.ticketId)).size,
+        avgResponseMs: this.average(
+          requests.map((request) => request.responseTime),
+        ),
+        slaBreaches: requests.filter((request) => request.responseBreached)
+          .length,
+        relatedDialogs: new Set(requests.map((request) => request.ticketId))
+          .size,
       },
       topReasons: this.buildTopicBuckets(
         requests.map((request) => ({
@@ -1432,7 +1512,8 @@ export class AdminService {
       if (dialog.assignedManagerId) {
         managerMap.set(dialog.assignedManagerId, {
           name: dialog.assignedManagerName ?? dialog.assignedManagerId,
-          breaches: (managerMap.get(dialog.assignedManagerId)?.breaches ?? 0) + 1,
+          breaches:
+            (managerMap.get(dialog.assignedManagerId)?.breaches ?? 0) + 1,
         });
       }
 

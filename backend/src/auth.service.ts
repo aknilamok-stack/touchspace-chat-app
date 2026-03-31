@@ -17,7 +17,10 @@ export class AuthService {
     return `${salt}:${derivedKey}`;
   }
 
-  private verifyPassword(password: string, storedHash: string | null | undefined) {
+  private verifyPassword(
+    password: string,
+    storedHash: string | null | undefined,
+  ) {
     if (!storedHash) {
       return false;
     }
@@ -48,11 +51,14 @@ export class AuthService {
   }
 
   private async buildUniqueLogin(baseValue: string) {
-    const sanitizedBase = this.sanitizeLoginCandidate(baseValue) || `user.${Date.now()}`;
+    const sanitizedBase =
+      this.sanitizeLoginCandidate(baseValue) || `user.${Date.now()}`;
     let candidate = sanitizedBase;
     let counter = 1;
 
-    while (await this.prisma.profile.findFirst({ where: { authLogin: candidate } })) {
+    while (
+      await this.prisma.profile.findFirst({ where: { authLogin: candidate } })
+    ) {
       candidate = `${sanitizedBase}.${counter}`;
       counter += 1;
     }
@@ -61,10 +67,13 @@ export class AuthService {
   }
 
   private generateTemporaryPassword() {
-    return randomBytes(6).toString("base64url");
+    return randomBytes(6).toString('base64url');
   }
 
-  async issueCredentialsForProfile(profileId: string, preferredLogin?: string | null) {
+  async issueCredentialsForProfile(
+    profileId: string,
+    preferredLogin?: string | null,
+  ) {
     const profile = await this.prisma.profile.findUnique({
       where: { id: profileId },
     });
@@ -79,7 +88,8 @@ export class AuthService {
       `${profile.role}.${profile.fullName}` ||
       `user.${profile.id}`;
 
-    const login = profile.authLogin?.trim() || (await this.buildUniqueLogin(loginBase));
+    const login =
+      profile.authLogin?.trim() || (await this.buildUniqueLogin(loginBase));
     const temporaryPassword = this.generateTemporaryPassword();
 
     await this.prisma.profile.update({
@@ -104,10 +114,7 @@ export class AuthService {
 
     const profile = await this.prisma.profile.findFirst({
       where: {
-        OR: [
-          { authLogin: normalizedLogin },
-          { email: normalizedLogin },
-        ],
+        OR: [{ authLogin: normalizedLogin }, { email: normalizedLogin }],
       },
     });
 
@@ -122,7 +129,9 @@ export class AuthService {
       profile.approvalStatus === 'pending' ||
       !profile.isActive
     ) {
-      throw new ForbiddenException('Доступ пользователя не активирован или заблокирован администратором');
+      throw new ForbiddenException(
+        'Доступ пользователя не активирован или заблокирован администратором',
+      );
     }
 
     await this.prisma.profile.update({
@@ -130,7 +139,8 @@ export class AuthService {
       data: {
         lastLoginAt: new Date(),
         managerStatus: profile.role === 'manager' ? 'online' : undefined,
-        managerPresenceHeartbeatAt: profile.role === 'manager' ? new Date() : undefined,
+        managerPresenceHeartbeatAt:
+          profile.role === 'manager' ? new Date() : undefined,
       },
     });
 
@@ -147,7 +157,11 @@ export class AuthService {
     };
   }
 
-  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
     const profile = await this.prisma.profile.findUnique({
       where: { id: userId },
     });
@@ -161,7 +175,9 @@ export class AuthService {
     }
 
     if (newPassword.trim().length < 8) {
-      throw new BadRequestException('Новый пароль должен быть не короче 8 символов');
+      throw new BadRequestException(
+        'Новый пароль должен быть не короче 8 символов',
+      );
     }
 
     await this.prisma.profile.update({

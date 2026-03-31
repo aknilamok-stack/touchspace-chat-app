@@ -23,7 +23,9 @@ export class AdminGuard implements CanActivate {
     const adminNameHeader = request.headers['x-touchspace-admin-name'];
 
     const role = Array.isArray(roleHeader) ? roleHeader[0] : roleHeader;
-    const adminId = Array.isArray(adminIdHeader) ? adminIdHeader[0] : adminIdHeader;
+    const adminId = Array.isArray(adminIdHeader)
+      ? adminIdHeader[0]
+      : adminIdHeader;
     const adminName = Array.isArray(adminNameHeader)
       ? adminNameHeader[0]
       : adminNameHeader;

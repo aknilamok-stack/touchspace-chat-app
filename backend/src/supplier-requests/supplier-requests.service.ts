@@ -97,15 +97,20 @@ export class SupplierRequestsService {
 
     if (supplierRequest.supplierId) {
       void this.pushService
-        .sendToProfiles([supplierRequest.supplierId], {
-          title: 'Новый запрос поставщику',
-          body:
-            supplierRequest.requestText.length > 120
-              ? `${supplierRequest.requestText.slice(0, 120)}...`
-              : supplierRequest.requestText,
-          url: `/supplier?request=${supplierRequest.id}`,
-          tag: `supplier-request-${supplierRequest.id}`,
-        }, 'supplier_requests', supplierRequest.createdByManagerId ?? undefined)
+        .sendToProfiles(
+          [supplierRequest.supplierId],
+          {
+            title: 'Новый запрос поставщику',
+            body:
+              supplierRequest.requestText.length > 120
+                ? `${supplierRequest.requestText.slice(0, 120)}...`
+                : supplierRequest.requestText,
+            url: `/supplier?request=${supplierRequest.id}`,
+            tag: `supplier-request-${supplierRequest.id}`,
+          },
+          'supplier_requests',
+          supplierRequest.createdByManagerId ?? undefined,
+        )
         .catch((error) =>
           console.error('Ошибка push-уведомления поставщику:', error),
         );
@@ -144,14 +149,17 @@ export class SupplierRequestsService {
       });
 
       if (!supplierRequest) {
-        throw new NotFoundException(`SupplierRequest with id "${id}" not found`);
+        throw new NotFoundException(
+          `SupplierRequest with id "${id}" not found`,
+        );
       }
 
       const updatedSupplierRequest = await tx.supplierRequest.update({
         where: { id },
         data: {
           status,
-          respondedAt: status === 'answered' ? new Date() : supplierRequest.respondedAt,
+          respondedAt:
+            status === 'answered' ? new Date() : supplierRequest.respondedAt,
           closedAt: status === 'closed' ? new Date() : null,
         },
       });

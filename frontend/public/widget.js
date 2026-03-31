@@ -146,6 +146,7 @@
   if (fallbackUserId) iframeUrl.searchParams.set("userId", String(fallbackUserId));
   if (fallbackUserName) iframeUrl.searchParams.set("userName", String(fallbackUserName));
   if (config.email) iframeUrl.searchParams.set("email", String(config.email));
+  if (config.phone) iframeUrl.searchParams.set("phone", String(config.phone));
   if (config.platform) iframeUrl.searchParams.set("platform", String(config.platform));
 
   var style = document.createElement("style");

@@ -13,13 +13,20 @@ import { TicketsService } from './tickets.service';
 import { InviteManagerDto } from './dto/invite-manager.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto';
+import {
+  CreateTicketContactDto,
+  DeleteTicketContactDto,
+  UpdateTicketContactDto,
+} from './dto/create-ticket-contact.dto';
 
 @Controller('tickets')
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
   @Post()
-  create(@Body() body?: { title?: string; clientId?: string; clientName?: string }) {
+  create(
+    @Body() body?: { title?: string; clientId?: string; clientName?: string },
+  ) {
     return this.ticketsService.create(
       body?.title,
       body?.clientId,
@@ -38,6 +45,8 @@ export class TicketsController {
       senderName?: string;
       clientId?: string;
       clientName?: string;
+      clientEmail?: string;
+      clientPhone?: string;
       aiEnabled?: boolean;
     },
   ) {
@@ -49,6 +58,8 @@ export class TicketsController {
       body.senderName,
       body.clientId,
       body.clientName,
+      body.clientEmail,
+      body.clientPhone,
       body.aiEnabled,
     );
   }
@@ -69,12 +80,89 @@ export class TicketsController {
     @Param('id') id: string,
     @Body() body: { senderType: string; previewText?: string },
   ) {
-    return this.ticketsService.updateTyping(id, body.senderType, body.previewText);
+    return this.ticketsService.updateTyping(
+      id,
+      body.senderType,
+      body.previewText,
+    );
   }
 
   @Get(':id/typing')
   getTyping(@Param('id') id: string) {
     return this.ticketsService.getTyping(id);
+  }
+
+  @Get(':id/contacts')
+  getContacts(
+    @Param('id') id: string,
+    @Query('viewerType') viewerType?: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    return this.ticketsService.getContacts(id, {
+      viewerType,
+      viewerId,
+    });
+  }
+
+  @Post(':id/contacts')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
+  addContact(@Param('id') id: string, @Body() body: CreateTicketContactDto) {
+    return this.ticketsService.addContact(
+      id,
+      body.managerId,
+      body.managerName,
+      body.type as 'email' | 'phone',
+      body.value,
+      body.label,
+    );
+  }
+
+  @Patch(':id/contacts/:contactId')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
+  updateContact(
+    @Param('id') id: string,
+    @Param('contactId') contactId: string,
+    @Body() body: UpdateTicketContactDto,
+  ) {
+    return this.ticketsService.updateContact(
+      id,
+      contactId,
+      body.managerId,
+      body.managerName,
+      body.type as 'email' | 'phone' | undefined,
+      body.value,
+      body.label,
+    );
+  }
+
+  @Post(':id/contacts/:contactId/delete')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
+  deleteContact(
+    @Param('id') id: string,
+    @Param('contactId') contactId: string,
+    @Body() body: DeleteTicketContactDto,
+  ) {
+    return this.ticketsService.deleteContact(
+      id,
+      contactId,
+      body.managerId,
+      body.managerName,
+    );
   }
 
   @Patch(':id/pin')
@@ -94,10 +182,7 @@ export class TicketsController {
   }
 
   @Post(':id/manager-rating')
-  rateManager(
-    @Param('id') id: string,
-    @Body() body: { rating: number },
-  ) {
+  rateManager(@Param('id') id: string, @Body() body: { rating: number }) {
     return this.ticketsService.rateManager(id, body.rating);
   }
 

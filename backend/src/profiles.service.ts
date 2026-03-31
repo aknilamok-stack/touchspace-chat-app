@@ -6,6 +6,7 @@ type EnsureProfileInput = {
   fullName?: string | null;
   role?: string | null;
   email?: string | null;
+  phone?: string | null;
   authLogin?: string | null;
   passwordHash?: string | null;
   passwordChangeRequired?: boolean | null;
@@ -47,7 +48,8 @@ export class ProfilesService {
       return 'offline';
     }
 
-    const isFresh = Date.now() - heartbeatAt.getTime() <= this.managerPresenceTtlMs;
+    const isFresh =
+      Date.now() - heartbeatAt.getTime() <= this.managerPresenceTtlMs;
     return isFresh ? managerStatus : 'offline';
   }
 
@@ -84,7 +86,11 @@ export class ProfilesService {
     }));
   }
 
-  async updateManagerStatus(id: string, managerStatus: string, fullName?: string | null) {
+  async updateManagerStatus(
+    id: string,
+    managerStatus: string,
+    fullName?: string | null,
+  ) {
     const normalizedId = id?.trim();
     const normalizedStatus = managerStatus?.trim();
 
@@ -93,13 +99,13 @@ export class ProfilesService {
     }
 
     await this.ensureProfile({
-        id: normalizedId,
-        role: 'manager',
-        fullName,
-        managerStatus: normalizedStatus,
-        managerPresenceHeartbeatAt:
-          normalizedStatus === 'offline' ? null : new Date(),
-      });
+      id: normalizedId,
+      role: 'manager',
+      fullName,
+      managerStatus: normalizedStatus,
+      managerPresenceHeartbeatAt:
+        normalizedStatus === 'offline' ? null : new Date(),
+    });
 
     return this.prisma.profile.update({
       where: {
@@ -142,6 +148,7 @@ export class ProfilesService {
         fullName,
         role,
         email: input.email?.trim() || null,
+        phone: input.phone?.trim() || null,
         authLogin: input.authLogin?.trim() || null,
         passwordHash: input.passwordHash ?? null,
         passwordChangeRequired: input.passwordChangeRequired ?? false,
@@ -168,6 +175,7 @@ export class ProfilesService {
         fullName,
         role,
         email: input.email?.trim() || undefined,
+        phone: input.phone?.trim() || undefined,
         authLogin: input.authLogin?.trim() || undefined,
         passwordHash: input.passwordHash ?? undefined,
         passwordChangeRequired: input.passwordChangeRequired ?? undefined,
@@ -178,7 +186,8 @@ export class ProfilesService {
         companyId: input.companyId?.trim() || undefined,
         supplierId: input.supplierId?.trim() || undefined,
         managerStatus: input.managerStatus?.trim() || undefined,
-        managerPresenceHeartbeatAt: input.managerPresenceHeartbeatAt ?? undefined,
+        managerPresenceHeartbeatAt:
+          input.managerPresenceHeartbeatAt ?? undefined,
         approvalComment: input.approvalComment?.trim() || undefined,
         lastLoginAt: input.lastLoginAt ?? undefined,
         createdByAdminId: input.createdByAdminId?.trim() || undefined,

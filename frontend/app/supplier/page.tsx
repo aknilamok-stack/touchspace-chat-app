@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
+import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import {
   clearAuthSession,
   managerAccounts,
@@ -81,6 +82,10 @@ type TicketMessage = TicketMessageApi & {
   displayContent: string;
   attachment?: ChatAttachmentPayload | null;
   attachments?: ChatAttachmentPayload[];
+};
+
+type ApiTicketContactsResponse = {
+  items?: ChatContactItem[];
 };
 type ReplyMeta = {
   replyToId: string;
@@ -599,6 +604,9 @@ export default function SupplierPage() {
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
+  const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [contactsError, setContactsError] = useState("");
   const supplierMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -966,6 +974,23 @@ export default function SupplierPage() {
     return data.map(formatTicketMessage);
   };
 
+  const fetchTicketContacts = async (ticketId: string): Promise<ChatContactItem[]> => {
+    const response = await fetch(
+      apiUrl(
+        `/tickets/${ticketId}/contacts?viewerType=supplier&viewerId=${encodeURIComponent(
+          supplierId
+        )}`
+      )
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить контакты");
+    }
+
+    const payload = (await response.json()) as ApiTicketContactsResponse;
+    return Array.isArray(payload.items) ? payload.items : [];
+  };
+
   const syncSupplierRequests = (requests: SupplierRequest[]) => {
     setSupplierRequests((currentRequests) =>
       areRequestsEqual(currentRequests, requests) ? currentRequests : requests
@@ -1082,6 +1107,31 @@ export default function SupplierPage() {
 
     void loadMessages();
   }, [authReady, selectedRequest]);
+
+  useEffect(() => {
+    if (!authReady || !selectedRequest?.ticketId) {
+      setTicketContacts([]);
+      setContactsError("");
+      return;
+    }
+
+    const loadContacts = async () => {
+      setIsLoadingContacts(true);
+      setContactsError("");
+
+      try {
+        const contacts = await fetchTicketContacts(selectedRequest.ticketId);
+        setTicketContacts(contacts);
+      } catch (error) {
+        console.error("Ошибка загрузки контактов:", error);
+        setContactsError("Не удалось загрузить контакты");
+      } finally {
+        setIsLoadingContacts(false);
+      }
+    };
+
+    void loadContacts();
+  }, [authReady, selectedRequest?.ticketId]);
 
   useEffect(() => {
     setAttachmentName("");
@@ -2571,6 +2621,13 @@ export default function SupplierPage() {
                     </div>
                   </div>
                 ) : null}
+
+                <ContactCard
+                  contacts={ticketContacts}
+                  canManage={false}
+                  isLoading={isLoadingContacts}
+                  error={contactsError}
+                />
 
                 <div className="rounded-[18px] border border-[#E5E5EA] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                   <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">

@@ -445,6 +445,7 @@ export default function ClientPage() {
     const platformUserId = params.get("userId")?.trim();
     const platformUserName = params.get("userName")?.trim();
     const email = params.get("email")?.trim();
+    const phone = params.get("phone")?.trim();
 
     if (!tradePointId || !tradePointName) {
       return;
@@ -458,6 +459,7 @@ export default function ClientPage() {
       platformUserId: platformUserId || undefined,
       platformUserName: platformUserName || undefined,
       email: email || undefined,
+      phone: phone || undefined,
     };
 
     if (
@@ -778,6 +780,8 @@ export default function ClientPage() {
           senderName: clientSession.clientName,
           clientId: clientSession.clientId,
           clientName: clientSession.clientName,
+          clientEmail: clientSession.email,
+          clientPhone: clientSession.phone,
           aiEnabled: preferredAiMode,
         }),
       });

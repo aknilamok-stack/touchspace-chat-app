@@ -79,7 +79,9 @@ export class AdminAiService {
         ? payload.triggerThemes
             .map((item) => ({
               theme:
-                typeof item?.theme === 'string' ? item.theme.trim() : 'Без названия',
+                typeof item?.theme === 'string'
+                  ? item.theme.trim()
+                  : 'Без названия',
               count: typeof item?.count === 'number' ? item.count : 0,
               explanation:
                 typeof item?.explanation === 'string'
@@ -89,7 +91,10 @@ export class AdminAiService {
             .filter((item) => item.theme)
             .slice(0, 6)
         : [],
-      recommendations: this.normalizeStringArray(payload.recommendations).slice(0, 5),
+      recommendations: this.normalizeStringArray(payload.recommendations).slice(
+        0,
+        5,
+      ),
     };
   }
 
@@ -112,7 +117,9 @@ export class AdminAiService {
 
   private parseAnalysis(text: string): AiAnalysisPayload {
     try {
-      const parsed = JSON.parse(this.extractJson(text)) as Partial<AiAnalysisPayload>;
+      const parsed = JSON.parse(
+        this.extractJson(text),
+      ) as Partial<AiAnalysisPayload>;
 
       return {
         topicCategory: parsed.topicCategory?.trim() || 'Без категории',

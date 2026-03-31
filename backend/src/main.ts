@@ -27,7 +27,8 @@ async function bootstrap() {
   const allowedOrigins = Array.from(
     new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]),
   );
-  const allowVercelPreviews = (process.env.ALLOW_VERCEL_PREVIEWS ?? 'false') === 'true';
+  const allowVercelPreviews =
+    (process.env.ALLOW_VERCEL_PREVIEWS ?? 'false') === 'true';
   const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 
   app.enableCors({

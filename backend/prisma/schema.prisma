@@ -10,6 +10,7 @@ model Profile {
   id                      String            @id
   authUserId              String?           @unique
   email                   String?           @unique
+  phone                   String?
   authLogin               String?           @unique
   passwordHash            String?
   passwordChangeRequired  Boolean           @default(false)
@@ -45,6 +46,7 @@ model Profile {
   reviewedRegistrations   RegistrationRequest[] @relation("RegistrationReviewedByAdmin")
   registrationRequests    RegistrationRequest[] @relation("RegistrationLinkedProfile")
   pushSubscriptions       PushSubscription[]
+  ticketContacts          TicketContact[]
 }
 
 model Ticket {
@@ -99,6 +101,24 @@ model Ticket {
   resolvedByManagerProfile Profile?         @relation("TicketResolvedByManager", fields: [lastResolvedByManagerId], references: [id], onDelete: SetNull)
   messages                Message[]
   supplierRequests        SupplierRequest[]
+  contacts                TicketContact[]
+}
+
+model TicketContact {
+  id          String   @id @default(cuid())
+  ticketId     String
+  type         String
+  value        String
+  normalizedValue String
+  label        String?
+  createdByProfileId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdByProfile Profile? @relation(fields: [createdByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, type])
 }
 
 model Message {

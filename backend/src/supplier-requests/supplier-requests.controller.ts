@@ -26,9 +26,7 @@ export class SupplierRequestsController {
       transform: true,
     }),
   )
-  create(
-    @Body() createSupplierRequestDto: CreateSupplierRequestDto,
-  ) {
+  create(@Body() createSupplierRequestDto: CreateSupplierRequestDto) {
     return this.supplierRequestsService.create(createSupplierRequestDto);
   }
 

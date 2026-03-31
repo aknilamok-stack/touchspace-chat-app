@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
+import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import {
   clearAuthSession,
   type ManagerPresence,
@@ -65,6 +66,10 @@ type ApiSupplierRequest = {
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+};
+
+type ApiTicketContactsResponse = {
+  items?: ChatContactItem[];
 };
 
 type ApiTicket = {
@@ -735,6 +740,10 @@ export default function Home() {
   const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
+  const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [isSavingContacts, setIsSavingContacts] = useState(false);
+  const [contactsError, setContactsError] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1094,6 +1103,23 @@ export default function Home() {
       throw new Error("Не удалось загрузить запросы поставщику");
     }
     return response.json();
+  };
+
+  const fetchTicketContacts = async (ticketId: string): Promise<ChatContactItem[]> => {
+    const response = await fetch(
+      apiUrl(
+        `/tickets/${ticketId}/contacts?viewerType=manager&viewerId=${encodeURIComponent(
+          currentManagerId
+        )}`
+      )
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить контакты");
+    }
+
+    const payload = (await response.json()) as ApiTicketContactsResponse;
+    return Array.isArray(payload.items) ? payload.items : [];
   };
 
   const fetchTyping = async (
@@ -1458,6 +1484,31 @@ export default function Home() {
   }, [activeChatId]);
 
   useEffect(() => {
+    if (!authReady || !activeChatId || !currentManagerId) {
+      setTicketContacts([]);
+      setContactsError("");
+      return;
+    }
+
+    const loadContacts = async () => {
+      setIsLoadingContacts(true);
+      setContactsError("");
+
+      try {
+        const contacts = await fetchTicketContacts(activeChatId);
+        setTicketContacts(contacts);
+      } catch (error) {
+        console.error("Ошибка загрузки контактов:", error);
+        setContactsError("Не удалось загрузить контакты");
+      } finally {
+        setIsLoadingContacts(false);
+      }
+    };
+
+    void loadContacts();
+  }, [authReady, activeChatId, currentManagerId]);
+
+  useEffect(() => {
     if (!activeChatId) {
       return;
     }
@@ -1474,6 +1525,132 @@ export default function Home() {
 
     return () => window.clearInterval(intervalId);
   }, [activeChatId]);
+
+  const handleAddContact = async (draft: {
+    type: "email" | "phone";
+    value: string;
+  }) => {
+    if (!activeChatId || !currentManagerId || !currentManagerName) {
+      return;
+    }
+
+    setIsSavingContacts(true);
+    setContactsError("");
+
+    try {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/contacts`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+          type: draft.type,
+          value: draft.value,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось сохранить контакт");
+      }
+
+      const payload = (await response.json()) as ApiTicketContactsResponse;
+      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      console.error("Ошибка добавления контакта:", error);
+      setContactsError(
+        error instanceof Error ? error.message : "Не удалось сохранить контакт"
+      );
+      throw error;
+    } finally {
+      setIsSavingContacts(false);
+    }
+  };
+
+  const handleUpdateContact = async (
+    contactId: string,
+    draft: {
+      type: "email" | "phone";
+      value: string;
+    }
+  ) => {
+    if (!activeChatId || !currentManagerId || !currentManagerName) {
+      return;
+    }
+
+    setIsSavingContacts(true);
+    setContactsError("");
+
+    try {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/contacts/${contactId}`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+          type: draft.type,
+          value: draft.value,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось обновить контакт");
+      }
+
+      const payload = (await response.json()) as ApiTicketContactsResponse;
+      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      console.error("Ошибка обновления контакта:", error);
+      setContactsError(
+        error instanceof Error ? error.message : "Не удалось обновить контакт"
+      );
+      throw error;
+    } finally {
+      setIsSavingContacts(false);
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    if (!activeChatId || !currentManagerId || !currentManagerName) {
+      return;
+    }
+
+    setIsSavingContacts(true);
+    setContactsError("");
+
+    try {
+      const response = await fetch(
+        apiUrl(`/tickets/${activeChatId}/contacts/${contactId}/delete`),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            managerId: currentManagerId,
+            managerName: currentManagerName,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Не удалось удалить контакт");
+      }
+
+      const payload = (await response.json()) as ApiTicketContactsResponse;
+      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      console.error("Ошибка удаления контакта:", error);
+      setContactsError(
+        error instanceof Error ? error.message : "Не удалось удалить контакт"
+      );
+    } finally {
+      setIsSavingContacts(false);
+    }
+  };
 
   useEffect(() => {
     if (!activeChatId) return;
@@ -3577,6 +3754,17 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          <ContactCard
+            contacts={ticketContacts}
+            canManage
+            isLoading={isLoadingContacts}
+            isSaving={isSavingContacts}
+            error={contactsError}
+            onAdd={handleAddContact}
+            onUpdate={handleUpdateContact}
+            onDelete={handleDeleteContact}
+          />
 
           <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">

@@ -20,9 +20,8 @@ export const getViewerContext = (
   fallback?: ViewerContext,
 ): ViewerContext => ({
   viewerType:
-    readValue(request.headers['x-touchspace-viewer-type'] as string | string[] | undefined) ??
+    readValue(request.headers['x-touchspace-viewer-type']) ??
     fallback?.viewerType,
   viewerId:
-    readValue(request.headers['x-touchspace-viewer-id'] as string | string[] | undefined) ??
-    fallback?.viewerId,
+    readValue(request.headers['x-touchspace-viewer-id']) ?? fallback?.viewerId,
 });

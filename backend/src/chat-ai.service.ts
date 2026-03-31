@@ -24,7 +24,10 @@ export class ChatAiService {
           apiKey: process.env.OPENAI_API_KEY,
         })
       : null;
-    this.model = process.env.OPENAI_CHAT_MODEL?.trim() || process.env.OPENAI_ADMIN_MODEL?.trim() || 'gpt-5-mini';
+    this.model =
+      process.env.OPENAI_CHAT_MODEL?.trim() ||
+      process.env.OPENAI_ADMIN_MODEL?.trim() ||
+      'gpt-5-mini';
   }
 
   private ensureClient() {
@@ -73,7 +76,8 @@ export class ChatAiService {
           : 'Я подключаю менеджера TouchSpace, чтобы помочь точнее.',
       shouldHandoff: Boolean(payload.shouldHandoff),
       handoffReason:
-        typeof payload.handoffReason === 'string' && payload.handoffReason.trim()
+        typeof payload.handoffReason === 'string' &&
+        payload.handoffReason.trim()
           ? payload.handoffReason.trim()
           : null,
       resolved: Boolean(payload.resolved),
@@ -203,7 +207,9 @@ ${transcript}
     });
 
     if (!dialog) {
-      throw new InternalServerErrorException(`Ticket with id "${ticketId}" not found`);
+      throw new InternalServerErrorException(
+        `Ticket with id "${ticketId}" not found`,
+      );
     }
 
     const managerRequestsCount = this.countManagerRequests(dialog.messages);
@@ -211,7 +217,8 @@ ${transcript}
     if (managerRequestsCount >= 2) {
       return {
         model: 'rule-based-handoff',
-        reply: 'Понял, подключаю менеджера TouchSpace. Он продолжит диалог в этом же чате.',
+        reply:
+          'Понял, подключаю менеджера TouchSpace. Он продолжит диалог в этом же чате.',
         shouldHandoff: true,
         handoffReason: 'Клиент повторно запросил оператора или менеджера.',
         resolved: false,
@@ -306,15 +313,22 @@ ${transcript}
       void this.pushService
         .getManagerTargetsForTicket(ticketId)
         .then((targets) =>
-          this.pushService.sendToProfiles(targets, {
-            title: 'Диалог возвращён менеджеру',
-            body: 'AI передал диалог в обычную очередь менеджера.',
-            url: `/?ticket=${ticketId}`,
-            tag: `ticket-${ticketId}-handoff`,
-          }, 'ai_handoffs'),
+          this.pushService.sendToProfiles(
+            targets,
+            {
+              title: 'Диалог возвращён менеджеру',
+              body: 'AI передал диалог в обычную очередь менеджера.',
+              url: `/?ticket=${ticketId}`,
+              tag: `ticket-${ticketId}-handoff`,
+            },
+            'ai_handoffs',
+          ),
         )
         .catch((error) =>
-          console.error('Ошибка push-уведомления при возврате диалога менеджеру:', error),
+          console.error(
+            'Ошибка push-уведомления при возврате диалога менеджеру:',
+            error,
+          ),
         );
     }
 

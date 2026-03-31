@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
@@ -137,231 +142,240 @@ export class MessagesService {
       });
     }
 
-    const { message, shouldAiReply, ticketSnapshot } = await this.prisma.$transaction(async (tx) => {
-      const ticket = await tx.ticket.findUnique({
-        where: { id: ticketId },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          aiEnabled: true,
-          currentHandlerType: true,
-          conversationMode: true,
-          firstResponseStartedAt: true,
-          firstResponseAt: true,
-          assignedManagerId: true,
-          assignedManagerName: true,
-          invitedManagerIds: true,
-          clientId: true,
-          clientName: true,
-          supplierId: true,
-          supplierName: true,
-        },
-      });
-
-      if (!ticket) {
-        throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
-      }
-
-      if (senderType === 'client' && ticket.status === 'resolved') {
-        const reopenedAt = new Date();
-
-        await this.createSystemMessage(tx, ticketId, 'Клиент возобновил диалог');
-
-        await tx.ticket.update({
+    const { message, shouldAiReply, ticketSnapshot } =
+      await this.prisma.$transaction(async (tx) => {
+        const ticket = await tx.ticket.findUnique({
           where: { id: ticketId },
-          data: {
-            assignedManagerId: null,
-            assignedManagerName: null,
-            conversationMode: 'manager',
-            currentHandlerType: 'manager',
-            aiEnabled: false,
-            firstResponseStartedAt: reopenedAt,
-            firstResponseAt: null,
-            firstResponseTime: null,
-            firstResponseBreached: false,
-            managerRating: null,
-            managerRatingSubmittedAt: null,
-            resolvedAt: null,
-            closedAt: null,
-            lastMessageAt: reopenedAt,
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            aiEnabled: true,
+            currentHandlerType: true,
+            conversationMode: true,
+            firstResponseStartedAt: true,
+            firstResponseAt: true,
+            assignedManagerId: true,
+            assignedManagerName: true,
+            invitedManagerIds: true,
+            clientId: true,
+            clientName: true,
+            supplierId: true,
+            supplierName: true,
           },
         });
-      }
 
-      const message = await tx.message.create({
-        data: {
-          ticketId,
-          content,
-          senderType,
-          senderRole: senderType,
-          senderProfileId: actorId ?? null,
-          replyToMessageId: replyToMessageId?.trim() || null,
-          replyToContent: replyToContent?.trim() || null,
-          status: 'sent',
-          deliveryStatus: 'sent',
-          messageType: 'text',
-          isInternal: false,
-        },
-      });
-
-      const managerMessagesCount = await tx.message.count({
-        where: {
-          ticketId,
-          senderType: 'manager',
-        },
-      });
-
-      let nextStatus = ticket.status;
-
-      if (senderType === 'client') {
-        nextStatus = managerMessagesCount > 0 ? 'in_progress' : 'new';
-      }
-
-      if (senderType === 'manager') {
-        nextStatus = 'waiting_client';
-      }
-
-      if (senderType === 'client' && ticket.aiEnabled) {
-        nextStatus = 'waiting_client';
-      }
-
-      if (senderType === 'supplier') {
-        nextStatus = 'in_progress';
-      }
-
-      const ticketUpdateData: Record<string, unknown> = {
-        lastMessageAt: message.createdAt,
-        closedAt: null,
-      };
-
-      if (nextStatus !== ticket.status) {
-        ticketUpdateData.status = nextStatus;
-      }
-
-      if (senderType === 'client') {
-        ticketUpdateData.clientId = actorId ?? ticket.clientId;
-        ticketUpdateData.clientName = actorName ?? ticket.clientName;
-        if (ticket.aiEnabled) {
-          ticketUpdateData.currentHandlerType = 'ai';
-          ticketUpdateData.conversationMode = 'ai';
+        if (!ticket) {
+          throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
         }
-      }
 
-      if (senderType === 'supplier') {
-        ticketUpdateData.supplierId = actorId ?? ticket.supplierId;
-        ticketUpdateData.supplierName = actorName ?? ticket.supplierName;
-      }
+        if (senderType === 'client' && ticket.status === 'resolved') {
+          const reopenedAt = new Date();
 
-      await tx.ticket.update({
-        where: { id: ticketId },
-        data: ticketUpdateData,
-      });
+          await this.createSystemMessage(
+            tx,
+            ticketId,
+            'Клиент возобновил диалог',
+          );
 
-      if (senderType === 'manager' && !ticket.firstResponseAt) {
-        const startedAt = ticket.firstResponseStartedAt ?? new Date();
-        const durationMs = Math.max(
-          message.createdAt.getTime() - startedAt.getTime(),
-          0,
-        );
+          await tx.ticket.update({
+            where: { id: ticketId },
+            data: {
+              assignedManagerId: null,
+              assignedManagerName: null,
+              conversationMode: 'manager',
+              currentHandlerType: 'manager',
+              aiEnabled: false,
+              firstResponseStartedAt: reopenedAt,
+              firstResponseAt: null,
+              firstResponseTime: null,
+              firstResponseBreached: false,
+              managerRating: null,
+              managerRatingSubmittedAt: null,
+              resolvedAt: null,
+              closedAt: null,
+              lastMessageAt: reopenedAt,
+            },
+          });
+        }
 
-        await tx.ticket.update({
-          where: { id: ticketId },
+        const message = await tx.message.create({
           data: {
-            firstResponseAt: message.createdAt,
-            firstResponseTime: durationMs,
-            firstResponseBreached: durationMs > 2 * 60 * 1000,
+            ticketId,
+            content,
+            senderType,
+            senderRole: senderType,
+            senderProfileId: actorId ?? null,
+            replyToMessageId: replyToMessageId?.trim() || null,
+            replyToContent: replyToContent?.trim() || null,
+            status: 'sent',
+            deliveryStatus: 'sent',
+            messageType: 'text',
+            isInternal: false,
           },
         });
-      }
 
-      if (
-        senderType === 'manager' &&
-        managerId &&
-        managerName &&
-        !ticket.assignedManagerId
-      ) {
-        await tx.ticket.update({
-          where: { id: ticketId },
-          data: {
-            assignedManagerId: managerId,
-            assignedManagerName: managerName,
-          },
-        });
-      }
-
-      if (senderType === 'supplier') {
-        const activeSupplierRequest = await tx.supplierRequest.findFirst({
+        const managerMessagesCount = await tx.message.count({
           where: {
             ticketId,
-            firstResponseAt: null,
-            status: {
-              notIn: ['closed', 'cancelled'],
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
+            senderType: 'manager',
           },
         });
 
-        if (activeSupplierRequest) {
-          const startedAt =
-            activeSupplierRequest.responseStartedAt ??
-            activeSupplierRequest.createdAt;
+        let nextStatus = ticket.status;
+
+        if (senderType === 'client') {
+          nextStatus = managerMessagesCount > 0 ? 'in_progress' : 'new';
+        }
+
+        if (senderType === 'manager') {
+          nextStatus = 'waiting_client';
+        }
+
+        if (senderType === 'client' && ticket.aiEnabled) {
+          nextStatus = 'waiting_client';
+        }
+
+        if (senderType === 'supplier') {
+          nextStatus = 'in_progress';
+        }
+
+        const ticketUpdateData: Record<string, unknown> = {
+          lastMessageAt: message.createdAt,
+          closedAt: null,
+        };
+
+        if (nextStatus !== ticket.status) {
+          ticketUpdateData.status = nextStatus;
+        }
+
+        if (senderType === 'client') {
+          ticketUpdateData.clientId = actorId ?? ticket.clientId;
+          ticketUpdateData.clientName = actorName ?? ticket.clientName;
+          if (ticket.aiEnabled) {
+            ticketUpdateData.currentHandlerType = 'ai';
+            ticketUpdateData.conversationMode = 'ai';
+          }
+        }
+
+        if (senderType === 'supplier') {
+          ticketUpdateData.supplierId = actorId ?? ticket.supplierId;
+          ticketUpdateData.supplierName = actorName ?? ticket.supplierName;
+        }
+
+        await tx.ticket.update({
+          where: { id: ticketId },
+          data: ticketUpdateData,
+        });
+
+        if (senderType === 'manager' && !ticket.firstResponseAt) {
+          const startedAt = ticket.firstResponseStartedAt ?? new Date();
           const durationMs = Math.max(
             message.createdAt.getTime() - startedAt.getTime(),
             0,
           );
 
-          await tx.supplierRequest.update({
-            where: { id: activeSupplierRequest.id },
+          await tx.ticket.update({
+            where: { id: ticketId },
             data: {
               firstResponseAt: message.createdAt,
-              respondedAt: message.createdAt,
-              responseTime: durationMs,
-              responseBreached: durationMs > 60 * 60 * 1000,
+              firstResponseTime: durationMs,
+              firstResponseBreached: durationMs > 2 * 60 * 1000,
             },
           });
         }
-      }
 
-      if (senderType === 'client') {
-        this.typingService.clearTyping(ticketId, 'client');
-      }
+        if (
+          senderType === 'manager' &&
+          managerId &&
+          managerName &&
+          !ticket.assignedManagerId
+        ) {
+          await tx.ticket.update({
+            where: { id: ticketId },
+            data: {
+              assignedManagerId: managerId,
+              assignedManagerName: managerName,
+            },
+          });
+        }
 
-      if (senderType === 'manager') {
-        this.typingService.clearTyping(ticketId, 'manager');
-        await this.markClientMessagesAsRead(tx, ticketId, message.createdAt);
-      }
+        if (senderType === 'supplier') {
+          const activeSupplierRequest = await tx.supplierRequest.findFirst({
+            where: {
+              ticketId,
+              firstResponseAt: null,
+              status: {
+                notIn: ['closed', 'cancelled'],
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          });
 
-      if (senderType === 'manager' && ticket.aiEnabled) {
-        await this.createSystemMessage(tx, ticketId, 'Менеджер подключился к диалогу');
-        await tx.ticket.update({
-          where: { id: ticketId },
-          data: {
-            aiEnabled: false,
-            currentHandlerType: 'manager',
-            conversationMode: 'manager',
-            aiDeactivatedAt: message.createdAt,
-            handedToManagerAt: message.createdAt,
-            lastMessageAt: message.createdAt,
+          if (activeSupplierRequest) {
+            const startedAt =
+              activeSupplierRequest.responseStartedAt ??
+              activeSupplierRequest.createdAt;
+            const durationMs = Math.max(
+              message.createdAt.getTime() - startedAt.getTime(),
+              0,
+            );
+
+            await tx.supplierRequest.update({
+              where: { id: activeSupplierRequest.id },
+              data: {
+                firstResponseAt: message.createdAt,
+                respondedAt: message.createdAt,
+                responseTime: durationMs,
+                responseBreached: durationMs > 60 * 60 * 1000,
+              },
+            });
+          }
+        }
+
+        if (senderType === 'client') {
+          this.typingService.clearTyping(ticketId, 'client');
+        }
+
+        if (senderType === 'manager') {
+          this.typingService.clearTyping(ticketId, 'manager');
+          await this.markClientMessagesAsRead(tx, ticketId, message.createdAt);
+        }
+
+        if (senderType === 'manager' && ticket.aiEnabled) {
+          await this.createSystemMessage(
+            tx,
+            ticketId,
+            'Менеджер подключился к диалогу',
+          );
+          await tx.ticket.update({
+            where: { id: ticketId },
+            data: {
+              aiEnabled: false,
+              currentHandlerType: 'manager',
+              conversationMode: 'manager',
+              aiDeactivatedAt: message.createdAt,
+              handedToManagerAt: message.createdAt,
+              lastMessageAt: message.createdAt,
+            },
+          });
+        }
+
+        return {
+          message,
+          shouldAiReply: senderType === 'client' && ticket.aiEnabled,
+          ticketSnapshot: {
+            id: ticket.id,
+            title: ticket.title ?? 'Диалог TouchSpace',
+            assignedManagerId: ticket.assignedManagerId,
+            invitedManagerIds: ticket.invitedManagerIds,
+            supplierId: ticket.supplierId,
+            aiEnabled: ticket.aiEnabled,
           },
-        });
-      }
-
-      return {
-        message,
-        shouldAiReply: senderType === 'client' && ticket.aiEnabled,
-        ticketSnapshot: {
-          id: ticket.id,
-          title: ticket.title ?? 'Диалог TouchSpace',
-          assignedManagerId: ticket.assignedManagerId,
-          invitedManagerIds: ticket.invitedManagerIds,
-          supplierId: ticket.supplierId,
-          aiEnabled: ticket.aiEnabled,
-        },
-      };
-    });
+        };
+      });
 
     if (shouldAiReply) {
       void this.chatAiService.persistAiTurn(ticketId).catch((error) => {
@@ -371,12 +385,18 @@ export class MessagesService {
       void this.pushService
         .getManagerTargetsForTicket(ticketId)
         .then((targets) =>
-          this.pushService.sendToProfiles(targets, {
-            title: 'Новое сообщение от клиента',
-            body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
-            url: `/?ticket=${ticketId}`,
-            tag: `ticket-${ticketId}`,
-          }, 'client_chats', actorId),
+          this.pushService.sendToProfiles(
+            targets,
+            {
+              title: 'Новое сообщение от клиента',
+              body:
+                content.length > 120 ? `${content.slice(0, 120)}...` : content,
+              url: `/?ticket=${ticketId}`,
+              tag: `ticket-${ticketId}`,
+            },
+            'client_chats',
+            actorId,
+          ),
         )
         .catch((error) =>
           console.error('Ошибка push-уведомления для менеджеров:', error),
@@ -388,23 +408,38 @@ export class MessagesService {
       ].filter((value): value is string => Boolean(value));
 
       void this.pushService
-        .sendToProfiles([...new Set(managerTargets)], {
-          title: 'Новое сообщение от поставщика',
-          body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
-          url: `/?ticket=${ticketId}`,
-          tag: `ticket-${ticketId}`,
-        }, 'supplier_chats', actorId)
+        .sendToProfiles(
+          [...new Set(managerTargets)],
+          {
+            title: 'Новое сообщение от поставщика',
+            body:
+              content.length > 120 ? `${content.slice(0, 120)}...` : content,
+            url: `/?ticket=${ticketId}`,
+            tag: `ticket-${ticketId}`,
+          },
+          'supplier_chats',
+          actorId,
+        )
         .catch((error) =>
-          console.error('Ошибка push-уведомления для менеджера по сообщению поставщика:', error),
+          console.error(
+            'Ошибка push-уведомления для менеджера по сообщению поставщика:',
+            error,
+          ),
         );
     } else if (senderType === 'manager' && ticketSnapshot.supplierId) {
       void this.pushService
-        .sendToProfiles([ticketSnapshot.supplierId], {
-          title: 'Новое сообщение по вашему запросу',
-          body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
-          url: `/supplier?ticket=${ticketId}`,
-          tag: `supplier-ticket-${ticketId}`,
-        }, 'supplier_chats', actorId)
+        .sendToProfiles(
+          [ticketSnapshot.supplierId],
+          {
+            title: 'Новое сообщение по вашему запросу',
+            body:
+              content.length > 120 ? `${content.slice(0, 120)}...` : content,
+            url: `/supplier?ticket=${ticketId}`,
+            tag: `supplier-ticket-${ticketId}`,
+          },
+          'supplier_chats',
+          actorId,
+        )
         .catch((error) =>
           console.error('Ошибка push-уведомления поставщику:', error),
         );
@@ -430,7 +465,9 @@ export class MessagesService {
     }
 
     if (files.length > 5) {
-      throw new BadRequestException('Можно прикрепить не больше 5 файлов за раз');
+      throw new BadRequestException(
+        'Можно прикрепить не больше 5 файлов за раз',
+      );
     }
 
     const totalSize = files.reduce(

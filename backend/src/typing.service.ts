@@ -73,7 +73,7 @@ export class TypingService {
     return {
       clientTyping,
       managerTyping,
-      clientPreviewText: clientTyping ? state?.clientPreviewText ?? '' : '',
+      clientPreviewText: clientTyping ? (state?.clientPreviewText ?? '') : '',
     };
   }
 }

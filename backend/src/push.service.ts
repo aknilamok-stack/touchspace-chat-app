@@ -43,7 +43,8 @@ export class PushService {
   ) {
     this.publicKey = process.env.WEB_PUSH_PUBLIC_KEY?.trim() || '';
     const privateKey = process.env.WEB_PUSH_PRIVATE_KEY?.trim() || '';
-    const subject = process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:touchspace@example.com';
+    const subject =
+      process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:touchspace@example.com';
 
     if (this.publicKey && privateKey) {
       webpush.setVapidDetails(subject, this.publicKey, privateKey);
@@ -193,7 +194,9 @@ export class PushService {
     senderProfileId?: string,
   ) {
     if (!this.publicKey || !process.env.WEB_PUSH_PRIVATE_KEY?.trim()) {
-      this.logger.warn('WEB_PUSH_PUBLIC_KEY / WEB_PUSH_PRIVATE_KEY не заданы. Push-доставка пропущена.');
+      this.logger.warn(
+        'WEB_PUSH_PUBLIC_KEY / WEB_PUSH_PRIVATE_KEY не заданы. Push-доставка пропущена.',
+      );
       return;
     }
 
@@ -288,7 +291,8 @@ export class PushService {
       {
         title: 'TouchSpace готов',
         body: `Уведомления для роли ${role} настроены и работают.`,
-        url: role === 'admin' ? '/admin' : role === 'supplier' ? '/supplier' : '/',
+        url:
+          role === 'admin' ? '/admin' : role === 'supplier' ? '/supplier' : '/',
         tag: 'touchspace-test',
       },
       'admin_alerts',

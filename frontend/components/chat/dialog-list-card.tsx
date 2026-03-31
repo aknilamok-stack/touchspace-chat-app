@@ -83,7 +83,15 @@ export function DialogListCard({
             ) : null}
           </div>
 
-          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-[#5F6572]">{preview}</p>
+          <div className="mt-1.5 flex items-center justify-between gap-3">
+            <p className="min-w-0 truncate text-[13px] leading-5 text-[#5F6572]">{preview}</p>
+            <span
+              className={`shrink-0 inline-flex min-h-7 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-medium leading-4 ${statusBadgeClassName}`}
+            >
+              {statusLabel}
+            </span>
+          </div>
+
           <div className="mt-1.5 flex items-center justify-between gap-3">
             <p className="min-w-0 truncate text-[12px] text-[#979DA8]">{managerLabel}</p>
             {timeLabel ? (
@@ -93,12 +101,6 @@ export function DialogListCard({
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <span
-            className={`inline-flex min-h-7 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-medium leading-4 ${statusBadgeClassName}`}
-          >
-            {statusLabel}
-          </span>
-
           {unreadCount > 0 ? (
             <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#0A84FF] px-2 text-xs font-semibold text-white">
               {unreadCount}

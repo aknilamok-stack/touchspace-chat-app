@@ -60,18 +60,22 @@ export function DialogListCard({
       }`}
       >
       <div className="flex items-start gap-3">
-        <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[20px]"
-          style={{ backgroundColor: avatar.color }}
-          aria-hidden="true"
-        >
-          <span className="translate-y-[1px]">{avatar.emoji}</span>
+        <div className="relative shrink-0">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[20px]"
+            style={{ backgroundColor: avatar.color }}
+            aria-hidden="true"
+          >
+            <span className="translate-y-[1px]">{avatar.emoji}</span>
+          </div>
+          <span
+            className={`absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${statusDotClassName}`}
+          />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-[15px] font-semibold text-[#1E1E1E]">{title}</p>
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClassName}`} />
+            <p className="truncate text-[16px] font-semibold text-[#1E1E1E]">{title}</p>
             {pinned ? (
               <span className="shrink-0 text-xs text-[#8E8E93]" title="Закреплён">
                 📌
@@ -80,12 +84,15 @@ export function DialogListCard({
           </div>
 
           <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-[#5F6572]">{preview}</p>
-          <p className="mt-1.5 truncate text-[12px] text-[#979DA8]">{managerLabel}</p>
+          <div className="mt-1.5 flex items-center justify-between gap-3">
+            <p className="min-w-0 truncate text-[12px] text-[#979DA8]">{managerLabel}</p>
+            {timeLabel ? (
+              <p className="shrink-0 text-[11px] text-[#A0A6B2]">{timeLabel}</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
-          {timeLabel ? <p className="text-[11px] text-[#A0A6B2]">{timeLabel}</p> : null}
-
           <span
             className={`inline-flex min-h-7 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-medium leading-4 ${statusBadgeClassName}`}
           >

@@ -1895,7 +1895,7 @@ export default function SupplierPage() {
           {selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="min-w-0">
                     <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
                       {selectedClientLabel}
@@ -1905,110 +1905,86 @@ export default function SupplierPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 rounded-[12px] bg-[#F2F2F5] p-1.5">
-                    <div className="relative">
-                      <button
-                        onClick={handleTogglePinned}
-                        disabled={isTogglingPinned}
-                        onMouseEnter={() => setHoveredHeaderAction("pin")}
-                        onMouseLeave={() => setHoveredHeaderAction(null)}
-                        className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF] ${
-                          selectedRequestCard?.pinned ? "bg-[#595FFF]" : "bg-transparent"
-                        }`}
-                      >
-                        <Image
-                          src="/icons/zakrepit.svg"
-                          alt="Закрепить"
-                          width={18}
-                          height={18}
-                          className={`h-[18px] w-[18px] ${
-                            selectedRequestCard?.pinned ? "brightness-0 invert" : "opacity-70"
-                          }`}
-                        />
-                      </button>
-                      {hoveredHeaderAction === "pin" ? (
-                        <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                          {selectedRequestCard?.pinned ? "Открепить чат" : "Закрепить чат"}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          setSelectedInvitedManagerId(firstOnlineManagerId);
-                          setInviteManagerError("");
-                          setIsInviteModalOpen(true);
-                        }}
-                        onMouseEnter={() => setHoveredHeaderAction("invite")}
-                        onMouseLeave={() => setHoveredHeaderAction(null)}
-                        className="flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF]"
-                      >
-                        <Image
-                          src="/icons/dobavit.svg"
-                          alt="Пригласить"
-                          width={18}
-                          height={18}
-                          className="h-[18px] w-[18px] opacity-70"
-                        />
-                      </button>
-                      {hoveredHeaderAction === "invite" ? (
-                        <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                          Пригласить менеджера
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          setSelectedTransferManagerId(firstOnlineManagerId);
-                          setTransferDialogError("");
-                          setIsTransferModalOpen(true);
-                        }}
-                        onMouseEnter={() => setHoveredHeaderAction("transfer")}
-                        onMouseLeave={() => setHoveredHeaderAction(null)}
-                        className="flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF]"
-                      >
-                        <Image
-                          src="/icons/priglasit.svg"
-                          alt="Передать"
-                          width={18}
-                          height={18}
-                          className="h-[18px] w-[18px] opacity-70"
-                        />
-                      </button>
-                      {hoveredHeaderAction === "transfer" ? (
-                        <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                          Передать
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
                   <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          setHoveredHeaderAction(null);
-                          setIsChatPaneDismissed(true);
-                          setSelectedRequestId("");
-                          setReplyTarget(null);
-                          setShowQuickReplies(false);
-                          setShowEmojiPicker(false);
-                          setReplyError("");
-                        }}
-                        onMouseEnter={() => setHoveredHeaderAction("close")}
-                        onMouseLeave={() => setHoveredHeaderAction(null)}
-                        className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E5E5EA] bg-white text-[#8E8E93] transition duration-200 hover:bg-[#F7F8FB] hover:text-[#1E1E1E]"
-                      >
-                        ✕
-                      </button>
-                      {hoveredHeaderAction === "close" ? (
-                        <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                          Свернуть
-                        </div>
-                      ) : null}
+                    <div className="flex items-center gap-2 rounded-[12px] bg-[#F2F2F5] p-1.5">
+                      <div className="relative">
+                        <button
+                          onClick={handleTogglePinned}
+                          disabled={isTogglingPinned}
+                          onMouseEnter={() => setHoveredHeaderAction("pin")}
+                          onMouseLeave={() => setHoveredHeaderAction(null)}
+                          className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF] ${
+                            selectedRequestCard?.pinned ? "bg-[#595FFF]" : "bg-transparent"
+                          }`}
+                        >
+                          <Image
+                            src="/icons/zakrepit.svg"
+                            alt="Закрепить"
+                            width={18}
+                            height={18}
+                            className={`h-[18px] w-[18px] ${
+                              selectedRequestCard?.pinned ? "brightness-0 invert" : "opacity-70"
+                            }`}
+                          />
+                        </button>
+                        {hoveredHeaderAction === "pin" ? (
+                          <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                            {selectedRequestCard?.pinned ? "Открепить чат" : "Закрепить чат"}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setSelectedInvitedManagerId(firstOnlineManagerId);
+                            setInviteManagerError("");
+                            setIsInviteModalOpen(true);
+                          }}
+                          onMouseEnter={() => setHoveredHeaderAction("invite")}
+                          onMouseLeave={() => setHoveredHeaderAction(null)}
+                          className="flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF]"
+                        >
+                          <Image
+                            src="/icons/dobavit.svg"
+                            alt="Пригласить"
+                            width={18}
+                            height={18}
+                            className="h-[18px] w-[18px] opacity-70"
+                          />
+                        </button>
+                        {hoveredHeaderAction === "invite" ? (
+                          <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                            Пригласить менеджера
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setSelectedTransferManagerId(firstOnlineManagerId);
+                            setTransferDialogError("");
+                            setIsTransferModalOpen(true);
+                          }}
+                          onMouseEnter={() => setHoveredHeaderAction("transfer")}
+                          onMouseLeave={() => setHoveredHeaderAction(null)}
+                          className="flex h-9 w-9 items-center justify-center rounded-[10px] transition duration-200 hover:bg-[#E5F0FF]"
+                        >
+                          <Image
+                            src="/icons/priglasit.svg"
+                            alt="Передать"
+                            width={18}
+                            height={18}
+                            className="h-[18px] w-[18px] opacity-70"
+                          />
+                        </button>
+                        {hoveredHeaderAction === "transfer" ? (
+                          <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                            Передать
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="relative">
@@ -2035,6 +2011,30 @@ export default function SupplierPage() {
                       {hoveredHeaderAction === "resolve" ? (
                         <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
                           Отметить как решённый
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setHoveredHeaderAction(null);
+                          setIsChatPaneDismissed(true);
+                          setSelectedRequestId("");
+                          setReplyTarget(null);
+                          setShowQuickReplies(false);
+                          setShowEmojiPicker(false);
+                          setReplyError("");
+                        }}
+                        onMouseEnter={() => setHoveredHeaderAction("close")}
+                        onMouseLeave={() => setHoveredHeaderAction(null)}
+                        className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E5E5EA] bg-white text-[#8E8E93] transition duration-200 hover:bg-[#F7F8FB] hover:text-[#1E1E1E]"
+                      >
+                        ✕
+                      </button>
+                      {hoveredHeaderAction === "close" ? (
+                        <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                          Свернуть
                         </div>
                       ) : null}
                     </div>

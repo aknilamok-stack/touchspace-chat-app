@@ -2187,29 +2187,26 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
-                                  <span
+                                  <svg
                                     aria-hidden="true"
-                                    className={`pointer-events-none absolute bottom-0 h-[18px] w-[18px] ${
+                                    viewBox="0 0 18 20"
+                                    className={`pointer-events-none absolute bottom-0 h-[16px] w-[14px] ${
                                       message.senderType === "supplier"
-                                        ? "-right-[6px]"
-                                        : "-left-[6px]"
+                                        ? "-right-[9px]"
+                                        : "-left-[9px]"
                                     }`}
+                                    style={{
+                                      transform:
+                                        message.senderType === "supplier" ? undefined : "scaleX(-1)",
+                                    }}
                                   >
-                                    <span
-                                      className={`absolute bottom-0 h-[18px] w-[18px] rounded-full ${
-                                        message.senderType === "supplier"
-                                          ? "right-0 bg-[#0A84FF]"
-                                          : "left-0 border border-[#E8EBF1] bg-white"
-                                      }`}
+                                    <path
+                                      d="M0 0C1.4 5.8 1.7 11.6 0.5 18.2C4.2 17.3 7.7 15.5 10.9 12.9C13.5 10.8 15.8 7.4 18 0H0Z"
+                                      fill={message.senderType === "supplier" ? "#0A84FF" : "#FFFFFF"}
+                                      stroke={message.senderType !== "supplier" ? "#E8EBF1" : "none"}
+                                      strokeWidth={message.senderType !== "supplier" ? "1" : undefined}
                                     />
-                                    <span
-                                      className={`absolute bottom-0 h-[18px] w-[18px] rounded-full bg-[#F7F7FA] ${
-                                        message.senderType === "supplier"
-                                          ? "-right-[10px]"
-                                          : "-left-[10px]"
-                                      }`}
-                                    />
-                                  </span>
+                                  </svg>
                                 </div>
                               </div>
                             </div>

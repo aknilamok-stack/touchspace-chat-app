@@ -72,8 +72,20 @@ model Ticket {
   managerRatingSubmittedAt DateTime?
   clientId                 String?
   clientName               String?
+  tradePointExternalId     String?
   clientEmail              String?
   clientPhone              String?
+  currentUserId            String?
+  currentUserEmail         String?
+  currentUserPhone         String?
+  currentUserXmlId         String?
+  isSuperuser              Boolean?
+  superuserId              String?
+  superuserEmail           String?
+  superuserPhone           String?
+  canonicalEmail           String?
+  canonicalEmailSource     String?
+  lockedBySuperuser        Boolean   @default(false)
   avatarColor              String?
   avatarEmoji              String?
   supplierId               String?

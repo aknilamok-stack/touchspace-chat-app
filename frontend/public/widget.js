@@ -97,10 +97,45 @@
 
   var domTradePointName = getTradePointNameFromDom();
   var domLegalEntityName = getLegalEntityNameFromDom();
+  var configuredTradePointId = cleanValue(config.tradePointId);
+  var configuredTradePointExternalId = cleanValue(config.tradePointExternalId);
+  var configuredTradePointName = cleanValue(config.tradePointName);
+  var configuredCurrentUserId = pickFirst(
+    cleanValue(config.currentUserId),
+    cleanValue(config.platformUserId),
+    cleanValue(config.userId)
+  );
+  var configuredCurrentUserLogin = cleanValue(config.currentUserLogin);
+  var configuredCurrentUserEmail = pickFirst(
+    cleanValue(config.currentUserEmail),
+    cleanValue(config.email)
+  );
+  var configuredCurrentUserPhone = pickFirst(
+    cleanValue(config.currentUserPhone),
+    cleanValue(config.phone)
+  );
+  var configuredCurrentUserXmlId = cleanValue(config.currentUserXmlId);
+  var configuredIsSuperuser =
+    typeof config.isSuperuser === "boolean"
+      ? config.isSuperuser
+      : cleanValue(String(config.isSuperuser)).toLowerCase() === "true";
+  var configuredSuperuserId = cleanValue(config.superuserId);
+  var configuredSuperuserEmail = cleanValue(config.superuserEmail);
+  var configuredSuperuserPhone = cleanValue(config.superuserPhone);
+  var configuredCanonicalEmail = pickFirst(
+    cleanValue(config.canonicalEmail),
+    configuredSuperuserEmail,
+    configuredCurrentUserEmail
+  );
+  var configuredCanonicalEmailSource = cleanValue(config.canonicalEmailSource);
+  var configuredUserToken = pickFirst(
+    cleanValue(config.userToken),
+    configuredTradePointId ? "trade-point-" + configuredTradePointId : ""
+  );
 
   var fallbackTradePointName = pickFirst(
+    configuredTradePointName,
     domTradePointName,
-    cleanValue(config.tradePointName),
     readText(".pane__list-value span"),
     readText(".pane__list-value"),
     cleanValue(config.name),
@@ -110,12 +145,8 @@
   );
 
   var fallbackTradePointId = pickFirst(
-    domTradePointName,
-    cleanValue(config.tradePointId),
-    fallbackTradePointName,
-    cleanValue(config.userToken),
-    cleanValue(config.clientId),
-    cleanValue(config.name)
+    configuredTradePointId,
+    cleanValue(config.clientId)
   );
 
   var fallbackUserName = pickFirst(
@@ -127,8 +158,7 @@
   );
 
   var fallbackUserId = pickFirst(
-    cleanValue(config.userId),
-    cleanValue(config.platformUserId),
+    configuredCurrentUserId,
     fallbackTradePointId
   );
 
@@ -151,11 +181,50 @@
   var MOBILE_GAP = 12;
 
   if (fallbackTradePointId) iframeUrl.searchParams.set("tradePointId", String(fallbackTradePointId));
+  if (configuredTradePointExternalId) {
+    iframeUrl.searchParams.set("tradePointExternalId", String(configuredTradePointExternalId));
+  }
   if (fallbackTradePointName) iframeUrl.searchParams.set("tradePointName", String(fallbackTradePointName));
   if (fallbackUserId) iframeUrl.searchParams.set("userId", String(fallbackUserId));
   if (fallbackUserName) iframeUrl.searchParams.set("userName", String(fallbackUserName));
-  if (config.email) iframeUrl.searchParams.set("email", String(config.email));
-  if (config.phone) iframeUrl.searchParams.set("phone", String(config.phone));
+  if (configuredCurrentUserId) {
+    iframeUrl.searchParams.set("currentUserId", String(configuredCurrentUserId));
+  }
+  if (configuredCurrentUserLogin) {
+    iframeUrl.searchParams.set("currentUserLogin", String(configuredCurrentUserLogin));
+  }
+  if (configuredCurrentUserEmail) {
+    iframeUrl.searchParams.set("currentUserEmail", String(configuredCurrentUserEmail));
+  }
+  if (configuredCurrentUserPhone) {
+    iframeUrl.searchParams.set("currentUserPhone", String(configuredCurrentUserPhone));
+  }
+  if (configuredCurrentUserXmlId) {
+    iframeUrl.searchParams.set("currentUserXmlId", String(configuredCurrentUserXmlId));
+  }
+  iframeUrl.searchParams.set("isSuperuser", configuredIsSuperuser ? "true" : "false");
+  if (configuredSuperuserId) {
+    iframeUrl.searchParams.set("superuserId", String(configuredSuperuserId));
+  }
+  if (configuredSuperuserEmail) {
+    iframeUrl.searchParams.set("superuserEmail", String(configuredSuperuserEmail));
+  }
+  if (configuredSuperuserPhone) {
+    iframeUrl.searchParams.set("superuserPhone", String(configuredSuperuserPhone));
+  }
+  if (configuredCanonicalEmail) {
+    iframeUrl.searchParams.set("canonicalEmail", String(configuredCanonicalEmail));
+  }
+  if (configuredCanonicalEmailSource) {
+    iframeUrl.searchParams.set("canonicalEmailSource", String(configuredCanonicalEmailSource));
+  }
+  if (configuredUserToken) {
+    iframeUrl.searchParams.set("userToken", String(configuredUserToken));
+  }
+  if (configuredCanonicalEmail) iframeUrl.searchParams.set("email", String(configuredCanonicalEmail));
+  if (configuredSuperuserPhone || configuredCurrentUserPhone) {
+    iframeUrl.searchParams.set("phone", String(configuredSuperuserPhone || configuredCurrentUserPhone));
+  }
   if (config.platform) iframeUrl.searchParams.set("platform", String(config.platform));
 
   var style = document.createElement("style");

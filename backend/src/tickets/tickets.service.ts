@@ -12,6 +12,7 @@ import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
 import { ChatAiService } from '../chat-ai.service';
 import { readJsonStringArray } from '../prisma-json.util';
+import { resolveTicketClientContext } from './client-context.util';
 
 type TicketViewer = {
   viewerType?: string;
@@ -303,8 +304,20 @@ export class TicketsService {
         id: true,
         clientId: true,
         clientName: true,
+        tradePointExternalId: true,
         clientEmail: true,
         clientPhone: true,
+        currentUserId: true,
+        currentUserEmail: true,
+        currentUserPhone: true,
+        currentUserXmlId: true,
+        isSuperuser: true,
+        superuserId: true,
+        superuserEmail: true,
+        superuserPhone: true,
+        canonicalEmail: true,
+        canonicalEmailSource: true,
+        lockedBySuperuser: true,
         supplierId: true,
         clientProfile: {
           select: {
@@ -397,18 +410,37 @@ export class TicketsService {
       editable: boolean;
     }> = [];
 
-    const resolvedEmail = ticket.clientEmail?.trim() || ticket.clientProfile?.email?.trim() || '';
-    const resolvedPhone = ticket.clientPhone?.trim() || ticket.clientProfile?.phone?.trim() || '';
-    const emailSourceLabel = ticket.clientEmail?.trim()
-      ? 'Из данных клиента'
-      : ticket.clientProfile?.email?.trim()
-        ? 'Из профиля клиента'
-        : null;
-    const phoneSourceLabel = ticket.clientPhone?.trim()
-      ? 'Из данных клиента'
-      : ticket.clientProfile?.phone?.trim()
-        ? 'Из профиля клиента'
-        : null;
+    const resolvedEmail =
+      ticket.canonicalEmail?.trim() ||
+      ticket.clientEmail?.trim() ||
+      ticket.clientProfile?.email?.trim() ||
+      '';
+    const resolvedPhone =
+      ticket.superuserPhone?.trim() ||
+      ticket.currentUserPhone?.trim() ||
+      ticket.clientPhone?.trim() ||
+      ticket.clientProfile?.phone?.trim() ||
+      '';
+    const emailSourceLabel = ticket.canonicalEmail?.trim()
+      ? ticket.canonicalEmailSource === 'superuser'
+        ? 'Email суперпользователя'
+        : ticket.canonicalEmailSource === 'employee_fallback'
+          ? 'Email сотрудника'
+          : 'Основной email клиента'
+      : ticket.clientEmail?.trim()
+        ? 'Из данных клиента'
+        : ticket.clientProfile?.email?.trim()
+          ? 'Из профиля клиента'
+          : null;
+    const phoneSourceLabel = ticket.superuserPhone?.trim()
+      ? 'Телефон суперпользователя'
+      : ticket.currentUserPhone?.trim()
+        ? 'Телефон текущего пользователя'
+        : ticket.clientPhone?.trim()
+          ? 'Из данных клиента'
+          : ticket.clientProfile?.phone?.trim()
+            ? 'Из профиля клиента'
+            : null;
 
     if (resolvedEmail && emailSourceLabel) {
       const normalizedEmail = this.normalizeContactValue(
@@ -814,6 +846,19 @@ export class TicketsService {
     senderName?: string,
     clientId?: string,
     clientName?: string,
+    tradePointId?: string,
+    tradePointExternalId?: string,
+    tradePointName?: string,
+    currentUserId?: string,
+    currentUserEmail?: string,
+    currentUserPhone?: string,
+    currentUserXmlId?: string,
+    isSuperuser?: boolean,
+    superuserId?: string,
+    superuserEmail?: string,
+    superuserPhone?: string,
+    canonicalEmail?: string,
+    canonicalEmailSource?: string,
     clientEmail?: string,
     clientPhone?: string,
     aiEnabled = false,
@@ -821,14 +866,27 @@ export class TicketsService {
     const createdTicket = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const isClientStart = senderType === 'client';
-      const normalizedClientId =
-        senderType === 'client'
-          ? (senderId ?? clientId ?? null)
-          : (clientId ?? null);
-      const normalizedClientName =
-        senderType === 'client'
-          ? (senderName ?? clientName ?? null)
-          : (clientName ?? null);
+      const clientContext = resolveTicketClientContext({
+        clientId,
+        clientName,
+        tradePointId,
+        tradePointExternalId,
+        tradePointName,
+        currentUserId,
+        currentUserEmail,
+        currentUserPhone,
+        currentUserXmlId,
+        isSuperuser,
+        superuserId,
+        superuserEmail,
+        superuserPhone,
+        canonicalEmail,
+        canonicalEmailSource,
+        clientEmail,
+        clientPhone,
+      });
+      const normalizedClientId = clientContext.clientId;
+      const normalizedClientName = clientContext.clientName;
       const firstResponseTime = senderType === 'manager' ? 0 : null;
       const clientVisualIdentityKey = this.normalizeClientVisualIdentityKey(
         normalizedClientId,
@@ -878,8 +936,20 @@ export class TicketsService {
           lastResolvedByManagerName: null,
           clientId: normalizedClientId,
           clientName: normalizedClientName,
-          clientEmail: clientEmail?.trim() || null,
-          clientPhone: clientPhone?.trim() || null,
+          tradePointExternalId: clientContext.tradePointExternalId,
+          clientEmail: clientContext.clientEmail,
+          clientPhone: clientContext.clientPhone,
+          currentUserId: clientContext.currentUserId,
+          currentUserEmail: clientContext.currentUserEmail,
+          currentUserPhone: clientContext.currentUserPhone,
+          currentUserXmlId: clientContext.currentUserXmlId,
+          isSuperuser: clientContext.isSuperuser,
+          superuserId: clientContext.superuserId,
+          superuserEmail: clientContext.superuserEmail,
+          superuserPhone: clientContext.superuserPhone,
+          canonicalEmail: clientContext.canonicalEmail,
+          canonicalEmailSource: clientContext.canonicalEmailSource,
+          lockedBySuperuser: clientContext.lockedBySuperuser,
           avatarColor,
           avatarEmoji,
           supplierId: senderType === 'supplier' ? (senderId ?? null) : null,

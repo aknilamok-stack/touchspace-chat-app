@@ -451,9 +451,22 @@ export default function ClientPage() {
     setIsEmbeddedWidget(params.get("embed") === "1");
 
     const tradePointId = params.get("tradePointId")?.trim();
+    const tradePointExternalId = params.get("tradePointExternalId")?.trim();
     const tradePointName = params.get("tradePointName")?.trim();
     const platformUserId = params.get("userId")?.trim();
     const platformUserName = params.get("userName")?.trim();
+    const currentUserId = params.get("currentUserId")?.trim();
+    const currentUserLogin = params.get("currentUserLogin")?.trim();
+    const currentUserEmail = params.get("currentUserEmail")?.trim();
+    const currentUserPhone = params.get("currentUserPhone")?.trim();
+    const currentUserXmlId = params.get("currentUserXmlId")?.trim();
+    const isSuperuser = params.get("isSuperuser")?.trim() === "true";
+    const superuserId = params.get("superuserId")?.trim();
+    const superuserEmail = params.get("superuserEmail")?.trim();
+    const superuserPhone = params.get("superuserPhone")?.trim();
+    const canonicalEmail = params.get("canonicalEmail")?.trim();
+    const canonicalEmailSource = params.get("canonicalEmailSource")?.trim();
+    const userToken = params.get("userToken")?.trim();
     const email = params.get("email")?.trim();
     const phone = params.get("phone")?.trim();
 
@@ -465,16 +478,41 @@ export default function ClientPage() {
       clientId: tradePointId,
       clientName: tradePointName,
       tradePointId,
+      tradePointExternalId: tradePointExternalId || undefined,
       tradePointName,
       platformUserId: platformUserId || undefined,
       platformUserName: platformUserName || undefined,
-      email: email || undefined,
-      phone: phone || undefined,
+      currentUserId: currentUserId || platformUserId || undefined,
+      currentUserLogin: currentUserLogin || undefined,
+      currentUserEmail: currentUserEmail || email || undefined,
+      currentUserPhone: currentUserPhone || phone || undefined,
+      currentUserXmlId: currentUserXmlId || undefined,
+      isSuperuser,
+      superuserId: superuserId || undefined,
+      superuserEmail: superuserEmail || undefined,
+      superuserPhone: superuserPhone || undefined,
+      canonicalEmail: canonicalEmail || superuserEmail || currentUserEmail || email || undefined,
+      canonicalEmailSource: canonicalEmailSource || undefined,
+      userToken: userToken || undefined,
+      email: canonicalEmail || superuserEmail || currentUserEmail || email || undefined,
+      phone: superuserPhone || currentUserPhone || phone || undefined,
     };
 
     if (
       clientSession.clientId !== nextSession.clientId ||
-      clientSession.clientName !== nextSession.clientName
+      clientSession.clientName !== nextSession.clientName ||
+      clientSession.tradePointExternalId !== nextSession.tradePointExternalId ||
+      clientSession.currentUserId !== nextSession.currentUserId ||
+      clientSession.currentUserEmail !== nextSession.currentUserEmail ||
+      clientSession.currentUserPhone !== nextSession.currentUserPhone ||
+      clientSession.currentUserXmlId !== nextSession.currentUserXmlId ||
+      clientSession.isSuperuser !== nextSession.isSuperuser ||
+      clientSession.superuserId !== nextSession.superuserId ||
+      clientSession.superuserEmail !== nextSession.superuserEmail ||
+      clientSession.superuserPhone !== nextSession.superuserPhone ||
+      clientSession.canonicalEmail !== nextSession.canonicalEmail ||
+      clientSession.canonicalEmailSource !== nextSession.canonicalEmailSource ||
+      clientSession.userToken !== nextSession.userToken
     ) {
       writeClientSession(nextSession);
       setClientSession(nextSession);
@@ -484,7 +522,22 @@ export default function ClientPage() {
       setReplyMap({});
       setReplyTarget(null);
     }
-  }, [clientSession.clientId, clientSession.clientName]);
+  }, [
+    clientSession.canonicalEmail,
+    clientSession.canonicalEmailSource,
+    clientSession.clientId,
+    clientSession.clientName,
+    clientSession.currentUserEmail,
+    clientSession.currentUserId,
+    clientSession.currentUserPhone,
+    clientSession.currentUserXmlId,
+    clientSession.isSuperuser,
+    clientSession.superuserEmail,
+    clientSession.superuserId,
+    clientSession.superuserPhone,
+    clientSession.tradePointExternalId,
+    clientSession.userToken,
+  ]);
 
   useEffect(() => {
     if (!isEmbeddedWidget || typeof window === "undefined") {
@@ -798,6 +851,19 @@ export default function ClientPage() {
           senderName: clientSession.clientName,
           clientId: clientSession.clientId,
           clientName: clientSession.clientName,
+          tradePointId: clientSession.tradePointId,
+          tradePointExternalId: clientSession.tradePointExternalId,
+          tradePointName: clientSession.tradePointName,
+          currentUserId: clientSession.currentUserId,
+          currentUserEmail: clientSession.currentUserEmail,
+          currentUserPhone: clientSession.currentUserPhone,
+          currentUserXmlId: clientSession.currentUserXmlId,
+          isSuperuser: clientSession.isSuperuser,
+          superuserId: clientSession.superuserId,
+          superuserEmail: clientSession.superuserEmail,
+          superuserPhone: clientSession.superuserPhone,
+          canonicalEmail: clientSession.canonicalEmail,
+          canonicalEmailSource: clientSession.canonicalEmailSource,
           clientEmail: clientSession.email,
           clientPhone: clientSession.phone,
           aiEnabled: preferredAiMode,
@@ -974,6 +1040,19 @@ export default function ClientPage() {
             senderType: "client",
             senderId: clientSession.clientId,
             senderName: clientSession.clientName,
+            tradePointId: clientSession.tradePointId,
+            tradePointExternalId: clientSession.tradePointExternalId,
+            tradePointName: clientSession.tradePointName,
+            currentUserId: clientSession.currentUserId,
+            currentUserEmail: clientSession.currentUserEmail,
+            currentUserPhone: clientSession.currentUserPhone,
+            currentUserXmlId: clientSession.currentUserXmlId,
+            isSuperuser: clientSession.isSuperuser,
+            superuserId: clientSession.superuserId,
+            superuserEmail: clientSession.superuserEmail,
+            superuserPhone: clientSession.superuserPhone,
+            canonicalEmail: clientSession.canonicalEmail,
+            canonicalEmailSource: clientSession.canonicalEmailSource,
             clientEmail: clientSession.email,
             clientPhone: clientSession.phone,
             replyToMessageId: replyTarget?.id,
@@ -1003,6 +1082,45 @@ export default function ClientPage() {
         formData.append("senderType", "client");
         formData.append("senderId", clientSession.clientId);
         formData.append("senderName", clientSession.clientName);
+        if (clientSession.tradePointId) {
+          formData.append("tradePointId", clientSession.tradePointId);
+        }
+        if (clientSession.tradePointExternalId) {
+          formData.append("tradePointExternalId", clientSession.tradePointExternalId);
+        }
+        if (clientSession.tradePointName) {
+          formData.append("tradePointName", clientSession.tradePointName);
+        }
+        if (clientSession.currentUserId) {
+          formData.append("currentUserId", clientSession.currentUserId);
+        }
+        if (clientSession.currentUserEmail) {
+          formData.append("currentUserEmail", clientSession.currentUserEmail);
+        }
+        if (clientSession.currentUserPhone) {
+          formData.append("currentUserPhone", clientSession.currentUserPhone);
+        }
+        if (clientSession.currentUserXmlId) {
+          formData.append("currentUserXmlId", clientSession.currentUserXmlId);
+        }
+        if (typeof clientSession.isSuperuser === "boolean") {
+          formData.append("isSuperuser", String(clientSession.isSuperuser));
+        }
+        if (clientSession.superuserId) {
+          formData.append("superuserId", clientSession.superuserId);
+        }
+        if (clientSession.superuserEmail) {
+          formData.append("superuserEmail", clientSession.superuserEmail);
+        }
+        if (clientSession.superuserPhone) {
+          formData.append("superuserPhone", clientSession.superuserPhone);
+        }
+        if (clientSession.canonicalEmail) {
+          formData.append("canonicalEmail", clientSession.canonicalEmail);
+        }
+        if (clientSession.canonicalEmailSource) {
+          formData.append("canonicalEmailSource", clientSession.canonicalEmailSource);
+        }
         if (clientSession.email) {
           formData.append("clientEmail", clientSession.email);
         }

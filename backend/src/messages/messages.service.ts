@@ -10,6 +10,7 @@ import { ProfilesService } from '../profiles.service';
 import { ChatAiService } from '../chat-ai.service';
 import { PushService } from '../push.service';
 import { readJsonStringArray } from '../prisma-json.util';
+import { resolveTicketClientContext } from '../tickets/client-context.util';
 
 type MessageViewer = {
   viewerType?: string;
@@ -128,6 +129,19 @@ export class MessagesService {
     managerName?: string,
     senderId?: string,
     senderName?: string,
+    tradePointId?: string,
+    tradePointExternalId?: string,
+    tradePointName?: string,
+    currentUserId?: string,
+    currentUserEmail?: string,
+    currentUserPhone?: string,
+    currentUserXmlId?: string,
+    isSuperuser?: boolean | string,
+    superuserId?: string,
+    superuserEmail?: string,
+    superuserPhone?: string,
+    canonicalEmail?: string,
+    canonicalEmailSource?: string,
     clientEmail?: string,
     clientPhone?: string,
     replyToMessageId?: string,
@@ -162,6 +176,20 @@ export class MessagesService {
             invitedManagerIds: true,
             clientId: true,
             clientName: true,
+            tradePointExternalId: true,
+            clientEmail: true,
+            clientPhone: true,
+            currentUserId: true,
+            currentUserEmail: true,
+            currentUserPhone: true,
+            currentUserXmlId: true,
+            isSuperuser: true,
+            superuserId: true,
+            superuserEmail: true,
+            superuserPhone: true,
+            canonicalEmail: true,
+            canonicalEmailSource: true,
+            lockedBySuperuser: true,
             supplierId: true,
             supplierName: true,
           },
@@ -255,14 +283,46 @@ export class MessagesService {
         }
 
         if (senderType === 'client') {
-          ticketUpdateData.clientId = actorId ?? ticket.clientId;
-          ticketUpdateData.clientName = actorName ?? ticket.clientName;
-          if (clientEmail?.trim()) {
-            ticketUpdateData.clientEmail = clientEmail.trim();
-          }
-          if (clientPhone?.trim()) {
-            ticketUpdateData.clientPhone = clientPhone.trim();
-          }
+          const clientContext = resolveTicketClientContext(
+            {
+              tradePointId,
+              tradePointExternalId,
+              tradePointName,
+              currentUserId,
+              currentUserEmail,
+              currentUserPhone,
+              currentUserXmlId,
+              isSuperuser,
+              superuserId,
+              superuserEmail,
+              superuserPhone,
+              canonicalEmail,
+              canonicalEmailSource,
+              clientEmail,
+              clientPhone,
+            },
+            ticket,
+          );
+
+          ticketUpdateData.clientId = clientContext.clientId ?? ticket.clientId;
+          ticketUpdateData.clientName =
+            clientContext.clientName ?? ticket.clientName;
+          ticketUpdateData.tradePointExternalId =
+            clientContext.tradePointExternalId;
+          ticketUpdateData.clientEmail = clientContext.clientEmail;
+          ticketUpdateData.clientPhone = clientContext.clientPhone;
+          ticketUpdateData.currentUserId = clientContext.currentUserId;
+          ticketUpdateData.currentUserEmail = clientContext.currentUserEmail;
+          ticketUpdateData.currentUserPhone = clientContext.currentUserPhone;
+          ticketUpdateData.currentUserXmlId = clientContext.currentUserXmlId;
+          ticketUpdateData.isSuperuser = clientContext.isSuperuser;
+          ticketUpdateData.superuserId = clientContext.superuserId;
+          ticketUpdateData.superuserEmail = clientContext.superuserEmail;
+          ticketUpdateData.superuserPhone = clientContext.superuserPhone;
+          ticketUpdateData.canonicalEmail = clientContext.canonicalEmail;
+          ticketUpdateData.canonicalEmailSource =
+            clientContext.canonicalEmailSource;
+          ticketUpdateData.lockedBySuperuser = clientContext.lockedBySuperuser;
           if (ticket.aiEnabled) {
             ticketUpdateData.currentHandlerType = 'ai';
             ticketUpdateData.conversationMode = 'ai';
@@ -467,6 +527,19 @@ export class MessagesService {
     managerName?: string,
     senderId?: string,
     senderName?: string,
+    tradePointId?: string,
+    tradePointExternalId?: string,
+    tradePointName?: string,
+    currentUserId?: string,
+    currentUserEmail?: string,
+    currentUserPhone?: string,
+    currentUserXmlId?: string,
+    isSuperuser?: boolean | string,
+    superuserId?: string,
+    superuserEmail?: string,
+    superuserPhone?: string,
+    canonicalEmail?: string,
+    canonicalEmailSource?: string,
     clientEmail?: string,
     clientPhone?: string,
     caption?: string,
@@ -518,6 +591,33 @@ export class MessagesService {
     });
 
     return this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.ticket.findUnique({
+        where: { id: ticketId },
+        select: {
+          id: true,
+          clientId: true,
+          clientName: true,
+          tradePointExternalId: true,
+          clientEmail: true,
+          clientPhone: true,
+          currentUserId: true,
+          currentUserEmail: true,
+          currentUserPhone: true,
+          currentUserXmlId: true,
+          isSuperuser: true,
+          superuserId: true,
+          superuserEmail: true,
+          superuserPhone: true,
+          canonicalEmail: true,
+          canonicalEmailSource: true,
+          lockedBySuperuser: true,
+        },
+      });
+
+      if (!ticket) {
+        throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+      }
+
       const message = await tx.message.create({
         data: {
           ticketId,
@@ -534,20 +634,52 @@ export class MessagesService {
         },
       });
 
+      const clientContext =
+        senderType === 'client'
+          ? resolveTicketClientContext(
+              {
+                tradePointId,
+                tradePointExternalId,
+                tradePointName,
+                currentUserId,
+                currentUserEmail,
+                currentUserPhone,
+                currentUserXmlId,
+                isSuperuser,
+                superuserId,
+                superuserEmail,
+                superuserPhone,
+                canonicalEmail,
+                canonicalEmailSource,
+                clientEmail,
+                clientPhone,
+              },
+              ticket,
+            )
+          : null;
+
       await tx.ticket.update({
         where: { id: ticketId },
         data: {
           lastMessageAt: message.createdAt,
           closedAt: null,
           status: senderType === 'client' ? 'new' : undefined,
-          clientEmail:
-            senderType === 'client' && clientEmail?.trim()
-              ? clientEmail.trim()
-              : undefined,
-          clientPhone:
-            senderType === 'client' && clientPhone?.trim()
-              ? clientPhone.trim()
-              : undefined,
+          clientId: clientContext?.clientId,
+          clientName: clientContext?.clientName,
+          tradePointExternalId: clientContext?.tradePointExternalId,
+          clientEmail: clientContext?.clientEmail,
+          clientPhone: clientContext?.clientPhone,
+          currentUserId: clientContext?.currentUserId,
+          currentUserEmail: clientContext?.currentUserEmail,
+          currentUserPhone: clientContext?.currentUserPhone,
+          currentUserXmlId: clientContext?.currentUserXmlId,
+          isSuperuser: clientContext?.isSuperuser,
+          superuserId: clientContext?.superuserId,
+          superuserEmail: clientContext?.superuserEmail,
+          superuserPhone: clientContext?.superuserPhone,
+          canonicalEmail: clientContext?.canonicalEmail,
+          canonicalEmailSource: clientContext?.canonicalEmailSource,
+          lockedBySuperuser: clientContext?.lockedBySuperuser,
         },
       });
 

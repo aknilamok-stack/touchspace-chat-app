@@ -29,6 +29,19 @@ export class MessagesController {
       managerName?: string;
       senderId?: string;
       senderName?: string;
+      tradePointId?: string;
+      tradePointExternalId?: string;
+      tradePointName?: string;
+      currentUserId?: string;
+      currentUserEmail?: string;
+      currentUserPhone?: string;
+      currentUserXmlId?: string;
+      isSuperuser?: boolean | string;
+      superuserId?: string;
+      superuserEmail?: string;
+      superuserPhone?: string;
+      canonicalEmail?: string;
+      canonicalEmailSource?: string;
       clientEmail?: string;
       clientPhone?: string;
       replyToMessageId?: string;
@@ -43,6 +56,19 @@ export class MessagesController {
       body.managerName,
       body.senderId,
       body.senderName,
+      body.tradePointId,
+      body.tradePointExternalId,
+      body.tradePointName,
+      body.currentUserId,
+      body.currentUserEmail,
+      body.currentUserPhone,
+      body.currentUserXmlId,
+      body.isSuperuser,
+      body.superuserId,
+      body.superuserEmail,
+      body.superuserPhone,
+      body.canonicalEmail,
+      body.canonicalEmailSource,
       body.clientEmail,
       body.clientPhone,
       body.replyToMessageId,
@@ -86,6 +112,19 @@ export class MessagesController {
       managerName?: string;
       senderId?: string;
       senderName?: string;
+      tradePointId?: string;
+      tradePointExternalId?: string;
+      tradePointName?: string;
+      currentUserId?: string;
+      currentUserEmail?: string;
+      currentUserPhone?: string;
+      currentUserXmlId?: string;
+      isSuperuser?: boolean | string;
+      superuserId?: string;
+      superuserEmail?: string;
+      superuserPhone?: string;
+      canonicalEmail?: string;
+      canonicalEmailSource?: string;
       clientEmail?: string;
       clientPhone?: string;
       caption?: string;
@@ -105,6 +144,19 @@ export class MessagesController {
       body.managerName,
       body.senderId,
       body.senderName,
+      body.tradePointId,
+      body.tradePointExternalId,
+      body.tradePointName,
+      body.currentUserId,
+      body.currentUserEmail,
+      body.currentUserPhone,
+      body.currentUserXmlId,
+      body.isSuperuser,
+      body.superuserId,
+      body.superuserEmail,
+      body.superuserPhone,
+      body.canonicalEmail,
+      body.canonicalEmailSource,
       body.clientEmail,
       body.clientPhone,
       body.caption,

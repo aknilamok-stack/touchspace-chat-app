@@ -45,6 +45,19 @@ export class TicketsController {
       senderName?: string;
       clientId?: string;
       clientName?: string;
+      tradePointId?: string;
+      tradePointExternalId?: string;
+      tradePointName?: string;
+      currentUserId?: string;
+      currentUserEmail?: string;
+      currentUserPhone?: string;
+      currentUserXmlId?: string;
+      isSuperuser?: boolean;
+      superuserId?: string;
+      superuserEmail?: string;
+      superuserPhone?: string;
+      canonicalEmail?: string;
+      canonicalEmailSource?: string;
       clientEmail?: string;
       clientPhone?: string;
       aiEnabled?: boolean;
@@ -58,6 +71,19 @@ export class TicketsController {
       body.senderName,
       body.clientId,
       body.clientName,
+      body.tradePointId,
+      body.tradePointExternalId,
+      body.tradePointName,
+      body.currentUserId,
+      body.currentUserEmail,
+      body.currentUserPhone,
+      body.currentUserXmlId,
+      body.isSuperuser,
+      body.superuserId,
+      body.superuserEmail,
+      body.superuserPhone,
+      body.canonicalEmail,
+      body.canonicalEmailSource,
       body.clientEmail,
       body.clientPhone,
       body.aiEnabled,

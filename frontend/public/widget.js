@@ -48,12 +48,16 @@
       for (var i = 0; i < items.length; i += 1) {
         var item = items[i];
         var labelEl = item.querySelector(".pane__list-label");
-        var valueEl = item.querySelector(".pane__list-value span, .pane__list-value");
+        var valueEl = item.querySelector(".pane__list-value span");
+
+        if (!valueEl) {
+          valueEl = item.querySelector(".pane__list-value");
+        }
 
         var label = normalizeValue(labelEl ? labelEl.textContent : "");
         var value = normalizeValue(valueEl ? valueEl.textContent : "");
 
-        if (label === "Торговая точка" && value) {
+        if ((label === "Торговая точка" || label === "Торговая точка:") && value) {
           return value;
         }
       }
@@ -71,12 +75,16 @@
       for (var i = 0; i < items.length; i += 1) {
         var item = items[i];
         var labelEl = item.querySelector(".pane__list-label");
-        var valueEl = item.querySelector(".pane__list-value span, .pane__list-value");
+        var valueEl = item.querySelector(".pane__list-value span");
+
+        if (!valueEl) {
+          valueEl = item.querySelector(".pane__list-value");
+        }
 
         var label = normalizeValue(labelEl ? labelEl.textContent : "");
         var value = normalizeValue(valueEl ? valueEl.textContent : "");
 
-        if (label === "Юр.лицо" && value) {
+        if ((label === "Юр.лицо" || label === "Юр.лицо:") && value) {
           return value;
         }
       }
@@ -91,22 +99,23 @@
   var domLegalEntityName = getLegalEntityNameFromDom();
 
   var fallbackTradePointName = pickFirst(
-    cleanValue(config.tradePointName),
     domTradePointName,
-    cleanValue(config.name),
+    cleanValue(config.tradePointName),
     readText(".pane__list-value span"),
     readText(".pane__list-value"),
+    cleanValue(config.name),
     readText(".sidebar__title"),
     readText(".account__title span"),
     readText(".account__title")
   );
 
   var fallbackTradePointId = pickFirst(
-    cleanValue(config.tradePointId),
     domTradePointName,
+    cleanValue(config.tradePointId),
+    fallbackTradePointName,
     cleanValue(config.userToken),
     cleanValue(config.clientId),
-    fallbackTradePointName
+    cleanValue(config.name)
   );
 
   var fallbackUserName = pickFirst(

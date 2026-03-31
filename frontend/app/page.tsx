@@ -147,6 +147,7 @@ type ChatItem = {
   aiActivatedAt: string | null;
   aiDeactivatedAt: string | null;
   handedToManagerAt: string | null;
+  clientId: string | null;
   clientName: string;
   messages: ChatMessage[];
   supplierRequests: ChatSupplierRequest[];
@@ -653,12 +654,16 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   aiActivatedAt: ticket.aiActivatedAt ?? null,
   aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
   handedToManagerAt: ticket.handedToManagerAt ?? null,
+  clientId: ticket.clientId?.trim() || null,
   clientName: ticket.clientName?.trim() || ticket.title || "Реселлер",
   messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
   supplierRequests: Array.isArray(ticket.supplierRequests)
     ? ticket.supplierRequests.map(formatSupplierRequest)
     : [],
 });
+
+const getChatClientDisplayName = (chat?: Pick<ChatItem, "clientId" | "clientName"> | null) =>
+  chat?.clientId?.trim() || chat?.clientName || "Реселлер";
 
 export default function Home() {
   const router = useRouter();
@@ -2648,7 +2653,9 @@ export default function Home() {
                             {chat.title}
                           </p>
                         </div>
-                        <p className="mt-1 text-sm text-[#8E8E93]">{chat.clientName}</p>
+                        <p className="mt-1 text-sm text-[#8E8E93]">
+                          {getChatClientDisplayName(chat)}
+                        </p>
                       </div>
 
                       {unreadCount > 0 && (
@@ -2711,8 +2718,8 @@ export default function Home() {
                 ) : null}
               </div>
               <p className="mt-1 text-[13px] text-[#8E8E93]">
-                {activeChat?.clientName
-                  ? `${activeChat.clientName} • клиентский диалог`
+                {activeChat
+                  ? `${getChatClientDisplayName(activeChat)} • клиентский диалог`
                   : "Реселлер • клиентский диалог"}
               </p>
             </div>
@@ -3190,7 +3197,7 @@ export default function Home() {
                 <div className="inline-flex max-w-[70%] items-end gap-2 rounded-[20px] rounded-bl-[8px] border border-[#E6EBF3] bg-[#FBFCFE] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
                   <div className="min-w-0">
                     <p className="text-[11px] font-medium text-[#9AA5B5]">
-                      {activeChat?.clientName || "Клиент"} печатает
+                      {getChatClientDisplayName(activeChat)} печатает
                     </p>
                     <div className="mt-1 flex items-end gap-2">
                       <p className="line-clamp-3 break-words text-[15px] leading-6 text-[#667085]">

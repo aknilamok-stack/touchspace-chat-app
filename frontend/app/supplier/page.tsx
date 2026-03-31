@@ -2061,7 +2061,7 @@ export default function SupplierPage() {
                               }`}
                             >
                               <div
-                                className="group relative inline-block w-fit max-w-[461px]"
+                                className="group relative inline-block w-fit max-w-[88%]"
                                 onMouseEnter={() => setHoveredMessageId(message.id)}
                                 onMouseLeave={() => setHoveredMessageId("")}
                               >
@@ -2108,11 +2108,10 @@ export default function SupplierPage() {
                                 </button>
 
                                 <div
-                                  style={{ width: "fit-content", maxWidth: "450px" }}
-                                  className={`relative inline-block min-h-[30px] min-w-[80px] max-w-full rounded-[15px] px-[10px] pb-[4px] pt-[4px] align-top text-[15px] leading-[22px] shadow-sm transition ${
+                                  className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                      : "rounded-bl-[10px] border border-[#E8EBF1] bg-white text-[#1E1E1E] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                                      : "border border-[#E6EAF2] bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
                                   }`}
                                 >
                                   <div className="min-w-0 max-w-full">
@@ -2124,7 +2123,7 @@ export default function SupplierPage() {
                                             message.replyToMessageId ?? replyMap[message.id]?.replyToId ?? ""
                                           )
                                         }
-                                        className={`mb-1 block min-w-0 max-w-full rounded-[12px] px-0.5 py-0.5 text-left transition ${
+                                        className={`mb-2 block min-w-0 max-w-full rounded-[16px] px-2.5 py-2 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
                                             : "hover:bg-[#F2F7FF]"
@@ -2140,7 +2139,7 @@ export default function SupplierPage() {
                                           />
                                           <div className="min-w-0">
                                           <p
-                                            className={`text-[10px] font-semibold ${
+                                            className={`text-[11px] font-semibold ${
                                               message.senderType === "supplier"
                                                 ? "text-white/78"
                                                 : "text-[#0A84FF]"
@@ -2149,7 +2148,7 @@ export default function SupplierPage() {
                                             Ответ
                                           </p>
                                           <p
-                                            className={`mt-0.5 line-clamp-2 text-[12px] leading-[16px] [overflow-wrap:break-word] [word-break:normal] ${
+                                            className={`mt-1 line-clamp-2 text-[13px] leading-[18px] [overflow-wrap:break-word] [word-break:normal] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/82"
                                                 : "text-[#5A6270]"
@@ -2171,12 +2170,12 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[44px] leading-[22px] [overflow-wrap:break-word] [word-break:normal]">
+                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
                                         {message.displayContent}
                                       </p>
                                     )}
                                     <div
-                                      className={`absolute bottom-[5px] right-[8px] inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
+                                      className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
                                           : "text-[#8E8E93]"
@@ -2187,26 +2186,6 @@ export default function SupplierPage() {
                                       </p>
                                     </div>
                                   </div>
-                                  <svg
-                                    aria-hidden="true"
-                                    viewBox="0 0 18 20"
-                                    className={`pointer-events-none absolute bottom-0 h-[16px] w-[14px] ${
-                                      message.senderType === "supplier"
-                                        ? "-right-[9px]"
-                                        : "-left-[9px]"
-                                    }`}
-                                    style={{
-                                      transform:
-                                        message.senderType === "supplier" ? undefined : "scaleX(-1)",
-                                    }}
-                                  >
-                                    <path
-                                      d="M0 0C1.4 5.8 1.7 11.6 0.5 18.2C4.2 17.3 7.7 15.5 10.9 12.9C13.5 10.8 15.8 7.4 18 0H0Z"
-                                      fill={message.senderType === "supplier" ? "#0A84FF" : "#FFFFFF"}
-                                      stroke={message.senderType !== "supplier" ? "#E8EBF1" : "none"}
-                                      strokeWidth={message.senderType !== "supplier" ? "1" : undefined}
-                                    />
-                                  </svg>
                                 </div>
                               </div>
                             </div>

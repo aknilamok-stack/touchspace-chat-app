@@ -26,6 +26,10 @@
     return typeof value === "string" ? value.trim() : "";
   }
 
+  function normalizeValue(value) {
+    return cleanValue(value).replace(/\s+/g, " ").trim();
+  }
+
   function pickFirst() {
     for (var i = 0; i < arguments.length; i += 1) {
       var value = arguments[i];
@@ -37,8 +41,58 @@
     return "";
   }
 
+  function getTradePointNameFromDom() {
+    try {
+      var items = document.querySelectorAll(".pane__list_desktop .pane__list-item");
+
+      for (var i = 0; i < items.length; i += 1) {
+        var item = items[i];
+        var labelEl = item.querySelector(".pane__list-label");
+        var valueEl = item.querySelector(".pane__list-value span, .pane__list-value");
+
+        var label = normalizeValue(labelEl ? labelEl.textContent : "");
+        var value = normalizeValue(valueEl ? valueEl.textContent : "");
+
+        if (label === "Торговая точка" && value) {
+          return value;
+        }
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  }
+
+  function getLegalEntityNameFromDom() {
+    try {
+      var items = document.querySelectorAll(".pane__list_desktop .pane__list-item");
+
+      for (var i = 0; i < items.length; i += 1) {
+        var item = items[i];
+        var labelEl = item.querySelector(".pane__list-label");
+        var valueEl = item.querySelector(".pane__list-value span, .pane__list-value");
+
+        var label = normalizeValue(labelEl ? labelEl.textContent : "");
+        var value = normalizeValue(valueEl ? valueEl.textContent : "");
+
+        if (label === "Юр.лицо" && value) {
+          return value;
+        }
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  }
+
+  var domTradePointName = getTradePointNameFromDom();
+  var domLegalEntityName = getLegalEntityNameFromDom();
+
   var fallbackTradePointName = pickFirst(
     cleanValue(config.tradePointName),
+    domTradePointName,
     cleanValue(config.name),
     readText(".pane__list-value span"),
     readText(".pane__list-value"),
@@ -49,6 +103,7 @@
 
   var fallbackTradePointId = pickFirst(
     cleanValue(config.tradePointId),
+    domTradePointName,
     cleanValue(config.userToken),
     cleanValue(config.clientId),
     fallbackTradePointName
@@ -57,7 +112,9 @@
   var fallbackUserName = pickFirst(
     cleanValue(config.userName),
     cleanValue(config.contactName),
-    cleanValue(config.name)
+    cleanValue(config.name),
+    domTradePointName,
+    domLegalEntityName
   );
 
   var fallbackUserId = pickFirst(

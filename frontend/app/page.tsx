@@ -3318,7 +3318,11 @@ export default function Home() {
                       }`}
                     >
                       <div
-                        className="group relative inline-block w-fit max-w-[88%]"
+                        className={`group relative inline-block w-fit max-w-[calc(88%+40px)] ${
+                          message.from === "manager"
+                            ? "pl-10 -ml-10"
+                            : "pr-10 -mr-10"
+                        }`}
                         onMouseEnter={() => setHoveredMessageId(message.id)}
                         onMouseLeave={() => setHoveredMessageId("")}
                       >
@@ -3332,7 +3336,7 @@ export default function Home() {
                               ? "opacity-100"
                               : "pointer-events-none opacity-0"
                           } ${
-                            message.from === "manager" ? "-left-10" : "-right-10"
+                            message.from === "manager" ? "left-0" : "right-0"
                           } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
                           aria-label="Ответить"
                         >

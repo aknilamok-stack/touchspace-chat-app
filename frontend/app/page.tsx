@@ -813,6 +813,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
+  const replyHoverTimeoutRef = useRef<number | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
@@ -823,6 +824,35 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const clearReplyHoverTimeout = useCallback(() => {
+    if (replyHoverTimeoutRef.current !== null) {
+      window.clearTimeout(replyHoverTimeoutRef.current);
+      replyHoverTimeoutRef.current = null;
+    }
+  }, []);
+
+  const showReplyAction = useCallback(
+    (messageId: string) => {
+      clearReplyHoverTimeout();
+      setHoveredMessageId(messageId);
+    },
+    [clearReplyHoverTimeout]
+  );
+
+  const hideReplyAction = useCallback(() => {
+    clearReplyHoverTimeout();
+    replyHoverTimeoutRef.current = window.setTimeout(() => {
+      setHoveredMessageId("");
+      replyHoverTimeoutRef.current = null;
+    }, 140);
+  }, [clearReplyHoverTimeout]);
+
+  useEffect(() => {
+    return () => {
+      clearReplyHoverTimeout();
+    };
+  }, [clearReplyHoverTimeout]);
+
   const managerEmptyState =
     filter === "incoming"
       ? {
@@ -3317,23 +3347,25 @@ export default function Home() {
                           : "justify-start"
                       }`}
                     >
-                      <div
-                        className={`group relative inline-block w-fit max-w-[calc(88%+40px)] ${
-                          message.from === "manager"
-                            ? "pl-10 -ml-10"
-                            : "pr-10 -mr-10"
-                        }`}
-                        onMouseEnter={() => setHoveredMessageId(message.id)}
-                        onMouseLeave={() => setHoveredMessageId("")}
-                      >
-                        <button
-                          onClick={() => {
-                            setReplyTarget(message);
-                            composerTextareaRef.current?.focus();
-                          }}
-                          className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
-                            hoveredMessageId === message.id
-                              ? "opacity-100"
+                              <div
+                                className={`group relative inline-block w-fit max-w-[calc(88%+40px)] ${
+                                  message.from === "manager"
+                                    ? "pl-10 -ml-10"
+                                    : "pr-10 -mr-10"
+                                }`}
+                                onMouseEnter={() => showReplyAction(message.id)}
+                                onMouseLeave={hideReplyAction}
+                              >
+                                <button
+                                  onClick={() => {
+                                    setReplyTarget(message);
+                                    composerTextareaRef.current?.focus();
+                                  }}
+                                  onMouseEnter={() => showReplyAction(message.id)}
+                                  onMouseLeave={hideReplyAction}
+                                  className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
+                                    hoveredMessageId === message.id
+                                      ? "opacity-100"
                               : "pointer-events-none opacity-0"
                           } ${
                             message.from === "manager" ? "left-0" : "right-0"

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
@@ -713,10 +713,40 @@ export default function SupplierPage() {
   const previousVisibleMessageCountRef = useRef(0);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
+  const replyHoverTimeoutRef = useRef<number | null>(null);
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
+  const clearReplyHoverTimeout = useCallback(() => {
+    if (replyHoverTimeoutRef.current !== null) {
+      window.clearTimeout(replyHoverTimeoutRef.current);
+      replyHoverTimeoutRef.current = null;
+    }
+  }, []);
+
+  const showReplyAction = useCallback(
+    (messageId: string) => {
+      clearReplyHoverTimeout();
+      setHoveredMessageId(messageId);
+    },
+    [clearReplyHoverTimeout]
+  );
+
+  const hideReplyAction = useCallback(() => {
+    clearReplyHoverTimeout();
+    replyHoverTimeoutRef.current = window.setTimeout(() => {
+      setHoveredMessageId("");
+      replyHoverTimeoutRef.current = null;
+    }, 140);
+  }, [clearReplyHoverTimeout]);
+
+  useEffect(() => {
+    return () => {
+      clearReplyHoverTimeout();
+    };
+  }, [clearReplyHoverTimeout]);
+
   const selectedManagerName =
     (selectedRequest?.createdByManagerId
       ? managerNameById[selectedRequest.createdByManagerId]
@@ -2295,14 +2325,16 @@ export default function SupplierPage() {
                                     ? "pl-10 -ml-10"
                                     : "pr-10 -mr-10"
                                 }`}
-                                onMouseEnter={() => setHoveredMessageId(message.id)}
-                                onMouseLeave={() => setHoveredMessageId("")}
+                                onMouseEnter={() => showReplyAction(message.id)}
+                                onMouseLeave={hideReplyAction}
                               >
                                 <button
                                   onClick={() => {
                                     setReplyTarget(message);
                                     composerTextareaRef.current?.focus();
                                   }}
+                                  onMouseEnter={() => showReplyAction(message.id)}
+                                  onMouseLeave={hideReplyAction}
                                   className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
                                     hoveredMessageId === message.id
                                       ? "opacity-100"

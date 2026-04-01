@@ -173,11 +173,11 @@ model TicketPageView {
 
 model Message {
   id              String    @id @default(cuid())
-  content         String
+  content         String    @db.LongText
   senderType      String
   senderRole      String?
   replyToMessageId String?
-  replyToContent  String?
+  replyToContent  String?   @db.LongText
   status          String    @default("sent")
   deliveryStatus  String    @default("sent")
   messageType     String    @default("text")

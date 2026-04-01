@@ -40,7 +40,7 @@ export class MessagesService {
   private isSuggestionCandidate(value: string) {
     const collapsed = value.replace(/\s+/g, ' ').trim();
 
-    if (!collapsed || collapsed.length < 8 || collapsed.length > 700) {
+    if (!collapsed || collapsed.length < 4 || collapsed.length > 700) {
       return false;
     }
 
@@ -626,7 +626,69 @@ export class MessagesService {
       orderBy: [{ usageCount: 'desc' }, { lastUsedAt: 'desc' }],
     });
 
-    const ranked = candidates
+    const fallbackMessages = await this.prisma.message.findMany({
+      where: {
+        senderType: 'manager',
+        senderProfileId: managerId,
+        messageType: 'text',
+        isInternal: false,
+      },
+      select: {
+        content: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+    });
+
+    const merged = new Map<
+      string,
+      { phraseText: string; phraseTextNormalized: string; usageCount: number; lastUsedAt: Date }
+    >();
+
+    for (const item of candidates) {
+      merged.set(item.phraseTextNormalized, {
+        phraseText: item.phraseText,
+        phraseTextNormalized: item.phraseTextNormalized,
+        usageCount: item.usageCount,
+        lastUsedAt: item.lastUsedAt,
+      });
+    }
+
+    for (const message of fallbackMessages) {
+      if (!this.isSuggestionCandidate(message.content)) {
+        continue;
+      }
+
+      const phraseText = message.content.replace(/\s+/g, ' ').trim();
+      const phraseTextNormalized = this.normalizeSuggestionText(phraseText);
+
+      if (!phraseTextNormalized.includes(normalizedQuery)) {
+        continue;
+      }
+
+      const existing = merged.get(phraseTextNormalized);
+
+      if (existing) {
+        if (message.createdAt > existing.lastUsedAt) {
+          existing.lastUsedAt = message.createdAt;
+          existing.phraseText = phraseText;
+        }
+        existing.usageCount += 1;
+      } else {
+        merged.set(phraseTextNormalized, {
+          phraseText,
+          phraseTextNormalized,
+          usageCount: 1,
+          lastUsedAt: message.createdAt,
+        });
+      }
+    }
+
+    const ranked = Array.from(merged.values())
+      .filter((item) => item.phraseTextNormalized.includes(normalizedQuery))
       .map((item) => {
         const isPrefix = item.phraseTextNormalized.startsWith(normalizedQuery);
         const freshnessScore = new Date(item.lastUsedAt).getTime();

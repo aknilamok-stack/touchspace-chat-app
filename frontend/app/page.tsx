@@ -821,8 +821,6 @@ export default function Home() {
   >([]);
   const [activeManagerSuggestionIndex, setActiveManagerSuggestionIndex] =
     useState(0);
-  const [isLoadingManagerSuggestions, setIsLoadingManagerSuggestions] =
-    useState(false);
   const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -975,7 +973,7 @@ export default function Home() {
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
   const isManagerSuggestionsOpen =
-    (managerSuggestions.length > 0 || isLoadingManagerSuggestions) &&
+    managerSuggestions.length > 0 &&
     messageText.replace(/\s+/g, " ").trim().length >= 2 &&
     !showQuickReplies &&
     !showEmojiPicker;
@@ -2233,7 +2231,6 @@ export default function Home() {
   useEffect(() => {
     setManagerSuggestions([]);
     setActiveManagerSuggestionIndex(0);
-    setIsLoadingManagerSuggestions(false);
   }, [activeChatId]);
 
   useEffect(() => {
@@ -2248,13 +2245,11 @@ export default function Home() {
     ) {
       setManagerSuggestions([]);
       setActiveManagerSuggestionIndex(0);
-      setIsLoadingManagerSuggestions(false);
       return;
     }
 
     const requestId = managerSuggestionRequestIdRef.current + 1;
     managerSuggestionRequestIdRef.current = requestId;
-    setIsLoadingManagerSuggestions(true);
 
     const timeoutId = window.setTimeout(() => {
       void fetch(
@@ -2298,11 +2293,6 @@ export default function Home() {
           console.error("Не удалось загрузить подсказки менеджера:", error);
           setManagerSuggestions([]);
           setActiveManagerSuggestionIndex(0);
-        })
-        .finally(() => {
-          if (managerSuggestionRequestIdRef.current === requestId) {
-            setIsLoadingManagerSuggestions(false);
-          }
         });
     }, 180);
 
@@ -3925,11 +3915,6 @@ export default function Home() {
                             </div>
                           </button>
                         ))}
-                        {isLoadingManagerSuggestions && managerSuggestions.length === 0 ? (
-                          <div className="px-4 py-3 text-sm text-[#8E8E93]">
-                            Ищем подсказки...
-                          </div>
-                        ) : null}
                       </div>
                     ) : null}
 

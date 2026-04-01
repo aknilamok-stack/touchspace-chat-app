@@ -44,6 +44,11 @@ const typeBadgeClassName: Record<ContactDraft["type"], string> = {
   phone: "bg-[#ECFFF1] text-[#1F8B4C]",
 };
 
+const typePlaceholder: Record<ContactDraft["type"], string> = {
+  email: "Email не указан",
+  phone: "Телефон не указан",
+};
+
 export function ContactCard({
   contacts,
   canManage,
@@ -111,128 +116,86 @@ export function ContactCard({
       contact.id !== primaryEmailContact?.id && contact.id !== primaryPhoneContact?.id
   );
 
-  const renderContactRow = (
-    contact: ChatContactItem | null,
-    type: ContactDraft["type"],
-    emptyLabel: string
-  ) => {
-    const isMissingPhone = type === "phone" && !contact;
+  const renderContactRow = (contact: ChatContactItem | null, type: ContactDraft["type"]) => {
+    const isMissingContact = !contact;
+    const canEditContact = canManage && (!!contact?.editable || isMissingContact);
 
     return (
-      <div className="rounded-[18px] border border-[#ECECF1] bg-[#FCFCFD] px-3 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[type]}`}
-              >
-                {typeLabel[type]}
-              </span>
-              {contact?.sourceLabel ? (
-                <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
-                  {contact.sourceLabel}
-                </span>
-              ) : null}
-            </div>
-            <p
-              className={`mt-2 text-sm ${contact ? "break-words font-medium text-[#1E1E1E]" : "text-[#8E8E93]"}`}
-            >
-              {contact?.value || emptyLabel}
-            </p>
-          </div>
+      <div className="flex items-center gap-2 rounded-[18px] border border-[#ECECF1] bg-[#FBFBFD] px-3 py-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[type]}`}
+        >
+          {typeLabel[type]}
+        </span>
 
-          {canManage && contact?.editable ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => startEdit(contact)}
-                className="rounded-full bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-[#1E1E1E] transition hover:bg-[#E6EEF9]"
-              >
-                Изменить
-              </button>
-              <button
-                type="button"
-                onClick={() => void onDelete?.(contact.id)}
-                className="rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-medium text-[#D63E3E] transition hover:bg-[#FFE5E1]"
-              >
-                Удалить
-              </button>
-            </div>
-          ) : canManage && isMissingPhone ? (
-            <button
-              type="button"
-              onClick={() => startAddWithType("phone")}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F2F7FF] text-sm text-[#0A84FF] transition hover:bg-[#E6F0FF]"
-              aria-label="Добавить телефон"
-              title="Добавить телефон"
-            >
-              ✎
-            </button>
-          ) : null}
-        </div>
+        <p
+          className={`min-w-0 flex-1 truncate text-[13px] leading-5 ${
+            contact ? "font-medium text-[#1E1E1E]" : "text-[#8E8E93]"
+          }`}
+          title={contact?.value || typePlaceholder[type]}
+        >
+          {contact?.value || typePlaceholder[type]}
+        </p>
+
+        {canEditContact ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (contact) {
+                startEdit(contact);
+              } else {
+                startAddWithType(type);
+              }
+            }}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[15px] text-[#8E8E93] shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:bg-[#F5F8FF] hover:text-[#0A84FF]"
+            aria-label={contact ? `Изменить ${typeLabel[type]}` : `Добавить ${typeLabel[type]}`}
+            title={contact ? `Изменить ${typeLabel[type]}` : `Добавить ${typeLabel[type]}`}
+          >
+            ✎
+          </button>
+        ) : null}
       </div>
     );
   };
 
   return (
     <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-[#1E1E1E]">{title}</p>
-        {contacts.length ? (
-          <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs text-[#6C6C70]">
-            {contacts.length}
-          </span>
-        ) : null}
-      </div>
+      <p className="text-[15px] font-semibold text-[#1E1E1E]">{title}</p>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2.5">
         {isLoading ? (
           <p className="text-sm text-[#8E8E93]">Загружаем контакты...</p>
         ) : (
           <>
-            {renderContactRow(primaryEmailContact, "email", "Email не указан")}
-            {renderContactRow(primaryPhoneContact, "phone", "Телефон не указан")}
+            {renderContactRow(primaryEmailContact, "email")}
+            {renderContactRow(primaryPhoneContact, "phone")}
             {additionalContacts.map((contact) => (
               <div
                 key={contact.id}
-                className="rounded-[18px] border border-[#ECECF1] bg-[#FCFCFD] px-3 py-3"
+                className="flex items-center gap-2 rounded-[18px] border border-[#ECECF1] bg-[#FBFBFD] px-3 py-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[contact.type]}`}
-                      >
-                        {typeLabel[contact.type]}
-                      </span>
-                      <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
-                        {contact.sourceLabel}
-                      </span>
-                    </div>
-                    <p className="mt-2 break-words text-sm font-medium text-[#1E1E1E]">
-                      {contact.value}
-                    </p>
-                  </div>
-
-                  {canManage && contact.editable ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(contact)}
-                        className="rounded-full bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-[#1E1E1E] transition hover:bg-[#E6EEF9]"
-                      >
-                        Изменить
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDelete?.(contact.id)}
-                        className="rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-medium text-[#D63E3E] transition hover:bg-[#FFE5E1]"
-                      >
-                        Удалить
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeBadgeClassName[contact.type]}`}
+                >
+                  {typeLabel[contact.type]}
+                </span>
+                <p
+                  className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-[#1E1E1E]"
+                  title={contact.value}
+                >
+                  {contact.value}
+                </p>
+                {canManage && contact.editable ? (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(contact)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[15px] text-[#8E8E93] shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:bg-[#F5F8FF] hover:text-[#0A84FF]"
+                    aria-label={`Изменить ${typeLabel[contact.type]}`}
+                    title={`Изменить ${typeLabel[contact.type]}`}
+                  >
+                    ✎
+                  </button>
+                ) : null}
               </div>
             ))}
           </>
@@ -242,13 +205,15 @@ export function ContactCard({
       {canManage ? (
         <>
           {!isFormOpen ? (
-            <button
-              type="button"
-              onClick={startAdd}
-              className="mt-4 w-full rounded-2xl border border-[#D9E5FA] bg-[#F5F9FF] py-3 text-sm font-medium text-[#0A84FF] transition hover:bg-[#ECF4FF]"
-            >
-              Добавить телефон или email
-            </button>
+            additionalContacts.length > 0 ? (
+              <button
+                type="button"
+                onClick={startAdd}
+                className="mt-3 w-full rounded-2xl border border-[#D9E5FA] bg-[#F5F9FF] py-2.5 text-sm font-medium text-[#0A84FF] transition hover:bg-[#ECF4FF]"
+              >
+                Добавить контакт
+              </button>
+            ) : null
           ) : (
             <div className="mt-4 rounded-[20px] border border-[#E5E5EA] bg-[#FBFBFD] p-3">
               <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 max-[420px]:grid-cols-1">

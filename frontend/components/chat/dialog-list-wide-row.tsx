@@ -68,34 +68,29 @@ export function DialogListWideRow({
       </div>
 
       <div>
-        <p className="text-[12px] font-medium text-[#9AA3AF]">Ожидание первого ответа</p>
-        <p className="mt-1.5 text-[14px] font-medium text-[#1E1E1E]">{firstResponseLabel}</p>
+        <p className="text-[14px] font-medium text-[#1E1E1E]">{firstResponseLabel}</p>
       </div>
 
       <div>
-        <p className="text-[12px] font-medium text-[#9AA3AF]">Длительность</p>
-        <p className="mt-1.5 text-[14px] font-medium text-[#1E1E1E]">{durationLabel}</p>
+        <p className="text-[14px] font-medium text-[#1E1E1E]">{durationLabel}</p>
       </div>
 
       <div>
-        <p className="text-[12px] font-medium text-[#9AA3AF]">Статус</p>
         <span
-          className={`mt-1.5 inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold ${statusBadgeClassName}`}
+          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold ${statusBadgeClassName}`}
         >
           {statusLabel}
         </span>
       </div>
 
       <div>
-        <p className="text-[12px] font-medium text-[#9AA3AF]">Канал</p>
-        <p className="mt-1.5 truncate text-[13px] text-[#1E1E1E]" title={channelLabel}>
+        <p className="truncate text-[13px] text-[#1E1E1E]" title={channelLabel}>
           {channelLabel}
         </p>
       </div>
 
       <div>
-        <p className="text-[12px] font-medium text-[#9AA3AF]">Тема обращения</p>
-        <p className="mt-1.5 line-clamp-2 text-[13px] leading-[1.35] text-[#1E1E1E]" title={topicLabel}>
+        <p className="line-clamp-2 text-[13px] leading-[1.35] text-[#1E1E1E]" title={topicLabel}>
           {topicLabel}
         </p>
       </div>

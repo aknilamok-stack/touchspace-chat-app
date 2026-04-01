@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
+import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
@@ -113,8 +114,10 @@ type ApiTicket = {
   aiDeactivatedAt?: string | null;
   handedToManagerAt?: string | null;
   lastMessageAt?: string | null;
+  resolvedAt?: string | null;
   messages?: ApiMessage[];
   supplierRequests?: ApiSupplierRequest[];
+  pageViews?: ChatPageViewItem[];
 };
 
 type ChatMessage = {
@@ -172,6 +175,7 @@ type ChatItem = {
   aiDeactivatedAt: string | null;
   handedToManagerAt: string | null;
   lastMessageAt: string | null;
+  resolvedAt: string | null;
   clientId: string | null;
   clientName: string;
   tradePointName?: string | null;
@@ -186,6 +190,7 @@ type ChatItem = {
   avatarEmoji: string | null;
   messages: ChatMessage[];
   supplierRequests: ChatSupplierRequest[];
+  pageViews: ChatPageViewItem[];
 };
 
 type NotificationCandidate = {
@@ -696,6 +701,7 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
   handedToManagerAt: ticket.handedToManagerAt ?? null,
   lastMessageAt: ticket.lastMessageAt ?? null,
+  resolvedAt: ticket.resolvedAt ?? null,
   clientId: ticket.clientId?.trim() || null,
   clientName:
     ticket.tradePointName?.trim() ||
@@ -716,6 +722,7 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   supplierRequests: Array.isArray(ticket.supplierRequests)
     ? ticket.supplierRequests.map(formatSupplierRequest)
     : [],
+  pageViews: Array.isArray(ticket.pageViews) ? ticket.pageViews : [],
 });
 
 const getChatClientDisplayName = (
@@ -725,6 +732,72 @@ const getChatClientDisplayName = (
   chat?.clientName?.trim() ||
   chat?.clientId?.trim() ||
   "Реселлер";
+
+const getDialogCycleBoundary = (chat: ChatItem) => {
+  for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
+    const message = chat.messages[index];
+
+    if (
+      message.from === "system" &&
+      (message.text.includes("Диалог отмечен как решённый менеджером") ||
+        message.text.includes("снова открыл диалог"))
+    ) {
+      return new Date(message.createdAt).getTime();
+    }
+  }
+
+  return null;
+};
+
+const getTopicMessage = (chat: ChatItem) => {
+  const cycleBoundary = getDialogCycleBoundary(chat);
+  const clientMessages = chat.messages.filter((message) => message.from === "client");
+  const cycleMessage =
+    (cycleBoundary
+      ? clientMessages.find((message) => new Date(message.createdAt).getTime() > cycleBoundary)
+      : null) ?? clientMessages[0] ?? getLastNonSystemMessage(chat);
+
+  if (!cycleMessage?.text?.trim()) {
+    return "Диалог создан";
+  }
+
+  return cycleMessage.text.trim();
+};
+
+const getChannelLabel = (chat: ChatItem) => {
+  const cycleBoundary = getDialogCycleBoundary(chat);
+  const cyclePageView =
+    (cycleBoundary
+      ? chat.pageViews.find((item) => new Date(item.visitedAt).getTime() > cycleBoundary)
+      : null) ?? chat.pageViews[0] ?? null;
+
+  return cyclePageView?.pageUrl?.trim() || cyclePageView?.pagePath?.trim() || "—";
+};
+
+const getFirstResponseWaitLabel = (chat: ChatItem) => {
+  if (typeof chat.firstResponseTime === "number" && chat.firstResponseTime >= 0) {
+    return formatDuration(chat.firstResponseTime);
+  }
+
+  if (chat.firstResponseStartedAt) {
+    return formatDuration(Date.now() - new Date(chat.firstResponseStartedAt).getTime());
+  }
+
+  return "—";
+};
+
+const getDialogDurationLabel = (chat: ChatItem) => {
+  if (!chat.handedToManagerAt) {
+    return "—";
+  }
+
+  const startTime = new Date(chat.handedToManagerAt).getTime();
+  const endTime = chat.resolvedAt
+    ? new Date(chat.resolvedAt).getTime()
+    : Date.now();
+
+  return formatDuration(Math.max(endTime - startTime, 0));
+};
 
 export default function Home() {
   const router = useRouter();
@@ -3212,27 +3285,84 @@ export default function Home() {
           </div>
 
           {!activeChat ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-8">
-              <div className="mx-auto flex max-w-[420px] flex-col items-center text-center">
-                <div className="relative h-[160px] w-[160px]">
-                  <Image
-                    src={managerEmptyState.imageSrc}
-                    alt={managerEmptyState.title}
-                    fill
-                    className="object-contain"
-                    sizes="160px"
-                    priority
-                    unoptimized
-                  />
+            filter === "all" ? (
+              <div className="min-h-0 flex-1 overflow-y-auto bg-white px-8 py-8">
+                <div className="mx-auto w-full max-w-[1440px]">
+                  <div className="mb-6 flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
+                    <div>
+                      <h2 className="text-[32px] font-semibold text-[#1E1E1E]">Диалоги</h2>
+                      <p className="mt-2 text-sm text-[#8E8E93]">Найдено {searchedChats.length}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-[minmax(260px,1.6fr)_150px_160px_120px_180px_minmax(220px,1.8fr)] gap-5 px-4 pb-3 text-[13px] font-medium text-[#9AA3AF]">
+                    <span>Диалог</span>
+                    <span>Ожидание первого ответа</span>
+                    <span>Длительность</span>
+                    <span>Статус</span>
+                    <span>Канал</span>
+                    <span>Тема обращения</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    {searchedChats.map((chat) => {
+                      const chatTone = getChatTone(chat);
+
+                      return (
+                        <DialogListWideRow
+                          key={chat.id}
+                          onClick={() => {
+                            setIsChatPaneDismissed(false);
+                            setActiveChatId(chat.id);
+                            setIsSupplierFormOpen(false);
+                          }}
+                          title={getChatClientDisplayName(chat)}
+                          identityKey={chat.clientId || chat.clientName || chat.id}
+                          avatarColor={chat.avatarColor}
+                          avatarEmoji={chat.avatarEmoji}
+                          statusDotClassName={chatTone.dot}
+                          managerLabel={getDialogManagerLabel(
+                            chat.assignedManagerName,
+                            chat.lastResolvedByManagerName
+                          )}
+                          lastMessageTimeLabel={formatDialogActivityLabel(
+                            chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
+                          )}
+                          firstResponseLabel={getFirstResponseWaitLabel(chat)}
+                          durationLabel={getDialogDurationLabel(chat)}
+                          statusLabel={chatTone.label}
+                          statusBadgeClassName={chatTone.pill}
+                          channelLabel={getChannelLabel(chat)}
+                          topicLabel={getTopicMessage(chat)}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
-                <h3 className="mt-4 text-[16px] font-semibold text-[#1E1E1E]">
-                  {managerEmptyState.title}
-                </h3>
-                <p className="mt-2 max-w-[360px] text-[13px] leading-6 text-[#8E8E93]">
-                  {managerEmptyState.description}
-                </p>
               </div>
-            </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-8">
+                <div className="mx-auto flex max-w-[420px] flex-col items-center text-center">
+                  <div className="relative h-[160px] w-[160px]">
+                    <Image
+                      src={managerEmptyState.imageSrc}
+                      alt={managerEmptyState.title}
+                      fill
+                      className="object-contain"
+                      sizes="160px"
+                      priority
+                      unoptimized
+                    />
+                  </div>
+                  <h3 className="mt-4 text-[16px] font-semibold text-[#1E1E1E]">
+                    {managerEmptyState.title}
+                  </h3>
+                  <p className="mt-2 max-w-[360px] text-[13px] leading-6 text-[#8E8E93]">
+                    {managerEmptyState.description}
+                  </p>
+                </div>
+              </div>
+            )
           ) : (
             <>
           {activeChat?.invitedManagerNames.length ? (

@@ -1206,6 +1206,37 @@ export class TicketsService {
   async findAll(viewer?: TicketViewer) {
     return this.prisma.ticket.findMany({
       where: this.buildTicketWhere(viewer),
+      include: {
+        messages: {
+          select: {
+            id: true,
+            content: true,
+            senderType: true,
+            replyToMessageId: true,
+            replyToContent: true,
+            messageType: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        pageViews: {
+          select: {
+            id: true,
+            pageUrl: true,
+            pagePath: true,
+            pageTitle: true,
+            pageName: true,
+            routeType: true,
+            entityId: true,
+            entityName: true,
+            referrer: true,
+            sourceType: true,
+            visitedAt: true,
+          },
+          orderBy: { visitedAt: 'asc' },
+        },
+      },
       orderBy: [
         { pinned: 'desc' },
         { lastMessageAt: 'desc' },

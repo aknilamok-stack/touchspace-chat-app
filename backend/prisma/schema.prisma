@@ -181,6 +181,13 @@ model Message {
   status          String    @default("sent")
   deliveryStatus  String    @default("sent")
   messageType     String    @default("text")
+  transport       String    @default("chat")
+  toEmail         String?
+  fromEmail       String?
+  subject         String?
+  messageId       String?   @unique
+  inReplyTo       String?
+  references      String?
   isInternal      Boolean   @default(false)
   ticketId        String
   senderProfileId String?

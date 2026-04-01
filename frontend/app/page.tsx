@@ -50,6 +50,10 @@ type ApiMessage = {
   replyToMessageId?: string | null;
   replyToContent?: string | null;
   messageType?: string;
+  transport?: string;
+  toEmail?: string | null;
+  fromEmail?: string | null;
+  subject?: string | null;
   status: string;
   createdAt: string;
 };
@@ -124,6 +128,7 @@ type ChatMessage = {
   id: string;
   text: string;
   messageType?: string;
+  transport?: string;
   from: MessageRole;
   senderName?: string | null;
   replyToMessageId?: string | null;
@@ -131,6 +136,9 @@ type ChatMessage = {
   status: string;
   time: string;
   createdAt: string;
+  toEmail?: string | null;
+  fromEmail?: string | null;
+  subject?: string | null;
   supplierName?: string;
   attachment?: ChatAttachmentPayload | null;
   attachments?: ChatAttachmentPayload[];
@@ -240,6 +248,16 @@ const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", 
 const BASE_MANAGERS = Array.from(
   new Map(managerAccounts.map(({ id, name }) => [id, { id, name }])).values()
 );
+
+const dedupeManagers = <T extends { id: string; name: string }>(managers: T[]) =>
+  Array.from(
+    new Map(
+      managers.map((manager) => [
+        `${manager.id.trim()}::${manager.name.trim().toLowerCase()}`,
+        manager,
+      ])
+    ).values()
+  );
 const managerStatusLabels: Record<ManagerPresence, string> = {
   online: "В сети",
   break: "На перерыве",
@@ -522,6 +540,7 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
           : `${attachments.length} файлов`
         : msg.content,
     messageType: msg.messageType,
+    transport: msg.transport,
     from:
       msg.senderType === "client"
         ? "client"
@@ -541,6 +560,9 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
       minute: "2-digit",
     }),
     createdAt: msg.createdAt,
+    toEmail: msg.toEmail ?? null,
+    fromEmail: msg.fromEmail ?? null,
+    subject: msg.subject ?? null,
     attachment: attachments[0] ?? null,
     attachments,
   };
@@ -832,6 +854,8 @@ export default function Home() {
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [sendMode, setSendMode] = useState<"chat" | "email">("chat");
+  const [emailRecipient, setEmailRecipient] = useState("");
   const [supplierRequestSupplierFilter, setSupplierRequestSupplierFilter] =
     useState<string>("all");
   const [supplierRequestStatusFilter, setSupplierRequestStatusFilter] =
@@ -912,6 +936,13 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const resolvedTicketEmail =
+    ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
+    activeChat?.canonicalEmail?.trim() ||
+    activeChat?.clientEmail?.trim() ||
+    activeChat?.currentUserEmail?.trim() ||
+    activeChat?.superuserEmail?.trim() ||
+    "";
   const isAllOverview = filter === "all" && !activeChat;
   const clearReplyHoverTimeout = useCallback(() => {
     if (replyHoverTimeoutRef.current !== null) {
@@ -963,10 +994,12 @@ export default function Home() {
             description:
               "Здесь можно быстро открыть любой диалог из общей очереди и истории работы.",
           };
-  const availableManagers = BASE_MANAGERS.map((manager) => ({
-    ...manager,
-    status: managerStatuses[manager.id] ?? "offline",
-  }));
+  const availableManagers = dedupeManagers(
+    BASE_MANAGERS.map((manager) => ({
+      ...manager,
+      status: managerStatuses[manager.id] ?? "offline",
+    }))
+  );
   const firstOnlineManagerId =
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
@@ -1510,7 +1543,9 @@ export default function Home() {
   const myCount = chatData.filter((chat) => {
     return isChatMine(chat) && !chat.aiEnabled;
   }).length;
-  const onlineManagers = availableManagers.filter((manager) => manager.status === "online");
+  const onlineManagers = dedupeManagers(
+    availableManagers.filter((manager) => manager.status === "online")
+  );
   const availableSupplierRequestSuppliers = Array.from(
     new Set((activeChat?.supplierRequests ?? []).map((request) => request.supplierName))
   );
@@ -1746,6 +1781,17 @@ export default function Home() {
 
     void loadContacts();
   }, [authReady, activeChatId, currentManagerId]);
+
+  useEffect(() => {
+    setSendMode("chat");
+    setEmailRecipient(resolvedTicketEmail);
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!emailRecipient.trim() && resolvedTicketEmail) {
+      setEmailRecipient(resolvedTicketEmail);
+    }
+  }, [resolvedTicketEmail, emailRecipient]);
 
   useEffect(() => {
     if (!authReady || !activeChatId || !currentManagerId) {
@@ -2354,8 +2400,25 @@ export default function Home() {
   const handleSendMessage = async () => {
     const hasTextToSend = Boolean(messageText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
+    const isEmailMode = sendMode === "email";
 
     if ((!hasTextToSend && !hasAttachmentToSend) || !activeChatId) {
+      return;
+    }
+
+    if (isEmailMode && hasAttachmentToSend) {
+      setToast({
+        message: "В MVP email-режим пока поддерживает только текстовые сообщения",
+        tone: "info",
+      });
+      return;
+    }
+
+    if (isEmailMode && !emailRecipient.trim()) {
+      setToast({
+        message: "Укажите email получателя",
+        tone: "error",
+      });
       return;
     }
 
@@ -2405,10 +2468,12 @@ export default function Home() {
             ticketId: activeChatId,
             content: messageText,
             senderType: "manager",
+            transport: isEmailMode ? "email" : "chat",
             managerId: currentManagerId,
             managerName: currentManagerName,
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
+            toEmail: isEmailMode ? emailRecipient.trim() : undefined,
           }),
         });
 
@@ -2497,6 +2562,12 @@ export default function Home() {
       setSelectedFiles([]);
       setHoveredMessageId("");
       lastTypingSentAtRef.current = 0;
+      if (isEmailMode) {
+        setToast({
+          message: `Email отправлен на ${emailRecipient.trim()}`,
+          tone: "info",
+        });
+      }
       requestAnimationFrame(() => {
         scrollManagerChatToBottom("smooth");
       });
@@ -3650,7 +3721,11 @@ export default function Home() {
 
                         <div
                           className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
-                            message.from === "manager"
+                            message.messageType === "email" && message.from === "manager"
+                              ? "border border-[#CFE0FF] bg-[linear-gradient(135deg,#F5F9FF_0%,#E9F2FF_100%)] text-[#0B3B78] shadow-[0_10px_24px_rgba(10,132,255,0.12)]"
+                              : message.messageType === "email"
+                                ? "border border-[#F1DFC7] bg-[linear-gradient(135deg,#FFFDF8_0%,#FFF4E8_100%)] text-[#533816] shadow-[0_12px_28px_rgba(191,132,56,0.12)]"
+                              : message.from === "manager"
                               ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                               : message.from === "ai"
                                 ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
@@ -3662,6 +3737,23 @@ export default function Home() {
                           }`}
                         >
                           <div className="min-w-0 max-w-full">
+                            {message.messageType === "email" ? (
+                              <div className="mb-2 rounded-[16px] border border-black/5 bg-white/55 px-3 py-2 text-[12px] leading-5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
+                                    Email
+                                  </span>
+                                  {message.subject ? (
+                                    <span className="font-medium">{message.subject}</span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 text-[11px] opacity-75">
+                                  {message.from === "manager"
+                                    ? `Кому: ${message.toEmail || "email не указан"}`
+                                    : `От: ${message.fromEmail || "email не указан"}`}
+                                </p>
+                              </div>
+                            ) : null}
                             {message.from === "ai" || message.from === "supplier" ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
@@ -3724,7 +3816,7 @@ export default function Home() {
                             )}
                             <div
                               className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
-                                message.from === "manager"
+                                message.from === "manager" && message.messageType !== "email"
                                   ? "text-white/65"
                                   : message.from === "ai"
                                     ? "text-[#4C6A92]"
@@ -3876,6 +3968,53 @@ export default function Home() {
                 </div>
               ) : null}
 
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSendMode("chat")}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    sendMode === "chat"
+                      ? "bg-[#0A84FF] text-white shadow-[0_8px_16px_rgba(10,132,255,0.18)]"
+                      : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E9EEF8]"
+                  }`}
+                >
+                  Чат
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSendMode("email")}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    sendMode === "email"
+                      ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
+                      : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
+                  }`}
+                >
+                  Email
+                </button>
+                {sendMode === "email" ? (
+                  <span className="rounded-full bg-[#FFF4E8] px-3 py-1 text-xs font-medium text-[#B7791F]">
+                    Ответ клиента попадёт в этот же тикет
+                  </span>
+                ) : null}
+              </div>
+
+              {sendMode === "email" ? (
+                <div className="mb-3 rounded-[18px] border border-[#F1DFC7] bg-[#FFF9F2] px-3 py-3">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-[#9A6B2E]">
+                    Получатель email
+                  </label>
+                  <input
+                    value={emailRecipient}
+                    onChange={(event) => setEmailRecipient(event.target.value)}
+                    placeholder="client@example.com"
+                    className="w-full rounded-2xl border border-[#E5D2B8] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
+                  />
+                  <p className="mt-2 text-xs text-[#9A7A49]">
+                    Если email уже известен, поле заполнится автоматически из контактов клиента.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                 <div className="min-w-0 flex-1">
                   <div className="relative">
@@ -4005,7 +4144,11 @@ export default function Home() {
                       }}
                       rows={1}
                       className="min-h-[40px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                      placeholder="Напишите сообщение..."
+                      placeholder={
+                        sendMode === "email"
+                          ? "Напишите email клиенту..."
+                          : "Напишите сообщение..."
+                      }
                     />
                   </div>
                 </div>

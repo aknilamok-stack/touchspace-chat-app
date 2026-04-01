@@ -11,6 +11,7 @@ import { ChatAiService } from '../chat-ai.service';
 import { PushService } from '../push.service';
 import { readJsonStringArray } from '../prisma-json.util';
 import { resolveTicketClientContext } from '../tickets/client-context.util';
+import { EmailService } from '../email/email.service';
 
 type MessageViewer = {
   viewerType?: string;
@@ -23,6 +24,41 @@ type ManagerMessageSuggestionItem = {
   lastUsedAt: string;
 };
 
+type CreateMessageInput = {
+  ticketId: string;
+  content: string;
+  senderType: string;
+  transport?: 'chat' | 'email';
+  managerId?: string;
+  managerName?: string;
+  senderId?: string;
+  senderName?: string;
+  tradePointId?: string;
+  tradePointExternalId?: string;
+  tradePointName?: string;
+  currentUserId?: string;
+  currentUserEmail?: string;
+  currentUserPhone?: string;
+  currentUserXmlId?: string;
+  isSuperuser?: boolean | string;
+  superuserId?: string;
+  superuserEmail?: string;
+  superuserPhone?: string;
+  canonicalEmail?: string;
+  canonicalEmailSource?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  replyToMessageId?: string;
+  replyToContent?: string;
+  toEmail?: string | null;
+  fromEmail?: string | null;
+  subject?: string | null;
+  messageId?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
+  messageType?: string;
+};
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -31,6 +67,7 @@ export class MessagesService {
     private readonly profilesService: ProfilesService,
     private readonly chatAiService: ChatAiService,
     private readonly pushService: PushService,
+    private readonly emailService: EmailService,
   ) {}
 
   private normalizeSuggestionText(value: string) {
@@ -44,8 +81,7 @@ export class MessagesService {
       return false;
     }
 
-    const alphanumericChars =
-      collapsed.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+    const alphanumericChars = collapsed.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
 
     if (alphanumericChars < 5) {
       return false;
@@ -186,34 +222,58 @@ export class MessagesService {
     throw new ForbiddenException('No access to this ticket');
   }
 
-  async create(
-    ticketId: string,
-    content: string,
-    senderType: string,
-    managerId?: string,
-    managerName?: string,
-    senderId?: string,
-    senderName?: string,
-    tradePointId?: string,
-    tradePointExternalId?: string,
-    tradePointName?: string,
-    currentUserId?: string,
-    currentUserEmail?: string,
-    currentUserPhone?: string,
-    currentUserXmlId?: string,
-    isSuperuser?: boolean | string,
-    superuserId?: string,
-    superuserEmail?: string,
-    superuserPhone?: string,
-    canonicalEmail?: string,
-    canonicalEmailSource?: string,
-    clientEmail?: string,
-    clientPhone?: string,
-    replyToMessageId?: string,
-    replyToContent?: string,
-  ) {
+  async create(input: CreateMessageInput) {
+    const {
+      ticketId,
+      content,
+      senderType,
+      managerId,
+      managerName,
+      senderId,
+      senderName,
+      tradePointId,
+      tradePointExternalId,
+      tradePointName,
+      currentUserId,
+      currentUserEmail,
+      currentUserPhone,
+      currentUserXmlId,
+      isSuperuser,
+      superuserId,
+      superuserEmail,
+      superuserPhone,
+      canonicalEmail,
+      canonicalEmailSource,
+      clientEmail,
+      clientPhone,
+      replyToMessageId,
+      replyToContent,
+    } = input;
     const actorId = senderId ?? managerId;
     const actorName = senderName ?? managerName;
+    const normalizedTransport = input.transport === 'email' ? 'email' : 'chat';
+    const normalizedMessageType =
+      input.messageType?.trim() ||
+      (normalizedTransport === 'email' ? 'email' : 'text');
+
+    let emailMetadata = {
+      toEmail: input.toEmail?.trim() || null,
+      fromEmail: input.fromEmail?.trim() || null,
+      subject: input.subject?.trim() || null,
+      messageId: input.messageId?.trim() || null,
+      inReplyTo: input.inReplyTo?.trim() || null,
+      references: input.references?.trim() || null,
+    };
+
+    if (senderType === 'manager' && normalizedTransport === 'email') {
+      const outboundEmail = await this.emailService.sendTicketEmail({
+        ticketId,
+        content,
+        toEmail: input.toEmail,
+      });
+
+      emailMetadata = outboundEmail;
+    }
 
     if (actorId) {
       await this.profilesService.ensureProfile({
@@ -305,7 +365,14 @@ export class MessagesService {
             replyToContent: replyToContent?.trim() || null,
             status: 'sent',
             deliveryStatus: 'sent',
-            messageType: 'text',
+            messageType: normalizedMessageType,
+            transport: normalizedTransport,
+            toEmail: emailMetadata.toEmail,
+            fromEmail: emailMetadata.fromEmail,
+            subject: emailMetadata.subject,
+            messageId: emailMetadata.messageId,
+            inReplyTo: emailMetadata.inReplyTo,
+            references: emailMetadata.references,
             isInternal: false,
           },
         });
@@ -645,7 +712,12 @@ export class MessagesService {
 
     const merged = new Map<
       string,
-      { phraseText: string; phraseTextNormalized: string; usageCount: number; lastUsedAt: Date }
+      {
+        phraseText: string;
+        phraseTextNormalized: string;
+        usageCount: number;
+        lastUsedAt: Date;
+      }
     >();
 
     for (const item of candidates) {

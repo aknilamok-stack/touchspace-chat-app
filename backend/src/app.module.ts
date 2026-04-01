@@ -7,6 +7,8 @@ import { AppService } from './app.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ChatAiService } from './chat-ai.service';
+import { EmailPollingService } from './email/email-polling.service';
+import { EmailService } from './email/email.service';
 import { MessagesController } from './messages/messages.controller';
 import { MessagesService } from './messages/messages.service';
 import { NotificationsController } from './notifications.controller';
@@ -42,6 +44,8 @@ import { TypingService } from './typing.service';
     AppService,
     AuthService,
     ChatAiService,
+    EmailPollingService,
+    EmailService,
     NotificationsService,
     PrismaService,
     ProfilesService,

@@ -25,6 +25,7 @@ export class MessagesController {
       ticketId: string;
       content: string;
       senderType: string;
+      transport?: 'chat' | 'email';
       managerId?: string;
       managerName?: string;
       senderId?: string;
@@ -46,34 +47,16 @@ export class MessagesController {
       clientPhone?: string;
       replyToMessageId?: string;
       replyToContent?: string;
+      toEmail?: string;
+      fromEmail?: string;
+      subject?: string;
+      messageId?: string;
+      inReplyTo?: string;
+      references?: string;
+      messageType?: string;
     },
   ) {
-    return this.messagesService.create(
-      body.ticketId,
-      body.content,
-      body.senderType,
-      body.managerId,
-      body.managerName,
-      body.senderId,
-      body.senderName,
-      body.tradePointId,
-      body.tradePointExternalId,
-      body.tradePointName,
-      body.currentUserId,
-      body.currentUserEmail,
-      body.currentUserPhone,
-      body.currentUserXmlId,
-      body.isSuperuser,
-      body.superuserId,
-      body.superuserEmail,
-      body.superuserPhone,
-      body.canonicalEmail,
-      body.canonicalEmailSource,
-      body.clientEmail,
-      body.clientPhone,
-      body.replyToMessageId,
-      body.replyToContent,
-    );
+    return this.messagesService.create(body);
   }
 
   @Get('messages/manager-suggestions')

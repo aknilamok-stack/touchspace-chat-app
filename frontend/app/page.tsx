@@ -897,6 +897,7 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const isAllOverview = filter === "all" && !activeChat;
   const clearReplyHoverTimeout = useCallback(() => {
     if (replyHoverTimeoutRef.current !== null) {
       window.clearTimeout(replyHoverTimeoutRef.current);
@@ -3014,29 +3015,31 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
-            <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
-              Онлайн: {onlineManagers.length}
-            </span>
-            {onlineManagers.length > 0 ? (
-              onlineManagers.map((manager) => (
-                <span
-                  key={manager.id}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
-                >
-                  <span className="h-2 w-2 rounded-full bg-[#34C759]" />
-                  <span>
-                    {manager.name}
-                    {manager.id === currentManagerId ? " (Вы)" : ""}
-                  </span>
-                </span>
-              ))
-            ) : (
-              <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
-                Нет менеджеров со статусом online
+          {!isAllOverview ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
+              <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
+                Онлайн: {onlineManagers.length}
               </span>
-            )}
-          </div>
+              {onlineManagers.length > 0 ? (
+                onlineManagers.map((manager) => (
+                  <span
+                    key={manager.id}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[#34C759]" />
+                    <span>
+                      {manager.name}
+                      {manager.id === currentManagerId ? " (Вы)" : ""}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
+                  Нет менеджеров со статусом online
+                </span>
+              )}
+            </div>
+          ) : null}
 
           <div className="mb-4">
             <input
@@ -3047,64 +3050,68 @@ export default function Home() {
             />
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {searchedChats.map((chat) => (
-              (() => {
-                const unreadCount = getUnreadCount(chat);
-                const chatTone = getChatTone(chat);
-                const isActive = activeChatId === chat.id;
-                const isIncomingQueueChat =
-                  chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
+          {!isAllOverview ? (
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              {searchedChats.map((chat) => (
+                (() => {
+                  const unreadCount = getUnreadCount(chat);
+                  const chatTone = getChatTone(chat);
+                  const isActive = activeChatId === chat.id;
+                  const isIncomingQueueChat =
+                    chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
 
-                return (
-                  <DialogListCard
-                    key={chat.id}
-                    active={isActive}
-                    emphasized={unreadCount > 0}
-                    onClick={() => {
-                      setIsChatPaneDismissed(false);
-                      setActiveChatId(chat.id);
-                      setIsSupplierFormOpen(false);
-                    }}
-                    title={getChatClientDisplayName(chat)}
-                    identityKey={chat.clientId || chat.clientName || chat.id}
-                    avatarColor={chat.avatarColor}
-                    avatarEmoji={chat.avatarEmoji}
-                    statusDotClassName={chatTone.dot}
-                    preview={getChatPreview(chat)}
-                    managerLabel={getDialogManagerLabel(
-                      chat.assignedManagerName,
-                      chat.lastResolvedByManagerName
-                    )}
-                    timeLabel={formatDialogActivityLabel(
-                      chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
-                    )}
-                    statusLabel={isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
-                    statusBadgeClassName={chatTone.pill}
-                    unreadCount={unreadCount}
-                    pinned={chat.pinned}
-                    footerAction={
-                      isIncomingQueueChat ? (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setIsChatPaneDismissed(false);
-                            setActiveChatId(chat.id);
-                            void handleClaimIncoming(chat.id);
-                          }}
-                          className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
-                        >
-                          Взять в работу
-                        </button>
-                      ) : undefined
-                    }
-                  />
-                );
-              })()
-            ))}
-          </div>
+                  return (
+                    <DialogListCard
+                      key={chat.id}
+                      active={isActive}
+                      emphasized={unreadCount > 0}
+                      onClick={() => {
+                        setIsChatPaneDismissed(false);
+                        setActiveChatId(chat.id);
+                        setIsSupplierFormOpen(false);
+                      }}
+                      title={getChatClientDisplayName(chat)}
+                      identityKey={chat.clientId || chat.clientName || chat.id}
+                      avatarColor={chat.avatarColor}
+                      avatarEmoji={chat.avatarEmoji}
+                      statusDotClassName={chatTone.dot}
+                      preview={getChatPreview(chat)}
+                      managerLabel={getDialogManagerLabel(
+                        chat.assignedManagerName,
+                        chat.lastResolvedByManagerName
+                      )}
+                      timeLabel={formatDialogActivityLabel(
+                        chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
+                      )}
+                      statusLabel={isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
+                      statusBadgeClassName={chatTone.pill}
+                      unreadCount={unreadCount}
+                      pinned={chat.pinned}
+                      footerAction={
+                        isIncomingQueueChat ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setIsChatPaneDismissed(false);
+                              setActiveChatId(chat.id);
+                              void handleClaimIncoming(chat.id);
+                            }}
+                            className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
+                          >
+                            Взять в работу
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })()
+              ))}
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1" />
+          )}
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
@@ -3288,14 +3295,14 @@ export default function Home() {
             filter === "all" ? (
               <div className="min-h-0 flex-1 overflow-y-auto bg-white px-8 py-8">
                 <div className="mx-auto w-full max-w-[1440px]">
-                  <div className="mb-6 flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
+                  <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
                     <div>
-                      <h2 className="text-[32px] font-semibold text-[#1E1E1E]">Диалоги</h2>
-                      <p className="mt-2 text-sm text-[#8E8E93]">Найдено {searchedChats.length}</p>
+                      <h2 className="text-[22px] font-semibold text-[#1E1E1E]">Диалоги</h2>
+                      <p className="mt-1.5 text-[13px] text-[#8E8E93]">Найдено {searchedChats.length}</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-[minmax(260px,1.6fr)_150px_160px_120px_180px_minmax(220px,1.8fr)] gap-5 px-4 pb-3 text-[13px] font-medium text-[#9AA3AF]">
+                  <div className="grid grid-cols-[minmax(260px,1.7fr)_140px_150px_110px_170px_minmax(200px,1.6fr)] gap-4 px-4 pb-2 text-[12px] font-medium text-[#9AA3AF]">
                     <span>Диалог</span>
                     <span>Ожидание первого ответа</span>
                     <span>Длительность</span>

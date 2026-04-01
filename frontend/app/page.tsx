@@ -237,7 +237,9 @@ const QUICK_REPLIES = [
   "Можете уточнить номер заказа?",
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
-const BASE_MANAGERS = managerAccounts.map(({ id, name }) => ({ id, name }));
+const BASE_MANAGERS = Array.from(
+  new Map(managerAccounts.map(({ id, name }) => [id, { id, name }])).values()
+);
 const managerStatusLabels: Record<ManagerPresence, string> = {
   online: "В сети",
   break: "На перерыве",

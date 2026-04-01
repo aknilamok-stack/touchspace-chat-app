@@ -17,6 +17,12 @@ type MessageViewer = {
   viewerId?: string;
 };
 
+type ManagerMessageSuggestionItem = {
+  text: string;
+  usageCount: number;
+  lastUsedAt: string;
+};
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -26,6 +32,65 @@ export class MessagesService {
     private readonly chatAiService: ChatAiService,
     private readonly pushService: PushService,
   ) {}
+
+  private normalizeSuggestionText(value: string) {
+    return value.replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  private isSuggestionCandidate(value: string) {
+    const collapsed = value.replace(/\s+/g, ' ').trim();
+
+    if (!collapsed || collapsed.length < 8 || collapsed.length > 700) {
+      return false;
+    }
+
+    const alphanumericChars =
+      collapsed.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+
+    if (alphanumericChars < 5) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private async registerManagerSuggestion(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    managerId: string,
+    content: string,
+    usedAt: Date,
+  ) {
+    if (!this.isSuggestionCandidate(content)) {
+      return;
+    }
+
+    const phraseText = content.replace(/\s+/g, ' ').trim();
+    const phraseTextNormalized = this.normalizeSuggestionText(phraseText);
+
+    await tx.managerMessageSuggestion.upsert({
+      where: {
+        managerId_phraseTextNormalized: {
+          managerId,
+          phraseTextNormalized,
+        },
+      },
+      create: {
+        managerId,
+        phraseText,
+        phraseTextNormalized,
+        usageCount: 1,
+        lastUsedAt: usedAt,
+      },
+      update: {
+        phraseText,
+        usageCount: {
+          increment: 1,
+        },
+        lastUsedAt: usedAt,
+        isHidden: false,
+      },
+    });
+  }
 
   private async createSystemMessage(
     tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
@@ -414,6 +479,14 @@ export class MessagesService {
         }
 
         if (senderType === 'manager') {
+          if (managerId) {
+            await this.registerManagerSuggestion(
+              tx,
+              managerId,
+              content,
+              message.createdAt,
+            );
+          }
           this.typingService.clearTyping(ticketId, 'manager');
           await this.markClientMessagesAsRead(tx, ticketId, message.createdAt);
         }
@@ -520,6 +593,75 @@ export class MessagesService {
     }
 
     return message;
+  }
+
+  async findManagerSuggestions(
+    managerId: string,
+    query: string,
+  ): Promise<{ suggestions: ManagerMessageSuggestionItem[] }> {
+    const normalizedQuery = this.normalizeSuggestionText(query);
+
+    if (!managerId.trim() || normalizedQuery.length < 2) {
+      return { suggestions: [] };
+    }
+
+    const candidates = await this.prisma.managerMessageSuggestion.findMany({
+      where: {
+        managerId,
+        isHidden: false,
+        OR: [
+          {
+            phraseTextNormalized: {
+              startsWith: normalizedQuery,
+            },
+          },
+          {
+            phraseTextNormalized: {
+              contains: normalizedQuery,
+            },
+          },
+        ],
+      },
+      take: 25,
+      orderBy: [{ usageCount: 'desc' }, { lastUsedAt: 'desc' }],
+    });
+
+    const ranked = candidates
+      .map((item) => {
+        const isPrefix = item.phraseTextNormalized.startsWith(normalizedQuery);
+        const freshnessScore = new Date(item.lastUsedAt).getTime();
+
+        return {
+          item,
+          isPrefix,
+          freshnessScore,
+        };
+      })
+      .sort((left, right) => {
+        if (left.isPrefix !== right.isPrefix) {
+          return left.isPrefix ? -1 : 1;
+        }
+
+        if (left.item.usageCount !== right.item.usageCount) {
+          return right.item.usageCount - left.item.usageCount;
+        }
+
+        if (left.freshnessScore !== right.freshnessScore) {
+          return right.freshnessScore - left.freshnessScore;
+        }
+
+        return left.item.phraseText.length - right.item.phraseText.length;
+      })
+      .slice(0, 5)
+      .map(({ item }) => ({
+        text: item.phraseText,
+        usageCount: item.usageCount,
+        lastUsedAt: item.lastUsedAt.toISOString(),
+      }));
+
+    return {
+      suggestions: ranked,
+    };
   }
 
   async createAttachment(

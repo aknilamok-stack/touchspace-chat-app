@@ -76,6 +76,17 @@ export class MessagesController {
     );
   }
 
+  @Get('messages/manager-suggestions')
+  findManagerSuggestions(
+    @Query('managerId') managerId?: string,
+    @Query('q') query?: string,
+  ) {
+    return this.messagesService.findManagerSuggestions(
+      managerId?.trim() ?? '',
+      query?.trim() ?? '',
+    );
+  }
+
   @Post('messages/attachment')
   @UseInterceptors(
     FilesInterceptor('files', 5, {

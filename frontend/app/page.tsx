@@ -212,6 +212,12 @@ type UiToast = {
   tone: ToastTone;
 };
 
+type ManagerMessageSuggestion = {
+  text: string;
+  usageCount: number;
+  lastUsedAt: string;
+};
+
 type SlaVisual = {
   label: string;
   status: string;
@@ -810,6 +816,13 @@ export default function Home() {
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [activeChatId, setActiveChatId] = useState("");
   const [messageText, setMessageText] = useState("");
+  const [managerSuggestions, setManagerSuggestions] = useState<
+    ManagerMessageSuggestion[]
+  >([]);
+  const [activeManagerSuggestionIndex, setActiveManagerSuggestionIndex] =
+    useState(0);
+  const [isLoadingManagerSuggestions, setIsLoadingManagerSuggestions] =
+    useState(false);
   const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -882,12 +895,14 @@ export default function Home() {
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
+  const managerSuggestionsRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
   const lastTypingSentAtRef = useRef(0);
+  const managerSuggestionRequestIdRef = useRef(0);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const titleFlashIntervalRef = useRef<number | null>(null);
@@ -959,6 +974,23 @@ export default function Home() {
   const filteredQuickReplies = quickReplies.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
+  const isManagerSuggestionsOpen =
+    (managerSuggestions.length > 0 || isLoadingManagerSuggestions) &&
+    messageText.replace(/\s+/g, " ").trim().length >= 2 &&
+    !showQuickReplies &&
+    !showEmojiPicker;
+
+  const applyManagerSuggestion = useCallback((text: string) => {
+    setMessageText(text);
+    setManagerSuggestions([]);
+    setActiveManagerSuggestionIndex(0);
+
+    window.requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus();
+      const cursorPosition = text.length;
+      composerTextareaRef.current?.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  }, []);
 
   const showDesktopNotification = async (
     title: string,
@@ -2199,6 +2231,91 @@ export default function Home() {
   }, [messageText]);
 
   useEffect(() => {
+    setManagerSuggestions([]);
+    setActiveManagerSuggestionIndex(0);
+    setIsLoadingManagerSuggestions(false);
+  }, [activeChatId]);
+
+  useEffect(() => {
+    const normalizedQuery = messageText.replace(/\s+/g, " ").trim();
+
+    if (
+      !activeChatId ||
+      !currentManagerId ||
+      normalizedQuery.length < 2 ||
+      showQuickReplies ||
+      showEmojiPicker
+    ) {
+      setManagerSuggestions([]);
+      setActiveManagerSuggestionIndex(0);
+      setIsLoadingManagerSuggestions(false);
+      return;
+    }
+
+    const requestId = managerSuggestionRequestIdRef.current + 1;
+    managerSuggestionRequestIdRef.current = requestId;
+    setIsLoadingManagerSuggestions(true);
+
+    const timeoutId = window.setTimeout(() => {
+      void fetch(
+        apiUrl(
+          `/messages/manager-suggestions?managerId=${encodeURIComponent(
+            currentManagerId
+          )}&q=${encodeURIComponent(normalizedQuery)}`
+        )
+      )
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(
+              await extractApiErrorMessage(
+                response,
+                "Не удалось получить подсказки сообщений"
+              )
+            );
+          }
+
+          return (await response.json()) as {
+            suggestions?: ManagerMessageSuggestion[];
+          };
+        })
+        .then((payload) => {
+          if (managerSuggestionRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          const suggestions = Array.isArray(payload.suggestions)
+            ? payload.suggestions
+            : [];
+
+          setManagerSuggestions(suggestions);
+          setActiveManagerSuggestionIndex(0);
+        })
+        .catch((error) => {
+          if (managerSuggestionRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          console.error("Не удалось загрузить подсказки менеджера:", error);
+          setManagerSuggestions([]);
+          setActiveManagerSuggestionIndex(0);
+        })
+        .finally(() => {
+          if (managerSuggestionRequestIdRef.current === requestId) {
+            setIsLoadingManagerSuggestions(false);
+          }
+        });
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    activeChatId,
+    currentManagerId,
+    messageText,
+    showEmojiPicker,
+    showQuickReplies,
+  ]);
+
+  useEffect(() => {
     if (!toast) {
       return;
     }
@@ -2382,6 +2499,8 @@ export default function Home() {
       syncTickets(refreshedTickets);
       await refreshNotificationCandidates();
       setMessageText("");
+      setManagerSuggestions([]);
+      setActiveManagerSuggestionIndex(0);
       setAttachmentName("");
       setSelectedFiles([]);
       setHoveredMessageId("");
@@ -3767,37 +3886,141 @@ export default function Home() {
 
               <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                 <div className="min-w-0 flex-1">
-                  <textarea
-                    ref={composerTextareaRef}
-                    value={messageText}
-                    onChange={(e) => {
-                      const nextValue = e.target.value;
-                      setMessageText(nextValue);
+                  <div className="relative">
+                    {isManagerSuggestionsOpen ? (
+                      <div
+                        ref={managerSuggestionsRef}
+                        className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-30 overflow-hidden rounded-[18px] border border-[#E4E6EB] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                      >
+                        {managerSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${suggestion.text}-${suggestion.lastUsedAt}`}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              applyManagerSuggestion(suggestion.text);
+                            }}
+                            onMouseEnter={() =>
+                              setActiveManagerSuggestionIndex(index)
+                            }
+                            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition ${
+                              index === activeManagerSuggestionIndex
+                                ? "bg-[#F5F9FF]"
+                                : "bg-white hover:bg-[#F9FBFF]"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                                index === activeManagerSuggestionIndex
+                                  ? "bg-[#DCEBFF] text-[#0A84FF]"
+                                  : "bg-[#EEF2F8] text-[#6B7280]"
+                              }`}
+                            >
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="line-clamp-2 text-[14px] leading-5 text-[#1E1E1E]">
+                                {suggestion.text}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                        {isLoadingManagerSuggestions && managerSuggestions.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-[#8E8E93]">
+                            Ищем подсказки...
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
-                      if (activeChatId && nextValue.trim()) {
-                        emitManagerTyping(activeChatId);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (
-                        activeChatId &&
-                        e.key.length === 1 &&
-                        !e.ctrlKey &&
-                        !e.metaKey &&
-                        !e.altKey
-                      ) {
-                        emitManagerTyping(activeChatId);
-                      }
+                    <textarea
+                      ref={composerTextareaRef}
+                      value={messageText}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          const activeElement = document.activeElement;
 
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void handleSendMessage();
-                      }
-                    }}
-                    rows={1}
-                    className="min-h-[40px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                    placeholder="Напишите сообщение..."
-                  />
+                          if (
+                            managerSuggestionsRef.current &&
+                            activeElement &&
+                            managerSuggestionsRef.current.contains(activeElement)
+                          ) {
+                            return;
+                          }
+
+                          setManagerSuggestions([]);
+                          setActiveManagerSuggestionIndex(0);
+                        }, 100);
+                      }}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setMessageText(nextValue);
+
+                        if (activeChatId && nextValue.trim()) {
+                          emitManagerTyping(activeChatId);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (isManagerSuggestionsOpen && managerSuggestions.length > 0) {
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setActiveManagerSuggestionIndex((prev) =>
+                              prev >= managerSuggestions.length - 1 ? 0 : prev + 1
+                            );
+                            return;
+                          }
+
+                          if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setActiveManagerSuggestionIndex((prev) =>
+                              prev <= 0 ? managerSuggestions.length - 1 : prev - 1
+                            );
+                            return;
+                          }
+
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setManagerSuggestions([]);
+                            setActiveManagerSuggestionIndex(0);
+                            return;
+                          }
+
+                          if (
+                            (e.key === "Enter" && !e.shiftKey) ||
+                            e.key === "Tab"
+                          ) {
+                            e.preventDefault();
+                            const selectedSuggestion =
+                              managerSuggestions[activeManagerSuggestionIndex] ??
+                              managerSuggestions[0];
+
+                            if (selectedSuggestion) {
+                              applyManagerSuggestion(selectedSuggestion.text);
+                            }
+                            return;
+                          }
+                        }
+
+                        if (
+                          activeChatId &&
+                          e.key.length === 1 &&
+                          !e.ctrlKey &&
+                          !e.metaKey &&
+                          !e.altKey
+                        ) {
+                          emitManagerTyping(activeChatId);
+                        }
+
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void handleSendMessage();
+                        }
+                      }}
+                      rows={1}
+                      className="min-h-[40px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                      placeholder="Напишите сообщение..."
+                    />
+                  </div>
                 </div>
 
                 <div ref={quickRepliesRef} className="relative flex items-center gap-2">
@@ -3867,6 +4090,8 @@ export default function Home() {
                     onClick={() => {
                       setShowQuickReplies((prev) => !prev);
                       setShowEmojiPicker(false);
+                      setManagerSuggestions([]);
+                      setActiveManagerSuggestionIndex(0);
                     }}
                     onMouseEnter={() => setHoveredComposerAction("quick")}
                     onMouseLeave={() => setHoveredComposerAction(null)}
@@ -3897,6 +4122,8 @@ export default function Home() {
                     onClick={() => {
                       setShowEmojiPicker((prev) => !prev);
                       setShowQuickReplies(false);
+                      setManagerSuggestions([]);
+                      setActiveManagerSuggestionIndex(0);
                     }}
                     onMouseEnter={() => setHoveredComposerAction("emoji")}
                     onMouseLeave={() => setHoveredComposerAction(null)}

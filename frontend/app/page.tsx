@@ -3009,7 +3009,7 @@ export default function Home() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                  {activeChat?.title || "Выберите обращение"}
+                  {activeChat ? getChatClientDisplayName(activeChat) : "Выберите обращение"}
                 </p>
                 {activeChat?.aiEnabled ? (
                   <span className="shrink-0 rounded-full bg-[#EEF6FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
@@ -3017,13 +3017,8 @@ export default function Home() {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1 text-[13px] text-[#8E8E93]">
-                {activeChat
-                  ? `${getChatClientDisplayName(activeChat)} • клиентский диалог`
-                  : "Реселлер • клиентский диалог"}
-              </p>
               {activeChat ? (
-                <div className="mt-3 max-w-[520px]">
+                <div className="mt-1 max-w-[620px]">
                   <PageTrackingCard
                     current={currentPageView}
                     items={ticketPageViews}

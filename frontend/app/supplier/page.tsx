@@ -2073,10 +2073,7 @@ export default function SupplierPage() {
                     <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
                       {selectedClientLabel}
                     </p>
-                    <p className="mt-1 text-[13px] text-[#8E8E93]">
-                      Ticket #{selectedRequest.ticketId} • от менеджера {selectedManagerName}
-                    </p>
-                    <div className="mt-3 max-w-[520px]">
+                    <div className="mt-1 max-w-[620px]">
                       <PageTrackingCard
                         current={currentPageView}
                         items={ticketPageViews}

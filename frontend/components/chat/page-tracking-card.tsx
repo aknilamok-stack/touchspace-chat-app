@@ -40,7 +40,7 @@ const formatVisitedTime = (value: string) => {
 const getItemTitle = (item: ChatPageViewItem) =>
   item.pageName?.trim() || item.entityName?.trim() || item.pageTitle?.trim() || "Страница";
 
-const getItemPathLabel = (item: ChatPageViewItem) => item.pagePath?.trim() || item.pageUrl?.trim();
+const getItemLink = (item: ChatPageViewItem) => item.pageUrl?.trim() || item.pagePath?.trim() || "";
 
 export function PageTrackingCard({
   current,
@@ -68,51 +68,50 @@ export function PageTrackingCard({
   }, [items]);
 
   const effectiveCurrent = current ?? historyItems[0] ?? null;
+  const currentLink = effectiveCurrent ? getItemLink(effectiveCurrent) : "";
 
   if (!isLoading && !error && !effectiveCurrent && historyItems.length === 0) {
     return null;
   }
 
   return (
-    <div
-      className={`rounded-[18px] border border-[#E7EBF3] bg-[#FBFCFF] shadow-[0_10px_30px_rgba(15,23,42,0.05)] ${className}`}
-    >
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left transition hover:bg-[#F4F8FF]"
-      >
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8E8E93]">
-            Текущая страница
-          </p>
-          {isLoading ? (
-            <p className="mt-1 text-sm text-[#8E8E93]">Загружаем переходы...</p>
-          ) : error ? (
-            <p className="mt-1 text-sm text-[#D63E3E]">{error}</p>
-          ) : effectiveCurrent ? (
-            <>
-              <p className="mt-1 truncate text-sm font-semibold text-[#1E1E1E]">
-                {getItemTitle(effectiveCurrent)}
-              </p>
-              <p className="mt-0.5 truncate text-xs text-[#6C6C70]">
-                {getItemPathLabel(effectiveCurrent)}
-              </p>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-[#8E8E93]">Нет данных о переходах</p>
-          )}
-        </div>
-        <span
-          className={`mt-1 shrink-0 text-sm text-[#8E8E93] transition ${isOpen ? "rotate-180" : ""}`}
-          aria-hidden="true"
+    <div className={`relative ${className}`}>
+      <div className="flex items-center gap-2 text-[13px] text-[#8E8E93]">
+        <span className="shrink-0">Чат на сайте</span>
+        {isLoading ? (
+          <span className="truncate text-[#8E8E93]">Загружаем переходы...</span>
+        ) : error ? (
+          <span className="truncate text-[#D63E3E]">{error}</span>
+        ) : effectiveCurrent && currentLink ? (
+          <a
+            href={currentLink}
+            target="_blank"
+            rel="noreferrer"
+            className="truncate text-[#0A84FF] underline decoration-[#B9D6FF] underline-offset-2 transition hover:text-[#0077F2]"
+            title={currentLink}
+          >
+            {currentLink}
+          </a>
+        ) : (
+          <span className="truncate text-[#8E8E93]">Нет данных о переходах</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition hover:bg-[#F2F6FC] hover:text-[#1E1E1E]"
+          aria-label={isOpen ? "Скрыть историю страниц" : "Показать историю страниц"}
         >
-          ▾
-        </span>
-      </button>
+          <span
+            className={`text-[11px] transition ${isOpen ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </button>
+      </div>
 
       {isOpen ? (
-        <div className="border-t border-[#E7EBF3] px-4 py-3">
+        <div className="absolute left-0 top-full z-20 mt-2 w-full max-w-[620px] rounded-[18px] border border-[#E7EBF3] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8E8E93]">
             Последние 10 страниц
           </p>
@@ -121,28 +120,35 @@ export function PageTrackingCard({
             <p className="text-sm text-[#8E8E93]">История переходов пока пуста</p>
           ) : (
             <div className="space-y-2">
-              {historyItems.map((item, index) => (
-                <div
-                  key={item.id}
-                  className={`rounded-[14px] px-3 py-2 ${
-                    index === 0 ? "bg-[#EEF6FF]" : "bg-[#F7F8FB]"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[#1E1E1E]">
-                        {getItemTitle(item)}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-[#6C6C70]">
-                        {getItemPathLabel(item)}
-                      </p>
+              {historyItems.map((item) => {
+                const itemLink = getItemLink(item);
+
+                return (
+                  <div key={item.id} className="rounded-[14px] bg-[#F7F8FB] px-3 py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[#1E1E1E]">
+                          {getItemTitle(item)}
+                        </p>
+                        {itemLink ? (
+                          <a
+                            href={itemLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-0.5 block truncate text-xs text-[#0A84FF] underline decoration-[#B9D6FF] underline-offset-2 transition hover:text-[#0077F2]"
+                            title={itemLink}
+                          >
+                            {itemLink}
+                          </a>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-xs text-[#8E8E93]">
+                        {formatVisitedTime(item.visitedAt)}
+                      </span>
                     </div>
-                    <span className="shrink-0 text-xs text-[#8E8E93]">
-                      {formatVisitedTime(item.visitedAt)}
-                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

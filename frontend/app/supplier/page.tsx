@@ -2816,15 +2816,13 @@ export default function SupplierPage() {
                   <div
                     className={`mb-4 rounded-[18px] border bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] ${supplierPanelStatus.cardClassName}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
                         <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
                           Статус
                         </p>
+                        <span className={`h-2.5 w-2.5 rounded-full ${supplierPanelStatus.accentClassName}`} />
                       </div>
-                      <span className={`mt-1 h-3 w-3 rounded-full ${supplierPanelStatus.accentClassName}`} />
-                    </div>
-                    <div className="mt-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${supplierPanelStatus.badgeClassName}`}
                       >

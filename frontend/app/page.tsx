@@ -3880,10 +3880,10 @@ export default function Home() {
         {activeChat ? (
         <aside className="flex h-full w-[320px] flex-col overflow-y-auto border-l border-[#E5E5EA] bg-[#FBFBFD] px-4 py-5">
           <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
-              Статус
-            </p>
-            <div className="mt-3 flex items-center justify-end">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                Статус
+              </p>
               <span
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   getStatusBadgeClass(activeChat?.rawStatus)

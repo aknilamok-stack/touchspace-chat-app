@@ -21,6 +21,21 @@ type TicketViewer = {
 
 type ContactType = 'email' | 'phone';
 
+type TicketPageViewPayload = {
+  tradePointId?: string;
+  tradePointName?: string;
+  pageUrl?: string;
+  pagePath?: string;
+  pageTitle?: string;
+  pageName?: string;
+  routeType?: string;
+  entityId?: string;
+  entityName?: string;
+  referrer?: string;
+  timestamp?: string;
+  sourceType?: string;
+};
+
 type ResolvedContactValue = {
   value: string;
   normalizedValue: string;
@@ -397,6 +412,55 @@ export class TicketsService {
     };
   }
 
+  private normalizePageViewString(value?: string | null) {
+    const trimmedValue = value?.trim();
+    return trimmedValue ? trimmedValue : null;
+  }
+
+  private resolvePageViewVisitedAt(timestamp?: string) {
+    const normalizedTimestamp = this.normalizePageViewString(timestamp);
+
+    if (!normalizedTimestamp) {
+      return new Date();
+    }
+
+    const parsedDate = new Date(normalizedTimestamp);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return new Date();
+    }
+
+    return parsedDate;
+  }
+
+  private formatPageViewItem(pageView: {
+    id: string;
+    pageUrl: string;
+    pagePath: string;
+    pageTitle: string | null;
+    pageName: string | null;
+    routeType: string | null;
+    entityId: string | null;
+    entityName: string | null;
+    referrer: string | null;
+    sourceType: string;
+    visitedAt: Date;
+  }) {
+    return {
+      id: pageView.id,
+      pageUrl: pageView.pageUrl,
+      pagePath: pageView.pagePath,
+      pageTitle: pageView.pageTitle,
+      pageName: pageView.pageName,
+      routeType: pageView.routeType,
+      entityId: pageView.entityId,
+      entityName: pageView.entityName,
+      referrer: pageView.referrer,
+      sourceType: pageView.sourceType,
+      visitedAt: pageView.visitedAt.toISOString(),
+    };
+  }
+
   private buildAutoContacts(
     ticket: Awaited<ReturnType<TicketsService['getTicketWithContactsContext']>>,
   ) {
@@ -547,6 +611,143 @@ export class TicketsService {
 
     return {
       items: [...autoContacts, ...manualContactItems],
+    };
+  }
+
+  async getPageViews(ticketId: string, viewer?: TicketViewer) {
+    const ticketWhere = this.buildTicketWhere(viewer);
+
+    if (ticketWhere) {
+      const accessibleTicket = await this.prisma.ticket.findFirst({
+        where: {
+          id: ticketId,
+          ...ticketWhere,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!accessibleTicket) {
+        throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+      }
+    }
+
+    const pageViews = await this.prisma.ticketPageView.findMany({
+      where: {
+        ticketId,
+      },
+      orderBy: {
+        visitedAt: 'desc',
+      },
+      take: 10,
+    });
+
+    return {
+      current: pageViews[0] ? this.formatPageViewItem(pageViews[0]) : null,
+      items: pageViews.map((pageView) => this.formatPageViewItem(pageView)),
+    };
+  }
+
+  async recordPageView(payload: TicketPageViewPayload) {
+    const tradePointId = this.normalizePageViewString(payload.tradePointId);
+    const pageUrl = this.normalizePageViewString(payload.pageUrl);
+    const pagePath = this.normalizePageViewString(payload.pagePath);
+    const pageTitle = this.normalizePageViewString(payload.pageTitle);
+
+    if (!tradePointId || !pageUrl || !pagePath) {
+      throw new BadRequestException(
+        'tradePointId, pageUrl and pagePath are required',
+      );
+    }
+
+    const ticket = await this.prisma.ticket.findFirst({
+      where: {
+        clientId: tradePointId,
+      },
+      orderBy: [
+        { resolvedAt: 'asc' },
+        { lastMessageAt: 'desc' },
+        { updatedAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        clientId: true,
+        tradePointName: true,
+        lastMessageAt: true,
+      },
+    });
+
+    if (!ticket) {
+      return {
+        recorded: false,
+        reason: 'ticket_not_found',
+      };
+    }
+
+    const lastPageView = await this.prisma.ticketPageView.findFirst({
+      where: {
+        ticketId: ticket.id,
+      },
+      orderBy: {
+        visitedAt: 'desc',
+      },
+      select: {
+        pagePath: true,
+        pageTitle: true,
+        visitedAt: true,
+      },
+    });
+
+    const visitedAt = this.resolvePageViewVisitedAt(payload.timestamp);
+
+    if (
+      lastPageView &&
+      lastPageView.pagePath === pagePath &&
+      (lastPageView.pageTitle ?? null) === pageTitle &&
+      visitedAt.getTime() - lastPageView.visitedAt.getTime() <= 3000
+    ) {
+      return {
+        recorded: false,
+        reason: 'duplicate',
+      };
+    }
+
+    const savedPageView = await this.prisma.ticketPageView.create({
+      data: {
+        ticketId: ticket.id,
+        tradePointId,
+        pageUrl,
+        pagePath,
+        pageTitle,
+        pageName: this.normalizePageViewString(payload.pageName),
+        routeType: this.normalizePageViewString(payload.routeType),
+        entityId: this.normalizePageViewString(payload.entityId),
+        entityName: this.normalizePageViewString(payload.entityName),
+        referrer: this.normalizePageViewString(payload.referrer),
+        sourceType:
+          this.normalizePageViewString(payload.sourceType) ?? 'page_view',
+        visitedAt,
+      },
+    });
+
+    const tradePointName = this.normalizePageViewString(payload.tradePointName);
+
+    if (tradePointName && tradePointName !== ticket.tradePointName) {
+      await this.prisma.ticket.update({
+        where: {
+          id: ticket.id,
+        },
+        data: {
+          tradePointName,
+        },
+      });
+    }
+
+    return {
+      recorded: true,
+      ticketId: ticket.id,
+      current: this.formatPageViewItem(savedPageView),
     };
   }
 

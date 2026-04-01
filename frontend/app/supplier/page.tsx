@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
+import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
   clearAuthSession,
   managerAccounts,
@@ -88,6 +89,10 @@ type TicketMessage = TicketMessageApi & {
 
 type ApiTicketContactsResponse = {
   items?: ChatContactItem[];
+};
+type ApiTicketPageViewsResponse = {
+  current?: ChatPageViewItem | null;
+  items?: ChatPageViewItem[];
 };
 type ReplyMeta = {
   replyToId: string;
@@ -693,6 +698,10 @@ export default function SupplierPage() {
   const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState("");
+  const [ticketPageViews, setTicketPageViews] = useState<ChatPageViewItem[]>([]);
+  const [currentPageView, setCurrentPageView] = useState<ChatPageViewItem | null>(null);
+  const [isLoadingPageViews, setIsLoadingPageViews] = useState(false);
+  const [pageViewsError, setPageViewsError] = useState("");
   const supplierMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1099,6 +1108,24 @@ export default function SupplierPage() {
     return Array.isArray(payload.items) ? payload.items : [];
   };
 
+  const fetchTicketPageViews = async (
+    ticketId: string
+  ): Promise<ApiTicketPageViewsResponse> => {
+    const response = await fetch(
+      apiUrl(
+        `/tickets/${ticketId}/page-views?viewerType=supplier&viewerId=${encodeURIComponent(
+          supplierId
+        )}`
+      )
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить историю страниц");
+    }
+
+    return (await response.json()) as ApiTicketPageViewsResponse;
+  };
+
   const syncSupplierRequests = (requests: SupplierRequest[]) => {
     setSupplierRequests((currentRequests) =>
       areRequestsEqual(currentRequests, requests) ? currentRequests : requests
@@ -1242,6 +1269,33 @@ export default function SupplierPage() {
   }, [authReady, selectedRequest?.ticketId]);
 
   useEffect(() => {
+    if (!authReady || !selectedRequest?.ticketId) {
+      setTicketPageViews([]);
+      setCurrentPageView(null);
+      setPageViewsError("");
+      return;
+    }
+
+    const loadPageViews = async () => {
+      setIsLoadingPageViews(true);
+      setPageViewsError("");
+
+      try {
+        const payload = await fetchTicketPageViews(selectedRequest.ticketId);
+        setCurrentPageView(payload.current ?? null);
+        setTicketPageViews(Array.isArray(payload.items) ? payload.items : []);
+      } catch (error) {
+        console.error("Ошибка загрузки истории страниц:", error);
+        setPageViewsError("Не удалось загрузить страницы клиента");
+      } finally {
+        setIsLoadingPageViews(false);
+      }
+    };
+
+    void loadPageViews();
+  }, [authReady, selectedRequest?.ticketId]);
+
+  useEffect(() => {
     setAttachmentName("");
     setSelectedFiles([]);
   }, [selectedRequestId]);
@@ -1314,6 +1368,33 @@ export default function SupplierPage() {
 
     return () => window.clearInterval(intervalId);
   }, [authReady, pinnedRequestIds, selectedRequestId]);
+
+  useEffect(() => {
+    if (!authReady || !selectedRequest?.ticketId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchTicketPageViews(selectedRequest.ticketId)
+        .then((payload) => {
+          const nextCurrent = payload.current ?? null;
+          const nextItems = Array.isArray(payload.items) ? payload.items : [];
+
+          setCurrentPageView((currentValue) =>
+            JSON.stringify(currentValue) === JSON.stringify(nextCurrent) ? currentValue : nextCurrent
+          );
+          setTicketPageViews((currentItems) =>
+            JSON.stringify(currentItems) === JSON.stringify(nextItems) ? currentItems : nextItems
+          );
+          setPageViewsError("");
+        })
+        .catch((error) => {
+          console.error("Ошибка live-обновления истории страниц:", error);
+        });
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, selectedRequest?.ticketId]);
 
   useEffect(() => {
     setSelectedRequestId((currentSelectedRequestId) => {
@@ -1995,6 +2076,14 @@ export default function SupplierPage() {
                     <p className="mt-1 text-[13px] text-[#8E8E93]">
                       Ticket #{selectedRequest.ticketId} • от менеджера {selectedManagerName}
                     </p>
+                    <div className="mt-3 max-w-[520px]">
+                      <PageTrackingCard
+                        current={currentPageView}
+                        items={ticketPageViews}
+                        isLoading={isLoadingPageViews}
+                        error={pageViewsError}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-3">

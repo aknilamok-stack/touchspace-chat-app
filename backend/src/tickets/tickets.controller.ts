@@ -130,6 +130,39 @@ export class TicketsController {
     });
   }
 
+  @Post('page-view')
+  recordPageView(
+    @Body()
+    body: {
+      tradePointId?: string;
+      tradePointName?: string;
+      pageUrl?: string;
+      pagePath?: string;
+      pageTitle?: string;
+      pageName?: string;
+      routeType?: string;
+      entityId?: string;
+      entityName?: string;
+      referrer?: string;
+      timestamp?: string;
+      sourceType?: string;
+    },
+  ) {
+    return this.ticketsService.recordPageView(body);
+  }
+
+  @Get(':id/page-views')
+  getPageViews(
+    @Param('id') id: string,
+    @Query('viewerType') viewerType?: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    return this.ticketsService.getPageViews(id, {
+      viewerType,
+      viewerId,
+    });
+  }
+
   @Post(':id/contacts')
   @UsePipes(
     new ValidationPipe({

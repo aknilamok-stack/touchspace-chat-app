@@ -560,6 +560,14 @@ export default function ClientPage() {
   }, [isEmbeddedWidget]);
 
   useEffect(() => {
+    if (!isEmbeddedWidget || !activeTicket?.id || typeof window === "undefined") {
+      return;
+    }
+
+    window.parent?.postMessage({ type: "touchspace-widget-sync-page-view" }, "*");
+  }, [isEmbeddedWidget, activeTicket?.id]);
+
+  useEffect(() => {
     const savedTicketId = window.localStorage.getItem(clientActiveTicketStorageKey);
 
     if (!savedTicketId) {

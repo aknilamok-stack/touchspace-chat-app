@@ -119,6 +119,7 @@ model Ticket {
   messages                Message[]
   supplierRequests        SupplierRequest[]
   contacts                TicketContact[]
+  pageViews               TicketPageView[]
 }
 
 model ClientVisualIdentity {
@@ -147,6 +148,27 @@ model TicketContact {
   createdByProfile Profile? @relation(fields: [createdByProfileId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, type])
+}
+
+model TicketPageView {
+  id           String   @id @default(cuid())
+  ticketId      String
+  tradePointId  String?
+  pageUrl       String
+  pagePath      String
+  pageTitle     String?
+  pageName      String?
+  routeType     String?
+  entityId      String?
+  entityName    String?
+  referrer      String?
+  sourceType    String   @default("page_view")
+  visitedAt     DateTime @default(now())
+
+  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, visitedAt])
+  @@index([tradePointId, visitedAt])
 }
 
 model Message {

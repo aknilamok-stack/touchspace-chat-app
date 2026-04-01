@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
+import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
   clearAuthSession,
   type ManagerPresence,
@@ -72,6 +73,11 @@ type ApiSupplierRequest = {
 
 type ApiTicketContactsResponse = {
   items?: ChatContactItem[];
+};
+
+type ApiTicketPageViewsResponse = {
+  current?: ChatPageViewItem | null;
+  items?: ChatPageViewItem[];
 };
 
 type ApiTicket = {
@@ -794,6 +800,10 @@ export default function Home() {
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isSavingContacts, setIsSavingContacts] = useState(false);
   const [contactsError, setContactsError] = useState("");
+  const [ticketPageViews, setTicketPageViews] = useState<ChatPageViewItem[]>([]);
+  const [currentPageView, setCurrentPageView] = useState<ChatPageViewItem | null>(null);
+  const [isLoadingPageViews, setIsLoadingPageViews] = useState(false);
+  const [pageViewsError, setPageViewsError] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1170,6 +1180,24 @@ export default function Home() {
 
     const payload = (await response.json()) as ApiTicketContactsResponse;
     return Array.isArray(payload.items) ? payload.items : [];
+  };
+
+  const fetchTicketPageViews = async (
+    ticketId: string
+  ): Promise<ApiTicketPageViewsResponse> => {
+    const response = await fetch(
+      apiUrl(
+        `/tickets/${ticketId}/page-views?viewerType=manager&viewerId=${encodeURIComponent(
+          currentManagerId
+        )}`
+      )
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить историю страниц");
+    }
+
+    return (await response.json()) as ApiTicketPageViewsResponse;
   };
 
   const fetchTyping = async (
@@ -1584,6 +1612,33 @@ export default function Home() {
   }, [authReady, activeChatId, currentManagerId]);
 
   useEffect(() => {
+    if (!authReady || !activeChatId || !currentManagerId) {
+      setTicketPageViews([]);
+      setCurrentPageView(null);
+      setPageViewsError("");
+      return;
+    }
+
+    const loadPageViews = async () => {
+      setIsLoadingPageViews(true);
+      setPageViewsError("");
+
+      try {
+        const payload = await fetchTicketPageViews(activeChatId);
+        setCurrentPageView(payload.current ?? null);
+        setTicketPageViews(Array.isArray(payload.items) ? payload.items : []);
+      } catch (error) {
+        console.error("Ошибка загрузки истории страниц:", error);
+        setPageViewsError("Не удалось загрузить страницы клиента");
+      } finally {
+        setIsLoadingPageViews(false);
+      }
+    };
+
+    void loadPageViews();
+  }, [authReady, activeChatId, currentManagerId]);
+
+  useEffect(() => {
     if (!activeChatId) {
       return;
     }
@@ -1600,6 +1655,33 @@ export default function Home() {
 
     return () => window.clearInterval(intervalId);
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!authReady || !activeChatId || !currentManagerId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchTicketPageViews(activeChatId)
+        .then((payload) => {
+          const nextCurrent = payload.current ?? null;
+          const nextItems = Array.isArray(payload.items) ? payload.items : [];
+
+          setCurrentPageView((currentValue) =>
+            JSON.stringify(currentValue) === JSON.stringify(nextCurrent) ? currentValue : nextCurrent
+          );
+          setTicketPageViews((currentItems) =>
+            JSON.stringify(currentItems) === JSON.stringify(nextItems) ? currentItems : nextItems
+          );
+          setPageViewsError("");
+        })
+        .catch((error) => {
+          console.error("Ошибка live-обновления истории страниц:", error);
+        });
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, activeChatId, currentManagerId]);
 
   const handleAddContact = async (draft: {
     type: "email" | "phone";
@@ -2940,6 +3022,16 @@ export default function Home() {
                   ? `${getChatClientDisplayName(activeChat)} • клиентский диалог`
                   : "Реселлер • клиентский диалог"}
               </p>
+              {activeChat ? (
+                <div className="mt-3 max-w-[520px]">
+                  <PageTrackingCard
+                    current={currentPageView}
+                    items={ticketPageViews}
+                    isLoading={isLoadingPageViews}
+                    error={pageViewsError}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {activeChat ? (

@@ -170,6 +170,160 @@
   var iframeUrl = new URL("/client", baseUrl);
   iframeUrl.searchParams.set("embed", "1");
 
+  function deriveApiBaseUrl() {
+    try {
+      var parsedBaseUrl = new URL(baseUrl);
+
+      if (parsedBaseUrl.hostname.indexOf("app.") === 0) {
+        parsedBaseUrl.hostname = "api." + parsedBaseUrl.hostname.slice(4);
+      }
+
+      if (
+        window.location.protocol === "https:" &&
+        parsedBaseUrl.protocol === "http:" &&
+        parsedBaseUrl.hostname !== "localhost" &&
+        parsedBaseUrl.hostname !== "127.0.0.1"
+      ) {
+        parsedBaseUrl.protocol = "https:";
+      }
+
+      return parsedBaseUrl.toString().replace(/\/$/, "");
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function detectRouteContext(pathname) {
+    var normalizedPath = cleanValue(pathname) || "/";
+    var routeType = "other";
+    var pageName = document.title ? document.title.trim() : "Страница";
+    var entityId = "";
+    var entityName = "";
+
+    if (/^\/personal\/?$/i.test(normalizedPath)) {
+      routeType = "personal";
+      pageName = "Личный кабинет";
+    } else if (/^\/catalog\/?$/i.test(normalizedPath)) {
+      routeType = "catalog";
+      pageName = "Каталог";
+    } else if (/\/(item|product)\//i.test(normalizedPath)) {
+      routeType = "product";
+      pageName = "Карточка товара";
+      var productMatch = normalizedPath.match(/\/(?:item|product)\/(\d+)/i);
+      entityId = productMatch && productMatch[1] ? productMatch[1] : "";
+      entityName = pickFirst(
+        readText("h1"),
+        readText(".page-title"),
+        readText(".product-title"),
+        readText(".detail__title")
+      );
+    } else if (/\/cart/i.test(normalizedPath)) {
+      routeType = "cart";
+      pageName = "Корзина";
+    } else if (/\/order/i.test(normalizedPath)) {
+      routeType = "order";
+      pageName = "Заказ";
+    } else if (/\/brands?/i.test(normalizedPath)) {
+      routeType = "brands";
+      pageName = "Бренды";
+    } else if (/\/samples?/i.test(normalizedPath)) {
+      routeType = "samples";
+      pageName = "Образцы";
+    }
+
+    return {
+      routeType: routeType,
+      pageName: pageName,
+      entityId: entityId,
+      entityName: entityName,
+    };
+  }
+
+  var pageTrackingState = {
+    apiBaseUrl: deriveApiBaseUrl(),
+    lastSignature: "",
+    lastSentAt: 0,
+  };
+
+  function sendPageView() {
+    if (!pageTrackingState.apiBaseUrl || !fallbackTradePointId) {
+      return;
+    }
+
+    var pagePath = cleanValue(
+      window.location.pathname + window.location.search + window.location.hash
+    ) || "/";
+    var pageTitle = cleanValue(document.title);
+    var signature = pagePath + "::" + pageTitle;
+    var now = Date.now();
+
+    if (
+      pageTrackingState.lastSignature === signature &&
+      now - pageTrackingState.lastSentAt <= 3000
+    ) {
+      return;
+    }
+
+    pageTrackingState.lastSignature = signature;
+    pageTrackingState.lastSentAt = now;
+
+    var routeContext = detectRouteContext(window.location.pathname);
+
+    void fetch(pageTrackingState.apiBaseUrl + "/tickets/page-view", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tradePointId: fallbackTradePointId,
+        tradePointName: fallbackTradePointName,
+        pageUrl: window.location.href,
+        pagePath: pagePath,
+        pageTitle: pageTitle,
+        pageName: routeContext.pageName,
+        routeType: routeContext.routeType,
+        entityId: routeContext.entityId || undefined,
+        entityName: routeContext.entityName || undefined,
+        referrer: document.referrer || undefined,
+        timestamp: new Date(now).toISOString(),
+        sourceType: "page_view",
+      }),
+      keepalive: true,
+    }).catch(function () {
+      return undefined;
+    });
+  }
+
+  function installPageTracking() {
+    if (!pageTrackingState.apiBaseUrl || !fallbackTradePointId) {
+      return;
+    }
+
+    sendPageView();
+
+    var originalPushState = history.pushState;
+    var originalReplaceState = history.replaceState;
+
+    history.pushState = function () {
+      var result = originalPushState.apply(history, arguments);
+      window.setTimeout(sendPageView, 0);
+      return result;
+    };
+
+    history.replaceState = function () {
+      var result = originalReplaceState.apply(history, arguments);
+      window.setTimeout(sendPageView, 0);
+      return result;
+    };
+
+    window.addEventListener("popstate", function () {
+      window.setTimeout(sendPageView, 0);
+    });
+    window.addEventListener("hashchange", function () {
+      window.setTimeout(sendPageView, 0);
+    });
+  }
+
   var STORAGE_KEY = "touchspace-widget-layout-v2";
   var DEFAULT_PANEL_WIDTH = 336;
   var DEFAULT_PANEL_HEIGHT = 496;
@@ -226,6 +380,8 @@
     iframeUrl.searchParams.set("phone", String(configuredSuperuserPhone || configuredCurrentUserPhone));
   }
   if (config.platform) iframeUrl.searchParams.set("platform", String(config.platform));
+
+  installPageTracking();
 
   var style = document.createElement("style");
   style.textContent = [
@@ -615,6 +771,11 @@
 
     if (event.data && event.data.type === "touchspace-widget-ready") {
       postVisibilityState();
+      return;
+    }
+
+    if (event.data && event.data.type === "touchspace-widget-sync-page-view") {
+      sendPageView();
       return;
     }
 

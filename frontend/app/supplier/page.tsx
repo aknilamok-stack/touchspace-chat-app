@@ -74,6 +74,7 @@ type TicketMessageApi = {
   senderType: string;
   senderName?: string | null;
   senderProfileId?: string | null;
+  isInternal?: boolean;
   replyToMessageId?: string | null;
   replyToContent?: string | null;
   messageType?: string;
@@ -151,6 +152,7 @@ type SupplierQueueTab = "requires_reply" | "new" | "in_progress" | "completed";
 
 type SupplierRequestCard = {
   request: SupplierRequest;
+  requests: SupplierRequest[];
   queueTab: SupplierQueueTab;
   managerName: string;
   pinned: boolean;
@@ -233,6 +235,7 @@ const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
     replyToMessageId: message.replyToMessageId ?? null,
     replyToContent: message.replyToContent ?? null,
     senderProfileId: message.senderProfileId ?? null,
+    isInternal: Boolean(message.isInternal),
     transport: message.transport ?? null,
     attachment: attachments[0] ?? null,
     attachments,
@@ -318,22 +321,13 @@ const areMessageMapsEqual = (
   return leftKeys.every((key) => areMessagesEqual(left[key] ?? [], right[key] ?? []));
 };
 
-const getVisibleMessagesForRequest = (
-  request: SupplierRequest,
-  messages: TicketMessage[]
-) => {
-  const requestStartedAt = new Date(request.createdAt).getTime();
-
-  return messages.filter((message) => {
-    const messageCreatedAt = new Date(message.createdAt).getTime();
-
-    if (messageCreatedAt < requestStartedAt) {
-      return false;
-    }
-
-    return message.senderType === "client" || message.senderType === "supplier";
-  });
-};
+const getVisibleMessagesForTicket = (messages: TicketMessage[]) =>
+  messages.filter(
+    (message) =>
+      message.senderType === "client" ||
+      message.senderType === "supplier" ||
+      (message.senderType === "manager" && message.isInternal)
+  );
 
 const getSupplierQueueTab = (
   request: SupplierRequest,
@@ -372,21 +366,40 @@ const buildSupplierRequestCards = (
   pinnedRequestIds: string[],
   ticketsById: Record<string, Ticket>
 ) =>
-  requests
-    .map((request) => {
+  Object.values(
+    requests.reduce<Record<string, SupplierRequest[]>>((accumulator, request) => {
+      if (!accumulator[request.ticketId]) {
+        accumulator[request.ticketId] = [];
+      }
+
+      accumulator[request.ticketId].push(request);
+      return accumulator;
+    }, {})
+  )
+    .map((ticketRequests) => {
+      const sortedRequests = [...ticketRequests].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      );
+      const request = sortedRequests[0];
       const requestMessages = ticketMessagesByTicketId[request.ticketId] ?? [];
-      const visibleMessages = getVisibleMessagesForRequest(request, requestMessages);
+      const visibleMessages = getVisibleMessagesForTicket(requestMessages);
       const lastVisibleMessage = visibleMessages[visibleMessages.length - 1] ?? null;
       const ticketStatus = ticketsById[request.ticketId]?.status;
+      const activeRequest =
+        sortedRequests.find(
+          (item) => !["closed", "cancelled", "resolved"].includes(item.status)
+        ) ?? request;
 
       return {
-        request,
-        queueTab: getSupplierQueueTab(request, visibleMessages, ticketStatus),
+        request: activeRequest,
+        requests: sortedRequests,
+        queueTab: getSupplierQueueTab(activeRequest, visibleMessages, ticketStatus),
         managerName:
-          (request.createdByManagerId
-            ? managerNameById[request.createdByManagerId]
+          (activeRequest.createdByManagerId
+            ? managerNameById[activeRequest.createdByManagerId]
             : undefined) ?? "Не указан",
-        pinned: pinnedRequestIds.includes(request.id),
+        pinned: pinnedRequestIds.includes(request.ticketId),
         lastActivityAt: lastVisibleMessage?.createdAt ?? request.createdAt,
         lastVisibleMessage,
         ticket: ticketsById[request.ticketId] ?? null,
@@ -753,6 +766,18 @@ export default function SupplierPage() {
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
+  const selectedTicketRequests = selectedRequest
+    ? supplierRequests
+        .filter((request) => request.ticketId === selectedRequest.ticketId)
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+        )
+    : [];
+  const selectedActiveRequest =
+    selectedTicketRequests.find(
+      (request) => !["closed", "cancelled", "resolved"].includes(request.status)
+    ) ?? selectedRequest;
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;
@@ -820,8 +845,8 @@ export default function SupplierPage() {
   }, []);
 
   const selectedManagerName =
-    (selectedRequest?.createdByManagerId
-      ? managerNameById[selectedRequest.createdByManagerId]
+    (selectedActiveRequest?.createdByManagerId
+      ? managerNameById[selectedActiveRequest.createdByManagerId]
       : undefined) ??
     selectedTicket?.assignedManagerName ??
     "Менеджер";
@@ -833,9 +858,7 @@ export default function SupplierPage() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
-  const visibleSupplierMessages = selectedRequest
-    ? getVisibleMessagesForRequest(selectedRequest, ticketMessages)
-    : [];
+  const visibleSupplierMessages = selectedRequest ? getVisibleMessagesForTicket(ticketMessages) : [];
   const lastClientMessageAtMs = visibleSupplierMessages.reduce<number | null>((latest, message) => {
     if (message.senderType !== "client") {
       return latest;
@@ -984,18 +1007,18 @@ export default function SupplierPage() {
     selectedTicket?.clientName?.trim() ||
     selectedTicket?.clientId?.trim() ||
     selectedTicket?.title?.trim() ||
-    `Ticket #${selectedRequest?.ticketId ?? ""}`;
+    `Ticket #${selectedActiveRequest?.ticketId ?? selectedRequest?.ticketId ?? ""}`;
   const now = Date.now();
   const supplierPanelStatus = selectedRequest
     ? buildSupplierPanelStatus({
-        request: selectedRequest,
+        request: selectedActiveRequest ?? selectedRequest,
         ticketStatus: selectedTicket?.status,
         queueTab: selectedRequestCard?.queueTab,
       })
     : null;
   const supplierSla = selectedRequest
     ? buildSupplierSlaVisual({
-        request: selectedRequest,
+        request: selectedActiveRequest ?? selectedRequest,
         now,
       })
     : null;
@@ -1017,7 +1040,7 @@ export default function SupplierPage() {
 
     return [
       card.request.supplierName,
-      card.request.requestText,
+      ...card.requests.map((request) => request.requestText),
       card.managerName,
       card.request.ticketId,
       ticketsById[card.request.ticketId]?.canonicalEmail ?? "",
@@ -1962,15 +1985,16 @@ export default function SupplierPage() {
 
     try {
       setPinnedRequestIds((currentPinnedRequestIds) => {
-        const isPinned = currentPinnedRequestIds.includes(selectedRequest.id);
+        const ticketId = selectedRequest.ticketId;
+        const isPinned = currentPinnedRequestIds.includes(ticketId);
 
         if (!isPinned && currentPinnedRequestIds.length >= 3) {
           throw new Error("Можно закрепить максимум 3 чата");
         }
 
         const nextPinnedRequestIds = isPinned
-          ? currentPinnedRequestIds.filter((requestId) => requestId !== selectedRequest.id)
-          : [selectedRequest.id, ...currentPinnedRequestIds];
+          ? currentPinnedRequestIds.filter((requestId) => requestId !== ticketId)
+          : [ticketId, ...currentPinnedRequestIds];
 
         writePinnedRequestIds(nextPinnedRequestIds);
         return nextPinnedRequestIds;
@@ -2086,14 +2110,14 @@ export default function SupplierPage() {
   };
 
   const handleResolveTicket = async () => {
-    if (!selectedRequest || !canSupplierMarkResolved) {
+    if (!selectedActiveRequest || !canSupplierMarkResolved) {
       return;
     }
 
     setIsResolvingTicket(true);
 
     try {
-      const response = await fetch(apiUrl(`/supplier-requests/${selectedRequest.id}/status`), {
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/status`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -2110,25 +2134,19 @@ export default function SupplierPage() {
       const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
         fetchSupplierRequests(),
         fetchTicketsMap(supplierId),
-        fetchTicketMessages(selectedRequest.ticketId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
       ]);
 
-      setSupplierRequests((current) =>
-        current.map((request) =>
-          request.id === selectedRequest.id
-            ? updatedRequests.find((item) => item.id === selectedRequest.id) ?? request
-            : request
-        )
-      );
+      syncSupplierRequests(updatedRequests);
       setTicketsById((current) => ({
         ...current,
-        [selectedRequest.ticketId]:
-          updatedTicketsMap[selectedRequest.ticketId] ?? current[selectedRequest.ticketId],
+        [selectedActiveRequest.ticketId]:
+          updatedTicketsMap[selectedActiveRequest.ticketId] ?? current[selectedActiveRequest.ticketId],
       }));
       setTicketMessages(refreshedMessages);
       setTicketMessagesByTicketId((prev) => ({
         ...prev,
-        [selectedRequest.ticketId]: refreshedMessages,
+        [selectedActiveRequest.ticketId]: refreshedMessages,
       }));
       setToast({
         message: "Диалог отмечен как решённый",
@@ -2704,7 +2722,7 @@ export default function SupplierPage() {
                   <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
                     <div className="flex justify-center py-1">
                       <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
-                        {formatMessageDayLabel(selectedRequest.createdAt)}
+                        {formatMessageDayLabel((selectedActiveRequest ?? selectedRequest).createdAt)}
                       </div>
                     </div>
 
@@ -2715,11 +2733,11 @@ export default function SupplierPage() {
                             Запрос менеджера
                           </p>
                           <p className="shrink-0 text-[11px] font-medium text-[#7B8AA0]">
-                            {new Date(selectedRequest.createdAt).toLocaleTimeString()}
+                            {new Date((selectedActiveRequest ?? selectedRequest).createdAt).toLocaleTimeString()}
                           </p>
                         </div>
                         <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
-                          {selectedRequest.requestText}
+                          {(selectedActiveRequest ?? selectedRequest).requestText}
                         </p>
                       </div>
                     </div>
@@ -2865,10 +2883,17 @@ export default function SupplierPage() {
                                   className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                      : message.isInternal
+                                        ? "border border-[#E4D5B7] bg-[#FFF8EE] text-[#6B4F1D] shadow-[0_10px_24px_rgba(193,129,43,0.12)]"
                                       : "border border-[#E6EAF2] bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
                                   }`}
                                 >
                                   <div className="min-w-0 max-w-full">
+                                    {message.isInternal ? (
+                                      <p className="mb-1 text-[11px] font-semibold text-[#C1812B]">
+                                        Комментарий менеджера
+                                      </p>
+                                    ) : null}
                                     {message.replyToContent || replyMap[message.id] ? (
                                       <button
                                         type="button"
@@ -2880,6 +2905,8 @@ export default function SupplierPage() {
                                         className={`mb-2 block min-w-0 max-w-full rounded-[16px] px-2.5 py-2 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
+                                            : message.isInternal
+                                              ? "hover:bg-[#FFF3E3]"
                                             : "hover:bg-[#F2F7FF]"
                                         }`}
                                       >
@@ -2888,6 +2915,8 @@ export default function SupplierPage() {
                                             className={`mt-0.5 h-[20px] w-[3px] shrink-0 rounded-full ${
                                               message.senderType === "supplier"
                                                 ? "bg-white/55"
+                                                : message.isInternal
+                                                  ? "bg-[#C1812B]"
                                                 : "bg-[#0A84FF]"
                                             }`}
                                           />
@@ -2896,6 +2925,8 @@ export default function SupplierPage() {
                                             className={`text-[11px] font-semibold ${
                                               message.senderType === "supplier"
                                                 ? "text-white/78"
+                                                : message.isInternal
+                                                  ? "text-[#C1812B]"
                                                 : "text-[#0A84FF]"
                                             }`}
                                           >
@@ -2905,6 +2936,8 @@ export default function SupplierPage() {
                                             className={`mt-1 line-clamp-2 text-[13px] leading-[18px] [overflow-wrap:break-word] [word-break:normal] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/82"
+                                                : message.isInternal
+                                                  ? "text-[#8A6A35]"
                                                 : "text-[#5A6270]"
                                             }`}
                                           >
@@ -2932,6 +2965,8 @@ export default function SupplierPage() {
                                       className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
+                                          : message.isInternal
+                                            ? "text-[#8B6A33]"
                                           : "text-[#8E8E93]"
                                       }`}
                                     >
@@ -3352,13 +3387,40 @@ export default function SupplierPage() {
                   </p>
                   <div className="mt-4 rounded-[16px] bg-[#FBFBFD] p-4">
                     <p className="text-[15px] leading-7 text-[#1E1E1E]">
-                      {selectedRequest.requestText}
+                      {(selectedActiveRequest ?? selectedRequest).requestText}
                     </p>
                   </div>
                   <div className="mt-4 space-y-2 text-sm text-[#6C6C70]">
                     <p>Менеджер: {selectedManagerName}</p>
-                    <p>Передан: {formatDateTimeLabel(selectedRequest.createdAt)}</p>
+                    <p>Передан: {formatDateTimeLabel((selectedActiveRequest ?? selectedRequest).createdAt)}</p>
                   </div>
+                  {selectedTicketRequests.length > 1 ? (
+                    <div className="mt-4 border-t border-[#EEF0F4] pt-4">
+                      <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                        История запросов
+                      </p>
+                      <div className="mt-3 space-y-3">
+                        {selectedTicketRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="rounded-[14px] border border-[#ECECF1] bg-[#FCFCFD] p-3"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-medium text-[#6C6C70]">
+                                {formatDateTimeLabel(request.createdAt)}
+                              </span>
+                              <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#6C6C70]">
+                                {request.status}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-[#1E1E1E]">
+                              {request.requestText}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {supplierSla ? (

@@ -55,6 +55,7 @@ export class MessagesController {
       inReplyTo?: string;
       references?: string;
       messageType?: string;
+      isInternal?: boolean;
     },
   ) {
     return this.messagesService.create(body);

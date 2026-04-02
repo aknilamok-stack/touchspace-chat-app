@@ -57,6 +57,7 @@ type CreateMessageInput = {
   inReplyTo?: string | null;
   references?: string | null;
   messageType?: string;
+  isInternal?: boolean;
 };
 
 @Injectable()
@@ -257,6 +258,10 @@ export class MessagesService {
     const normalizedMessageType =
       input.messageType?.trim() ||
       (normalizedTransport === 'email' ? 'email' : 'text');
+    const isInternal =
+      senderType === 'manager' &&
+      normalizedTransport === 'chat' &&
+      Boolean(input.isInternal);
 
     let emailMetadata = {
       toEmail: input.toEmail?.trim() || null,
@@ -375,7 +380,7 @@ export class MessagesService {
             messageId: emailMetadata.messageId,
             inReplyTo: emailMetadata.inReplyTo,
             references: emailMetadata.references,
-            isInternal: false,
+            isInternal,
           },
         });
 
@@ -1001,6 +1006,7 @@ export class MessagesService {
         await tx.message.updateMany({
           where: {
             ticketId,
+            ...(viewerType === 'client' ? { isInternal: false } : {}),
             senderType: {
               notIn: [viewerType, 'system'],
             },
@@ -1019,7 +1025,10 @@ export class MessagesService {
       }
 
       const messages = await tx.message.findMany({
-        where: { ticketId },
+        where: {
+          ticketId,
+          ...(viewerType === 'client' ? { isInternal: false } : {}),
+        },
         orderBy: { createdAt: 'asc' },
         include: {
           senderProfile: {

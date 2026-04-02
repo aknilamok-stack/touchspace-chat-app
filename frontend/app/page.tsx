@@ -62,6 +62,7 @@ type ApiMessage = {
   toEmail?: string | null;
   fromEmail?: string | null;
   subject?: string | null;
+  isInternal?: boolean;
   status: string;
   createdAt: string;
 };
@@ -137,6 +138,7 @@ type ChatMessage = {
   text: string;
   messageType?: string;
   transport?: string;
+  isInternal?: boolean;
   from: MessageRole;
   senderProfileId?: string | null;
   senderName?: string | null;
@@ -573,6 +575,7 @@ const formatMessage = (msg: ApiMessage): ChatMessage => {
     toEmail: msg.toEmail ?? null,
     fromEmail: msg.fromEmail ?? null,
     subject: msg.subject ?? null,
+    isInternal: Boolean(msg.isInternal),
     attachment: attachments[0] ?? null,
     attachments,
   };
@@ -893,10 +896,13 @@ export default function Home() {
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(suppliers[0]);
   const [supplierRequestText, setSupplierRequestText] = useState("");
+  const [supplierFollowUpText, setSupplierFollowUpText] = useState("");
   const [isLoadingSupplierRequests, setIsLoadingSupplierRequests] = useState(false);
   const [supplierRequestsError, setSupplierRequestsError] = useState("");
   const [isCreatingSupplierRequest, setIsCreatingSupplierRequest] = useState(false);
+  const [isSendingSupplierFollowUp, setIsSendingSupplierFollowUp] = useState(false);
   const [createSupplierRequestError, setCreateSupplierRequestError] = useState("");
+  const [supplierFollowUpError, setSupplierFollowUpError] = useState("");
   const [isTogglingPinned, setIsTogglingPinned] = useState(false);
   const [isClaimingIncoming, setIsClaimingIncoming] = useState(false);
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
@@ -966,6 +972,10 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const activeSupplierRequest =
+    activeChat?.supplierRequests.find(
+      (request) => !["closed", "cancelled", "resolved"].includes(request.status)
+    ) ?? null;
   const hasOpenSupplierRequest = Boolean(
     activeChat?.supplierRequests.some(
       (request) =>
@@ -2899,6 +2909,12 @@ export default function Home() {
 
   const handleCreateSupplierRequest = async () => {
     if (!supplierRequestText.trim() || !activeChatId) return;
+    if (hasOpenSupplierRequest) {
+      setCreateSupplierRequestError(
+        "У поставщика уже есть активный запрос. Для уточнения используйте внутренний комментарий."
+      );
+      return;
+    }
 
     setIsCreatingSupplierRequest(true);
     setCreateSupplierRequestError("");
@@ -2949,6 +2965,8 @@ export default function Home() {
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
 
       setSupplierRequestText("");
+      setSupplierFollowUpText("");
+      setSupplierFollowUpError("");
       setSelectedSupplier(suppliers[0]);
       setIsSupplierFormOpen(false);
     } catch (error) {
@@ -2956,6 +2974,63 @@ export default function Home() {
       setCreateSupplierRequestError("Не удалось создать запрос поставщику");
     } finally {
       setIsCreatingSupplierRequest(false);
+    }
+  };
+
+  const handleSendSupplierFollowUp = async () => {
+    if (!activeChatId || !activeSupplierRequest || !supplierFollowUpText.trim()) {
+      return;
+    }
+
+    setIsSendingSupplierFollowUp(true);
+    setSupplierFollowUpError("");
+
+    try {
+      const response = await fetch(apiUrl("/messages"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ticketId: activeChatId,
+          content: supplierFollowUpText.trim(),
+          senderType: "manager",
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+          isInternal: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(
+            response,
+            "Не удалось отправить внутренний комментарий поставщику"
+          )
+        );
+      }
+
+      const [messages, supplierRequests] = await Promise.all([
+        fetchMessages(activeChatId),
+        fetchSupplierRequests(activeChatId),
+      ]);
+
+      applyMessagesToTicket(activeChatId, messages);
+      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      setSupplierFollowUpText("");
+      setToast({
+        message: "Комментарий отправлен поставщику и скрыт от клиента",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка отправки комментария поставщику:", error);
+      setSupplierFollowUpError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось отправить внутренний комментарий поставщику"
+      );
+    } finally {
+      setIsSendingSupplierFollowUp(false);
     }
   };
 
@@ -4017,7 +4092,9 @@ export default function Home() {
                         <div className="inline-flex max-w-full flex-col">
                           <div
                             className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
-                              message.from === "manager"
+                              message.from === "manager" && message.isInternal
+                                ? "border border-[#E4D5B7] bg-[#FFF8EE] text-[#6B4F1D] shadow-[0_10px_24px_rgba(193,129,43,0.12)]"
+                                : message.from === "manager"
                                 ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
                                 : message.from === "ai"
                                   ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
@@ -4029,11 +4106,12 @@ export default function Home() {
                             }`}
                           >
                             <div className="min-w-0 max-w-full">
-                            {message.from === "ai" || message.from === "supplier" ? (
+                            {message.from === "ai" || message.from === "supplier" || message.isInternal ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
                                 {message.from === "supplier" &&
                                   `Поставщик: ${message.senderName || "Поставщик"}`}
+                                {message.isInternal && "Внутренний комментарий поставщику"}
                               </p>
                             ) : null}
                             {message.replyToContent || replyMap[message.id] ? (
@@ -4092,7 +4170,9 @@ export default function Home() {
                               <div
                                 className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                   message.from === "manager"
-                                    ? "text-white/65"
+                                    ? message.isInternal
+                                      ? "text-[#8B6A33]"
+                                      : "text-white/65"
                                     : message.from === "ai"
                                       ? "text-[#4C6A92]"
                                       : "text-[#8E8E93]"
@@ -4764,56 +4844,107 @@ export default function Home() {
 
             <button
               onClick={() => setIsSupplierFormOpen(!isSupplierFormOpen)}
-              className="w-full rounded-2xl bg-[#0A84FF] py-3 text-sm font-medium text-white"
+              className={`w-full rounded-2xl py-3 text-sm font-medium text-white ${
+                hasOpenSupplierRequest ? "bg-[#A0A7B4]" : "bg-[#0A84FF]"
+              }`}
             >
-              {isSupplierFormOpen ? "Скрыть форму" : "Запросить поставщика"}
+              {isSupplierFormOpen
+                ? "Скрыть форму"
+                : hasOpenSupplierRequest
+                  ? "Активный запрос уже открыт"
+                  : "Запросить поставщика"}
             </button>
 
             {isSupplierFormOpen && (
               <div className="mt-4 space-y-3 border-t border-[#F0F0F2] pt-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
-                    Поставщик
-                  </label>
-                  <select
-                    value={selectedSupplier}
-                    onChange={(e) => setSelectedSupplier(e.target.value)}
-                    className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm outline-none"
-                  >
-                    {suppliers.map((supplier) => (
-                      <option key={supplier} value={supplier}>
-                        {supplier}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {activeSupplierRequest ? (
+                  <>
+                    <div className="rounded-[18px] border border-[#E8ECF3] bg-[#F8FAFD] p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                        Активный запрос
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-[#1E1E1E]">
+                        {activeSupplierRequest.supplierName}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#5A6270]">
+                        {activeSupplierRequest.requestText}
+                      </p>
+                    </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
-                    Комментарий
-                  </label>
-                  <textarea
-                    value={supplierRequestText}
-                    onChange={(e) => setSupplierRequestText(e.target.value)}
-                    className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] px-3 py-3 text-sm outline-none"
-                    placeholder="Например: подтвердите наличие и срок поставки по заказу..."
-                  />
-                </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Напомнить или уточнить поставщику
+                      </label>
+                      <textarea
+                        value={supplierFollowUpText}
+                        onChange={(e) => setSupplierFollowUpText(e.target.value)}
+                        className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] px-3 py-3 text-sm outline-none"
+                        placeholder="Например: клиент ждёт ответ сегодня до 16:00. Это сообщение увидит только поставщик."
+                      />
+                      <p className="mt-2 text-xs text-[#8E8E93]">
+                        Это внутренний комментарий. Клиент его не увидит.
+                      </p>
+                    </div>
 
-                <button
-                  onClick={handleCreateSupplierRequest}
-                  disabled={isCreatingSupplierRequest}
-                  className="w-full bg-[#111827] text-white rounded-xl py-3 font-medium"
-                >
-                  {isCreatingSupplierRequest
-                    ? "Отправляем..."
-                    : "Отправить запрос поставщику"}
-                </button>
+                    <button
+                      onClick={handleSendSupplierFollowUp}
+                      disabled={isSendingSupplierFollowUp}
+                      className="w-full rounded-xl bg-[#C1812B] py-3 font-medium text-white"
+                    >
+                      {isSendingSupplierFollowUp
+                        ? "Отправляем..."
+                        : "Отправить комментарий поставщику"}
+                    </button>
 
-                {createSupplierRequestError && (
-                  <p className="text-sm text-red-500">
-                    {createSupplierRequestError}
-                  </p>
+                    {supplierFollowUpError ? (
+                      <p className="text-sm text-red-500">{supplierFollowUpError}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Поставщик
+                      </label>
+                      <select
+                        value={selectedSupplier}
+                        onChange={(e) => setSelectedSupplier(e.target.value)}
+                        className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm outline-none"
+                      >
+                        {suppliers.map((supplier) => (
+                          <option key={supplier} value={supplier}>
+                            {supplier}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Комментарий
+                      </label>
+                      <textarea
+                        value={supplierRequestText}
+                        onChange={(e) => setSupplierRequestText(e.target.value)}
+                        className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] px-3 py-3 text-sm outline-none"
+                        placeholder="Например: подтвердите наличие и срок поставки по заказу..."
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleCreateSupplierRequest}
+                      disabled={isCreatingSupplierRequest}
+                      className="w-full rounded-xl bg-[#111827] py-3 font-medium text-white"
+                    >
+                      {isCreatingSupplierRequest
+                        ? "Отправляем..."
+                        : "Отправить запрос поставщику"}
+                    </button>
+
+                    {createSupplierRequestError && (
+                      <p className="text-sm text-red-500">{createSupplierRequestError}</p>
+                    )}
+                  </>
                 )}
               </div>
             )}

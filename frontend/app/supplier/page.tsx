@@ -68,6 +68,7 @@ type SupplierRequest = {
   firstResponseAt?: string | null;
   responseTime?: number | null;
   responseBreached?: boolean;
+  closedAt?: string | null;
   createdAt: string;
 };
 
@@ -370,24 +371,15 @@ const getVisibleMessagesForTicket = (
   requests: SupplierRequest[],
   messages: TicketMessage[]
 ) => {
-  const earliestRequestCreatedAt = requests.reduce<number | null>((earliest, request) => {
-    const requestTimestamp = new Date(request.createdAt).getTime();
-
-    if (!Number.isFinite(requestTimestamp)) {
-      return earliest;
-    }
-
-    return earliest === null ? requestTimestamp : Math.min(earliest, requestTimestamp);
-  }, null);
+  const sortedRequests = [...requests].sort(
+    (left, right) =>
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+  );
 
   return messages.filter((message) => {
     const messageCreatedAt = new Date(message.createdAt).getTime();
 
-    if (
-      earliestRequestCreatedAt !== null &&
-      Number.isFinite(messageCreatedAt) &&
-      messageCreatedAt < earliestRequestCreatedAt
-    ) {
+    if (!Number.isFinite(messageCreatedAt)) {
       return false;
     }
 
@@ -402,15 +394,51 @@ const getVisibleMessagesForTicket = (
       message.displayContent.startsWith("Поставщик ") &&
       message.displayContent.includes("взял запрос в работу");
 
+    const isSupplierResolvedSystemMessage =
+      message.senderType === "system" &&
+      (message.displayContent === "Диалог решён" ||
+        message.content.includes('переведён в статус "Решён"'));
+
     if (isDuplicatedSupplierRequestSystemMessage || isSupplierClaimSystemMessage) {
       return false;
     }
 
+    const fallsIntoVisibleRequestWindow = sortedRequests.some((request, index) => {
+      const requestStartedAt = new Date(request.createdAt).getTime();
+      const nextRequestStartedAt =
+        index < sortedRequests.length - 1
+          ? new Date(sortedRequests[index + 1].createdAt).getTime()
+          : Number.POSITIVE_INFINITY;
+
+      if (
+        !Number.isFinite(requestStartedAt) ||
+        messageCreatedAt < requestStartedAt ||
+        messageCreatedAt >= nextRequestStartedAt
+      ) {
+        return false;
+      }
+
+      const requestClosedAt = request.closedAt ? new Date(request.closedAt).getTime() : null;
+
+      if (
+        typeof requestClosedAt === "number" &&
+        Number.isFinite(requestClosedAt) &&
+        messageCreatedAt > requestClosedAt
+      ) {
+        return isSupplierResolvedSystemMessage && messageCreatedAt - requestClosedAt <= 10_000;
+      }
+
+      return true;
+    });
+
     return (
-      message.senderType === "client" ||
-      message.senderType === "supplier" ||
-      message.senderType === "system" ||
-      (message.senderType === "manager" && message.isInternal)
+      fallsIntoVisibleRequestWindow &&
+      (
+        message.senderType === "client" ||
+        message.senderType === "supplier" ||
+        message.senderType === "system" ||
+        (message.senderType === "manager" && message.isInternal)
+      )
     );
   });
 };

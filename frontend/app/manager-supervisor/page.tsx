@@ -37,6 +37,7 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
+const managerSupervisorPowerStorageKey = "touchspace_manager_supervisor_power_enabled";
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
 type ReplyMeta = {
@@ -863,6 +864,7 @@ export default function Home() {
   const [authReady, setAuthReady] = useState(false);
   const [currentManagerId, setCurrentManagerId] = useState("");
   const [currentManagerName, setCurrentManagerName] = useState("");
+  const [managerSupervisorPowerEnabled, setManagerSupervisorPowerEnabled] = useState(true);
   const [currentManagerStatus, setCurrentManagerStatus] =
     useState<ManagerPresence>("online");
   const [isManagerMenuOpen, setIsManagerMenuOpen] = useState(false);
@@ -1320,6 +1322,11 @@ export default function Home() {
     setCurrentManagerName(nextManagerName);
     setManagerStatuses({});
     setCurrentManagerStatus("online");
+    if (typeof window !== "undefined") {
+      setManagerSupervisorPowerEnabled(
+        window.localStorage.getItem(managerSupervisorPowerStorageKey) !== "0"
+      );
+    }
     setAuthReady(true);
   }, [router]);
 
@@ -1368,7 +1375,8 @@ export default function Home() {
   };
 
   const refreshNotificationCandidates = useCallback(async () => {
-    if (!currentManagerId) {
+    if (!currentManagerId || !managerSupervisorPowerEnabled) {
+      setNotificationCandidates([]);
       return;
     }
 
@@ -1378,7 +1386,7 @@ export default function Home() {
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений:", error);
     }
-  }, [currentManagerId]);
+  }, [currentManagerId, managerSupervisorPowerEnabled]);
 
   const syncMessagesForTickets = useCallback(
     async (ticketIds: string[]) => {
@@ -1587,6 +1595,9 @@ export default function Home() {
     currentManagerName.trim() ||
     managerAccounts.find((account) => account.id === currentManagerId)?.name ||
     "Менеджер";
+  const managerSupervisorPowerLabel = managerSupervisorPowerEnabled
+    ? "Активен"
+    : "Отключён";
 
   const isChatMine = useCallback(
     (chat: ChatItem) => {
@@ -1745,9 +1756,11 @@ export default function Home() {
           fetchManagerStatuses().catch(
             (): Record<string, ManagerPresence> => ({})
           ),
-          fetchManagerNotificationCandidates().catch(
-            (): NotificationCandidate[] => []
-          ),
+          managerSupervisorPowerEnabled
+            ? fetchManagerNotificationCandidates().catch(
+                (): NotificationCandidate[] => []
+              )
+            : Promise.resolve([] as NotificationCandidate[]),
         ]);
 
         setManagerStatuses(remoteStatuses);
@@ -1761,7 +1774,7 @@ export default function Home() {
     };
 
     void loadInitialTickets();
-  }, [authReady, currentManagerId, syncMessagesForTickets]);
+  }, [authReady, currentManagerId, managerSupervisorPowerEnabled, syncMessagesForTickets]);
 
   useEffect(() => {
     if (!deepLinkTicketId || chatData.length === 0) {
@@ -1787,9 +1800,11 @@ export default function Home() {
             fetchManagerStatuses().catch(
               (): Record<string, ManagerPresence> => ({})
             ),
-            fetchManagerNotificationCandidates().catch(
-              (): NotificationCandidate[] => []
-            ),
+            managerSupervisorPowerEnabled
+              ? fetchManagerNotificationCandidates().catch(
+                  (): NotificationCandidate[] => []
+                )
+              : Promise.resolve([] as NotificationCandidate[]),
           ]);
 
           setManagerStatuses(remoteStatuses);
@@ -1816,7 +1831,17 @@ export default function Home() {
     }, 2000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, activeChatId, currentManagerId, syncMessagesForTickets]);
+  }, [authReady, activeChatId, currentManagerId, managerSupervisorPowerEnabled, syncMessagesForTickets]);
+
+  useEffect(() => {
+    if (managerSupervisorPowerEnabled) {
+      return;
+    }
+
+    setNotificationCandidates([]);
+    lastNotificationAtRef.current = {};
+    lastNotificationMessageIdRef.current = {};
+  }, [managerSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (!authReady || !currentManagerId || !currentManagerName) {
@@ -2267,6 +2292,10 @@ export default function Home() {
       }
     });
 
+    if (!managerSupervisorPowerEnabled) {
+      return;
+    }
+
     notificationCandidates.forEach((candidate) => {
       const notificationTitle = `Клиент: ${
         candidate.title || candidate.clientName || "неизвестный клиент"
@@ -2294,7 +2323,7 @@ export default function Home() {
         ticketId: candidate.ticketId,
       });
     });
-  }, [notificationCandidates, authReady]);
+  }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2310,7 +2339,7 @@ export default function Home() {
       titleFlashIntervalRef.current = null;
     }
 
-    if (notificationCandidates.length === 0) {
+    if (!managerSupervisorPowerEnabled || notificationCandidates.length === 0) {
       document.title = defaultDocumentTitleRef.current;
       return;
     }
@@ -2331,7 +2360,7 @@ export default function Home() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [notificationCandidates]);
+  }, [notificationCandidates, managerSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (!showQuickReplies && !showEmojiPicker) {
@@ -2539,6 +2568,15 @@ export default function Home() {
     const hasTextToSend = Boolean(messageText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
     const isEmailMode = sendMode === "email";
+
+    if (!managerSupervisorPowerEnabled) {
+      setToast({
+        message:
+          "Молния выключена. Вы можете читать диалоги, но отправка сообщений и уведомления отключены.",
+        tone: "info",
+      });
+      return;
+    }
 
     if (editTarget) {
       if (!hasTextToSend || !activeChatId) {
@@ -3086,6 +3124,21 @@ export default function Home() {
     setIsManagerMenuOpen(false);
   };
 
+  const handleToggleManagerSupervisorPower = () => {
+    setManagerSupervisorPowerEnabled((prev) => {
+      const nextValue = !prev;
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          managerSupervisorPowerStorageKey,
+          nextValue ? "1" : "0"
+        );
+      }
+
+      return nextValue;
+    });
+  };
+
   const handleTogglePinned = async () => {
     if (!activeChatId) return;
 
@@ -3393,38 +3446,77 @@ export default function Home() {
             </div>
 
             <div ref={managerMenuRef} className="relative mt-4">
-              <button
-                onClick={() => setIsManagerMenuOpen((prev) => !prev)}
-                className="flex w-full items-center gap-2.5 rounded-[16px] border border-[#E9EAF0] bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#DCE7FF] hover:bg-[#FCFDFF]"
-              >
-                <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF6FF]">
-                  <Image
-                    src="/icons/menedger.svg"
-                    alt="Менеджер"
-                    width={16}
-                    height={16}
-                    className="h-4 w-4"
-                    style={{
-                      filter:
-                        "brightness(0) saturate(100%) invert(38%) sepia(98%) saturate(2437%) hue-rotate(204deg) brightness(102%) contrast(101%)",
-                    }}
-                  />
-                  <span
-                    className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${managerStatusDots[currentManagerStatus]}`}
-                  />
+              <div className="rounded-[16px] border border-[#E9EAF0] bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                <button
+                  onClick={() => setIsManagerMenuOpen((prev) => !prev)}
+                  className="flex w-full items-center gap-2.5 transition hover:opacity-90"
+                >
+                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF6FF]">
+                    <Image
+                      src="/icons/menedger.svg"
+                      alt="Менеджер"
+                      width={16}
+                      height={16}
+                      className="h-4 w-4"
+                      style={{
+                        filter:
+                          "brightness(0) saturate(100%) invert(38%) sepia(98%) saturate(2437%) hue-rotate(204deg) brightness(102%) contrast(101%)",
+                      }}
+                    />
+                    <span
+                      className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${managerStatusDots[currentManagerStatus]}`}
+                    />
+                  </div>
+
+                  <div className="min-w-0 flex-1 text-left leading-none">
+                    <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
+                      {resolvedCurrentManagerName}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#8E8E93]">
+                      {managerStatusLabels[currentManagerStatus]}
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 text-[11px] text-[#AEAEB2]">▾</span>
+                </button>
+
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#EEF0F4] pt-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                      Режим ответа
+                    </p>
+                    <p className="mt-1 text-[12px] text-[#6C6C70]">
+                      {managerSupervisorPowerEnabled
+                        ? "Уведомления и отправка сообщений включены"
+                        : "Только чтение без уведомлений"}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleManagerSupervisorPower}
+                    className={`relative inline-flex h-8 w-[62px] shrink-0 items-center rounded-full px-1 transition ${
+                      managerSupervisorPowerEnabled ? "bg-[#34C759]" : "bg-[#D1D1D6]"
+                    }`}
+                    aria-label="Переключить режим ответа управленца"
+                    aria-pressed={managerSupervisorPowerEnabled}
+                  >
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full bg-white text-[14px] shadow-[0_4px_10px_rgba(15,23,42,0.16)] transition ${
+                        managerSupervisorPowerEnabled
+                          ? "translate-x-[30px] text-[#F5C542]"
+                          : "translate-x-0 text-[#9A9AA1]"
+                      }`}
+                    >
+                      ⚡
+                    </span>
+                  </button>
                 </div>
 
-                <div className="min-w-0 flex-1 text-left leading-none">
-                  <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
-                    {resolvedCurrentManagerName}
-                  </p>
-                  <p className="mt-1 text-[11px] text-[#8E8E93]">
-                    {managerStatusLabels[currentManagerStatus]}
-                  </p>
-                </div>
-
-                <span className="shrink-0 text-[11px] text-[#AEAEB2]">▾</span>
-              </button>
+                <p className="mt-2 text-[11px] font-medium text-[#8E8E93]">
+                  Молния: {managerSupervisorPowerLabel}
+                </p>
+              </div>
 
               {isManagerMenuOpen ? (
                 <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[210px] rounded-[18px] border border-[#E5E5EA] bg-white p-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
@@ -4470,6 +4562,7 @@ export default function Home() {
                     <textarea
                       ref={composerTextareaRef}
                       value={messageText}
+                      disabled={!managerSupervisorPowerEnabled}
                       onBlur={() => {
                         window.setTimeout(() => {
                           const activeElement = document.activeElement;
@@ -4490,7 +4583,7 @@ export default function Home() {
                         const nextValue = e.target.value;
                         setMessageText(nextValue);
 
-                        if (activeChatId && nextValue.trim()) {
+                        if (managerSupervisorPowerEnabled && activeChatId && nextValue.trim()) {
                           emitManagerTyping(activeChatId);
                         }
                       }}
@@ -4537,6 +4630,7 @@ export default function Home() {
                         }
 
                         if (
+                          managerSupervisorPowerEnabled &&
                           activeChatId &&
                           e.key.length === 1 &&
                           !e.ctrlKey &&
@@ -4554,7 +4648,9 @@ export default function Home() {
                       rows={1}
                       className="min-h-[40px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
                       placeholder={
-                        sendMode === "email"
+                        !managerSupervisorPowerEnabled
+                          ? "Режим ответа выключен: доступно только чтение"
+                          : sendMode === "email"
                           ? "Напишите email клиенту..."
                           : "Напишите сообщение..."
                       }
@@ -4634,6 +4730,7 @@ export default function Home() {
                     }}
                     onMouseEnter={() => setHoveredComposerAction("quick")}
                     onMouseLeave={() => setHoveredComposerAction(null)}
+                    disabled={!managerSupervisorPowerEnabled}
                     className={`relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition ${
                       showQuickReplies ? "bg-[#E5F0FF]" : "bg-transparent hover:bg-[#E5F0FF]"
                     }`}
@@ -4666,6 +4763,7 @@ export default function Home() {
                     }}
                     onMouseEnter={() => setHoveredComposerAction("emoji")}
                     onMouseLeave={() => setHoveredComposerAction(null)}
+                    disabled={!managerSupervisorPowerEnabled}
                     className={`relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition ${
                       showEmojiPicker ? "bg-[#E5F0FF]" : "bg-transparent hover:bg-[#E5F0FF]"
                     }`}
@@ -4691,6 +4789,7 @@ export default function Home() {
 
                   <button
                     onClick={() => fileInputRef.current?.click()}
+                    disabled={!managerSupervisorPowerEnabled}
                     onMouseEnter={() => setHoveredComposerAction("file")}
                     onMouseLeave={() => setHoveredComposerAction(null)}
                     className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition hover:bg-[#E5F0FF]"
@@ -4720,6 +4819,7 @@ export default function Home() {
                     type="file"
                     multiple
                     accept={CHAT_ATTACHMENT_ACCEPT}
+                    disabled={!managerSupervisorPowerEnabled}
                     className="hidden"
                     onChange={(event) => {
                       const files = Array.from(event.target.files ?? []);
@@ -4753,7 +4853,10 @@ export default function Home() {
 
                 <button
                   onClick={handleSendMessage}
-                  disabled={!messageText.trim() && selectedFiles.length === 0}
+                  disabled={
+                    !managerSupervisorPowerEnabled ||
+                    (!messageText.trim() && selectedFiles.length === 0)
+                  }
                   onMouseEnter={() => setHoveredComposerAction("send")}
                   onMouseLeave={() => setHoveredComposerAction(null)}
                   className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -4772,6 +4875,11 @@ export default function Home() {
                   ) : null}
                 </button>
               </div>
+              {!managerSupervisorPowerEnabled ? (
+                <p className="mt-3 text-sm text-[#8E8E93]">
+                  Молния выключена: управленец может читать диалоги, но не получает уведомления и не может писать.
+                </p>
+              ) : null}
                 </>
               )}
             </div>

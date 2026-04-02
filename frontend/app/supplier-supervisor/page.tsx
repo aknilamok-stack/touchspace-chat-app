@@ -32,6 +32,7 @@ import {
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
 const supplierReplyMapStorageKey = "touchspace_supplier_reply_map";
+const supplierSupervisorPowerStorageKey = "touchspace_supplier_supervisor_power_enabled";
 const supplierStatusLabels: Record<ManagerPresence, string> = {
   online: "В сети",
   break: "На перерыве",
@@ -834,6 +835,7 @@ export default function SupplierPage() {
   const [supplierProfileId, setSupplierProfileId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierEmployeeName, setSupplierEmployeeName] = useState("");
+  const [supplierSupervisorPowerEnabled, setSupplierSupervisorPowerEnabled] = useState(true);
   const [supplierStatus, setSupplierStatus] = useState<ManagerPresence>("online");
   const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
@@ -1019,6 +1021,9 @@ export default function SupplierPage() {
     : resolvedSupplierEmployeeName !== supplierCompanyName
       ? `${resolvedSupplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
       : supplierStatusLabels[supplierStatus];
+  const supplierSupervisorPowerLabel = supplierSupervisorPowerEnabled
+    ? "Активен"
+    : "Отключён";
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
     status: managerStatuses[manager.id] ?? "offline",
@@ -1414,6 +1419,25 @@ export default function SupplierPage() {
     window.localStorage.setItem(supplierStatusStorageKey, status);
   };
 
+  const readSupplierSupervisorPower = () => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+
+    return window.localStorage.getItem(supplierSupervisorPowerStorageKey) !== "0";
+  };
+
+  const writeSupplierSupervisorPower = (enabled: boolean) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      supplierSupervisorPowerStorageKey,
+      enabled ? "1" : "0"
+    );
+  };
+
   const readPinnedRequestIds = () => {
     if (typeof window === "undefined") {
       return [];
@@ -1613,13 +1637,18 @@ export default function SupplierPage() {
   };
 
   const refreshNotificationCandidates = useCallback(async () => {
+    if (!supplierSupervisorPowerEnabled) {
+      setNotificationCandidates([]);
+      return;
+    }
+
     try {
       const candidates = await fetchSupplierNotificationCandidates();
       setNotificationCandidates(candidates);
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений поставщика:", error);
     }
-  }, [supplierProfileId]);
+  }, [supplierProfileId, supplierSupervisorPowerEnabled]);
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
@@ -1712,6 +1741,7 @@ export default function SupplierPage() {
     setSupplierProfileId(session.userId ?? resolvedSupplierId);
     setSupplierName(resolvedSupplierCompanyName);
     setSupplierEmployeeName(resolvedSupplierEmployeeName);
+    setSupplierSupervisorPowerEnabled(readSupplierSupervisorPower());
     writeSupplierStatus("online");
     setAuthReady(true);
     setSupplierStatus("online");
@@ -1943,6 +1973,11 @@ export default function SupplierPage() {
       return;
     }
 
+    if (!supplierSupervisorPowerEnabled) {
+      setNotificationCandidates([]);
+      return;
+    }
+
     void refreshNotificationCandidates();
 
     const intervalId = window.setInterval(() => {
@@ -1950,7 +1985,17 @@ export default function SupplierPage() {
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, refreshNotificationCandidates, supplierProfileId]);
+  }, [authReady, refreshNotificationCandidates, supplierProfileId, supplierSupervisorPowerEnabled]);
+
+  useEffect(() => {
+    if (supplierSupervisorPowerEnabled) {
+      return;
+    }
+
+    setNotificationCandidates([]);
+    lastNotificationAtRef.current = {};
+    lastNotificationMessageIdRef.current = {};
+  }, [supplierSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (!authReady || !selectedRequest?.ticketId) {
@@ -2114,6 +2159,10 @@ export default function SupplierPage() {
       }
     });
 
+    if (!supplierSupervisorPowerEnabled) {
+      return;
+    }
+
     notificationCandidates.forEach((candidate) => {
       const notificationTitle =
         candidate.kind === "request"
@@ -2143,7 +2192,7 @@ export default function SupplierPage() {
         requestId: candidate.requestId,
       });
     });
-  }, [notificationCandidates, authReady]);
+  }, [notificationCandidates, authReady, supplierSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2159,7 +2208,7 @@ export default function SupplierPage() {
       titleFlashIntervalRef.current = null;
     }
 
-    if (notificationCandidates.length === 0) {
+    if (!supplierSupervisorPowerEnabled || notificationCandidates.length === 0) {
       document.title = defaultDocumentTitleRef.current;
       return;
     }
@@ -2180,7 +2229,7 @@ export default function SupplierPage() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [notificationCandidates]);
+  }, [notificationCandidates, supplierSupervisorPowerEnabled]);
 
   useEffect(() => {
     setEditTarget(null);
@@ -2231,6 +2280,14 @@ export default function SupplierPage() {
     setSupplierStatus(status);
     writeSupplierStatus(status);
     setIsSupplierMenuOpen(false);
+  };
+
+  const handleToggleSupplierSupervisorPower = () => {
+    setSupplierSupervisorPowerEnabled((prev) => {
+      const nextValue = !prev;
+      writeSupplierSupervisorPower(nextValue);
+      return nextValue;
+    });
   };
 
   const handleTogglePinned = async () => {
@@ -2484,6 +2541,13 @@ export default function SupplierPage() {
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
 
+    if (!supplierSupervisorPowerEnabled) {
+      setReplyError(
+        "Молния выключена. Вы можете читать диалоги, но отправка сообщений и уведомления отключены."
+      );
+      return;
+    }
+
     if (
       !selectedRequest ||
       (!hasTextToSend && !hasAttachmentToSend) ||
@@ -2682,38 +2746,77 @@ export default function SupplierPage() {
           </p>
 
           <div ref={supplierMenuRef} className="relative mt-4">
-            <button
-              onClick={() => setIsSupplierMenuOpen((prev) => !prev)}
-              className="flex w-full items-center gap-2.5 rounded-[16px] border border-[#E9EAF0] bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#DCE7FF] hover:bg-[#FCFDFF]"
-            >
-              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF6FF]">
-                <Image
-                  src="/icons/menedger.svg"
-                  alt="Поставщик"
-                  width={16}
-                  height={16}
-                  className="h-4 w-4"
-                  style={{
-                    filter:
-                      "brightness(0) saturate(100%) invert(38%) sepia(98%) saturate(2437%) hue-rotate(204deg) brightness(102%) contrast(101%)",
-                  }}
-                />
-                <span
-                  className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${supplierStatusDots[supplierStatus]}`}
-                />
+            <div className="rounded-[16px] border border-[#E9EAF0] bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+              <button
+                onClick={() => setIsSupplierMenuOpen((prev) => !prev)}
+                className="flex w-full items-center gap-2.5 transition hover:opacity-90"
+              >
+                <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF6FF]">
+                  <Image
+                    src="/icons/menedger.svg"
+                    alt="Поставщик"
+                    width={16}
+                    height={16}
+                    className="h-4 w-4"
+                    style={{
+                      filter:
+                        "brightness(0) saturate(100%) invert(38%) sepia(98%) saturate(2437%) hue-rotate(204deg) brightness(102%) contrast(101%)",
+                    }}
+                  />
+                  <span
+                    className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${supplierStatusDots[supplierStatus]}`}
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1 text-left leading-none">
+                  <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
+                    {supplierCompanyName}
+                  </p>
+                  <p className="mt-0.5 truncate text-[11px] text-[#8E8E93]">
+                    {supplierProfileSubtitle}
+                  </p>
+                </div>
+
+                <span className="shrink-0 text-[11px] text-[#AEAEB2]">▾</span>
+              </button>
+
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#EEF0F4] pt-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                    Режим ответа
+                  </p>
+                  <p className="mt-1 text-[12px] text-[#6C6C70]">
+                    {supplierSupervisorPowerEnabled
+                      ? "Уведомления и отправка сообщений включены"
+                      : "Только чтение без уведомлений"}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleToggleSupplierSupervisorPower}
+                  className={`relative inline-flex h-8 w-[62px] shrink-0 items-center rounded-full px-1 transition ${
+                    supplierSupervisorPowerEnabled ? "bg-[#34C759]" : "bg-[#D1D1D6]"
+                  }`}
+                  aria-label="Переключить режим ответа управленца поставщика"
+                  aria-pressed={supplierSupervisorPowerEnabled}
+                >
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full bg-white text-[14px] shadow-[0_4px_10px_rgba(15,23,42,0.16)] transition ${
+                      supplierSupervisorPowerEnabled
+                        ? "translate-x-[30px] text-[#F5C542]"
+                        : "translate-x-0 text-[#9A9AA1]"
+                    }`}
+                  >
+                    ⚡
+                  </span>
+                </button>
               </div>
 
-              <div className="min-w-0 flex-1 text-left leading-none">
-                <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
-                  {supplierCompanyName}
-                </p>
-                <p className="mt-0.5 truncate text-[11px] text-[#8E8E93]">
-                  {supplierProfileSubtitle}
-                </p>
-              </div>
-
-              <span className="shrink-0 text-[11px] text-[#AEAEB2]">▾</span>
-            </button>
+              <p className="mt-2 text-[11px] font-medium text-[#8E8E93]">
+                Молния: {supplierSupervisorPowerLabel}
+              </p>
+            </div>
 
             {isSupplierMenuOpen ? (
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[210px] rounded-[18px] border border-[#E5E5EA] bg-white p-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
@@ -3484,6 +3587,7 @@ export default function SupplierPage() {
                         <textarea
                           ref={composerTextareaRef}
                           value={replyText}
+                          disabled={!supplierSupervisorPowerEnabled}
                           onChange={(event) => setReplyText(event.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
@@ -3493,7 +3597,11 @@ export default function SupplierPage() {
                           }}
                           rows={1}
                           className="min-h-[40px] max-h-[132px] w-full resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                          placeholder="Напишите сообщение..."
+                          placeholder={
+                            !supplierSupervisorPowerEnabled
+                              ? "Режим ответа выключен: доступно только чтение"
+                              : "Напишите сообщение..."
+                          }
                         />
                       </div>
 
@@ -3567,6 +3675,7 @@ export default function SupplierPage() {
                           }}
                           onMouseEnter={() => setHoveredComposerAction("quick")}
                           onMouseLeave={() => setHoveredComposerAction(null)}
+                          disabled={!supplierSupervisorPowerEnabled}
                           className={`relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition ${
                             showQuickReplies
                               ? "bg-[#E5F0FF]"
@@ -3600,6 +3709,7 @@ export default function SupplierPage() {
                           }}
                           onMouseEnter={() => setHoveredComposerAction("emoji")}
                           onMouseLeave={() => setHoveredComposerAction(null)}
+                          disabled={!supplierSupervisorPowerEnabled}
                           className={`relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition ${
                             showEmojiPicker
                               ? "bg-[#E5F0FF]"
@@ -3628,6 +3738,7 @@ export default function SupplierPage() {
 
                         <button
                           onClick={() => fileInputRef.current?.click()}
+                          disabled={!supplierSupervisorPowerEnabled}
                           onMouseEnter={() => setHoveredComposerAction("file")}
                           onMouseLeave={() => setHoveredComposerAction(null)}
                           className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition hover:bg-[#E5F0FF]"
@@ -3657,6 +3768,7 @@ export default function SupplierPage() {
                           type="file"
                           multiple
                           accept={CHAT_ATTACHMENT_ACCEPT}
+                          disabled={!supplierSupervisorPowerEnabled}
                           className="hidden"
                           onChange={(event) => {
                             const files = Array.from(event.target.files ?? []);
@@ -3687,7 +3799,11 @@ export default function SupplierPage() {
 
                       <button
                         onClick={handleSendReply}
-                        disabled={isSendingReply || (!replyText.trim() && selectedFiles.length === 0)}
+                        disabled={
+                          !supplierSupervisorPowerEnabled ||
+                          isSendingReply ||
+                          (!replyText.trim() && selectedFiles.length === 0)
+                        }
                         onMouseEnter={() => setHoveredComposerAction("send")}
                         onMouseLeave={() => setHoveredComposerAction(null)}
                         className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -3704,9 +3820,15 @@ export default function SupplierPage() {
                             Отправить
                           </div>
                           ) : null}
-                        </button>
+                      </button>
                       </div>
                       </>
+                    ) : null}
+
+                    {!supplierSupervisorPowerEnabled ? (
+                      <p className="mt-3 text-sm text-[#8E8E93]">
+                        Молния выключена: управленец может читать диалоги, но не получает уведомления и не может писать.
+                      </p>
                     ) : null}
 
                     {replyError ? (

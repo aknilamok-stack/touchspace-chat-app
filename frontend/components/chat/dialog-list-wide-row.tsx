@@ -15,6 +15,7 @@ type DialogListWideRowProps = {
   statusLabel: string;
   statusBadgeClassName: string;
   channelLabel: string;
+  channelHref?: string;
   topicLabel: string;
   onClick: () => void;
 };
@@ -32,6 +33,7 @@ export function DialogListWideRow({
   statusLabel,
   statusBadgeClassName,
   channelLabel,
+  channelHref,
   topicLabel,
   onClick,
 }: DialogListWideRowProps) {
@@ -59,7 +61,7 @@ export function DialogListWideRow({
         </div>
 
         <div className="min-w-0">
-          <p className="truncate text-[18px] font-semibold leading-[1.2] text-[#1E1E1E]">{title}</p>
+          <p className="truncate text-[16px] font-semibold leading-[1.2] text-[#1E1E1E]">{title}</p>
           <div className="mt-1 flex items-center justify-between gap-3 text-[13px] text-[#8E8E93]">
             <p className="truncate">{managerLabel}</p>
             <span className="shrink-0">{lastMessageTimeLabel || "—"}</span>
@@ -77,16 +79,29 @@ export function DialogListWideRow({
 
       <div>
         <span
-          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold ${statusBadgeClassName}`}
+          className={`inline-flex min-h-[32px] items-center justify-center rounded-full px-3 py-1 text-center text-[12px] font-semibold leading-[1.2] ${statusBadgeClassName}`}
         >
           {statusLabel}
         </span>
       </div>
 
       <div>
-        <p className="truncate text-[13px] text-[#1E1E1E]" title={channelLabel}>
-          {channelLabel}
-        </p>
+        {channelHref && channelLabel !== "—" ? (
+          <a
+            href={channelHref}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="block truncate text-[13px] text-[#0A84FF] underline decoration-[#B9D6FF] underline-offset-2 transition hover:text-[#0077F2]"
+            title={channelLabel}
+          >
+            {channelLabel}
+          </a>
+        ) : (
+          <p className="truncate text-[13px] text-[#1E1E1E]" title={channelLabel}>
+            {channelLabel}
+          </p>
+        )}
       </div>
 
       <div>

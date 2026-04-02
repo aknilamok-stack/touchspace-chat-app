@@ -812,6 +812,16 @@ const getChannelLabel = (chat: ChatItem) => {
   return cyclePageView?.pageUrl?.trim() || cyclePageView?.pagePath?.trim() || "—";
 };
 
+const getChannelHref = (chat: ChatItem) => {
+  const cycleBoundary = getDialogCycleBoundary(chat);
+  const cyclePageView =
+    (cycleBoundary
+      ? chat.pageViews.find((item) => new Date(item.visitedAt).getTime() > cycleBoundary)
+      : null) ?? chat.pageViews[0] ?? null;
+
+  return cyclePageView?.pageUrl?.trim() || cyclePageView?.pagePath?.trim() || "";
+};
+
 const getFirstResponseWaitLabel = (chat: ChatItem) => {
   if (typeof chat.firstResponseTime === "number" && chat.firstResponseTime >= 0) {
     return formatDuration(chat.firstResponseTime);
@@ -3721,6 +3731,7 @@ export default function Home() {
                           statusLabel={chatTone.label}
                           statusBadgeClassName={chatTone.pill}
                           channelLabel={getChannelLabel(chat)}
+                          channelHref={getChannelHref(chat)}
                           topicLabel={getTopicMessage(chat)}
                         />
                       );

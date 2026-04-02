@@ -162,7 +162,7 @@ type Ticket = {
   invitedManagerNames?: string[];
 };
 
-type SupplierQueueTab = "requires_reply" | "new" | "in_progress" | "completed";
+type SupplierQueueTab = "new" | "in_progress" | "completed";
 
 type SupplierRequestCard = {
   request: SupplierRequest;
@@ -272,12 +272,6 @@ const supplierQueueTabs: Array<{
   activeClassName: string;
   badgeClassName: string;
 }> = [
-  {
-    id: "requires_reply",
-    label: "Требует ответа",
-    activeClassName: "bg-[#FF6B6B] text-white shadow-[0_10px_22px_rgba(255,107,107,0.24)]",
-    badgeClassName: "bg-[#FFE6E6] text-[#D63E3E]",
-  },
   {
     id: "new",
     label: "Новые",
@@ -412,27 +406,24 @@ const getSupplierQueueTab = (
   visibleMessages: TicketMessage[],
   ticketStatus?: string
 ): SupplierQueueTab => {
-  if (
-    ticketStatus === "resolved" ||
-    request.status === "closed" ||
-    request.status === "cancelled" ||
-    request.status === "resolved"
-  ) {
+  const isRequestClosed = ["closed", "cancelled", "resolved"].includes(request.status);
+
+  if (ticketStatus === "resolved" || isRequestClosed) {
     return "completed";
   }
 
+  const requestCreatedAt = new Date(request.createdAt).getTime();
+  const requestMessages = visibleMessages.filter((message) => {
+    const messageCreatedAt = new Date(message.createdAt).getTime();
+    return !Number.isFinite(requestCreatedAt) || messageCreatedAt >= requestCreatedAt;
+  });
+
   const hasSupplierReply =
-    visibleMessages.some((message) => message.senderType === "supplier") ||
+    requestMessages.some((message) => message.senderType === "supplier") ||
     Boolean(request.firstResponseAt);
 
   if (!hasSupplierReply) {
     return "new";
-  }
-
-  const lastVisibleMessage = visibleMessages[visibleMessages.length - 1];
-
-  if (lastVisibleMessage?.senderType === "client") {
-    return "requires_reply";
   }
 
   return "in_progress";
@@ -539,14 +530,6 @@ const getSupplierCardPreview = (card: SupplierRequestCard) => {
 };
 
 const getSupplierCardTone = (queueTab: SupplierQueueTab) => {
-  if (queueTab === "requires_reply") {
-    return {
-      dot: "bg-[#FF6B6B]",
-      pill: "bg-[#FFE6E6] text-[#D63E3E]",
-      label: "Требует ответа",
-    };
-  }
-
   if (queueTab === "new") {
     return {
       dot: "bg-[#0A84FF]",
@@ -648,9 +631,9 @@ const buildSupplierPanelStatus = ({
     };
   }
 
-  if (queueTab === "requires_reply" || queueTab === "new") {
+  if (queueTab === "new") {
     return {
-      label: "Требует ответа",
+      label: "Новый запрос",
       badgeClassName: "bg-[#FFE7E7] text-[#D64545]",
       cardClassName: "border-[#FFD3D3] bg-[#FFF8F8]",
       accentClassName: "bg-[#FF3B30]",
@@ -761,7 +744,7 @@ export default function SupplierPage() {
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
   const [pinnedRequestIds, setPinnedRequestIds] = useState<string[]>([]);
   const [ticketsById, setTicketsById] = useState<Record<string, Ticket>>({});
-  const [activeQueueTab, setActiveQueueTab] = useState<SupplierQueueTab>("requires_reply");
+  const [activeQueueTab, setActiveQueueTab] = useState<SupplierQueueTab>("new");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
   const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
@@ -1078,7 +1061,7 @@ export default function SupplierPage() {
         null
       : null;
   const supplierEmptyState =
-    activeQueueTab === "requires_reply" || activeQueueTab === "new"
+    activeQueueTab === "new"
       ? {
           imageSrc: "/icons/vhodyshie.webp",
           title: "Новые обращения",
@@ -1155,7 +1138,6 @@ export default function SupplierPage() {
       return accumulator;
     },
     {
-      requires_reply: 0,
       new: 0,
       in_progress: 0,
       completed: 0,
@@ -2609,7 +2591,7 @@ export default function SupplierPage() {
                   <DialogListCard
                   key={card.request.id}
                     active={selectedRequestId === card.request.id}
-                    emphasized={card.queueTab === "requires_reply" || card.queueTab === "new"}
+                    emphasized={card.queueTab === "new"}
                     onClick={() => {
                       setIsChatPaneDismissed(false);
                       setSelectedRequestId(card.request.id);

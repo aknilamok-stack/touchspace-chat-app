@@ -952,11 +952,14 @@ export default function SupplierPage() {
     "Менеджер";
   const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
   const supplierEmployeeName = supplierName?.trim() || "Поставщик";
-  const supplierHeaderTitle =
-    supplierEmployeeName &&
-    supplierEmployeeName.toLowerCase() !== supplierCompanyName.toLowerCase()
-      ? `${supplierCompanyName} / ${supplierEmployeeName}`
-      : supplierCompanyName;
+  const supplierHeaderTitle = selectedRequest
+    ? `${supplierCompanyName} / ${selectedManagerName}`
+    : supplierCompanyName;
+  const supplierProfileSubtitle = selectedRequest
+    ? `${selectedManagerName} • ${supplierStatusLabels[supplierStatus]}`
+    : supplierEmployeeName !== supplierCompanyName
+      ? `${supplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
+      : supplierStatusLabels[supplierStatus];
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
     status: managerStatuses[manager.id] ?? "offline",
@@ -2556,9 +2559,7 @@ export default function SupplierPage() {
                   {supplierCompanyName}
                 </p>
                 <p className="mt-0.5 truncate text-[11px] text-[#8E8E93]">
-                  {supplierEmployeeName !== supplierCompanyName
-                    ? `${supplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
-                    : supplierStatusLabels[supplierStatus]}
+                  {supplierProfileSubtitle}
                 </p>
               </div>
 

@@ -3327,11 +3327,6 @@ export default function SupplierPage() {
                         <p className="text-center text-sm font-semibold text-[#1E1E1E]">
                           Новый запрос ожидает ответа
                         </p>
-                        <p className="mt-2 text-center text-xs leading-5 text-[#6A7687]">
-                          Нажмите кнопку ниже, чтобы взять диалог в работу. После этого чат
-                          закрепится за вами, а SLA остановится только после первого ответа
-                          клиенту.
-                        </p>
                         <button
                           type="button"
                           onClick={handleTakeRequestInWork}

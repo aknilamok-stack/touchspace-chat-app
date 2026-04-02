@@ -911,6 +911,9 @@ export default function SupplierPage() {
       : undefined) ??
     selectedTicket?.assignedManagerName ??
     "Менеджер";
+  const supplierHeaderTitle = selectedRequest
+    ? `${supplierName} / ${selectedManagerName}`
+    : supplierName;
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
     status: managerStatuses[manager.id] ?? "offline",
@@ -2443,7 +2446,7 @@ export default function SupplierPage() {
             TouchSpace
           </p>
           <h1 className="mt-2 text-[22px] font-semibold text-[#1E1E1E]">
-            {supplierName}
+            {supplierHeaderTitle}
           </h1>
           <p className="mt-1 text-[13px] text-[#8E8E93]">
             Очередь обращений

@@ -2393,10 +2393,6 @@ export default function SupplierPage() {
         return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
       });
       setActiveQueueTab("in_progress");
-      setToast({
-        message: "Диалог взят в работу. SLA остановится после первого ответа клиенту.",
-        tone: "info",
-      });
     } catch (error) {
       console.error("Ошибка взятия диалога в работу:", error);
       setReplyError(

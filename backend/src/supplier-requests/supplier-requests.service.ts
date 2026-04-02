@@ -167,14 +167,32 @@ export class SupplierRequestsService {
   }
 
   async updateStatus(id: string, input: UpdateSupplierRequestStatusDto) {
+    let resolvedAssignedSupplierProfileName =
+      input.assignedSupplierProfileName?.trim() || null;
+
     if (input.assignedSupplierProfileId?.trim()) {
-      await this.profilesService.ensureProfile({
-        id: input.assignedSupplierProfileId.trim(),
-        fullName:
-          input.assignedSupplierProfileName?.trim() ||
-          input.assignedSupplierProfileId.trim(),
-        role: 'supplier',
+      const normalizedAssignedSupplierProfileId =
+        input.assignedSupplierProfileId.trim();
+      const existingSupplierProfile = await this.prisma.profile.findUnique({
+        where: { id: normalizedAssignedSupplierProfileId },
+        select: {
+          id: true,
+          fullName: true,
+        },
       });
+
+      if (existingSupplierProfile?.fullName?.trim()) {
+        resolvedAssignedSupplierProfileName =
+          existingSupplierProfile.fullName.trim();
+      } else {
+        await this.profilesService.ensureProfile({
+          id: normalizedAssignedSupplierProfileId,
+          fullName:
+            resolvedAssignedSupplierProfileName ||
+            normalizedAssignedSupplierProfileId,
+          role: 'supplier',
+        });
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -192,8 +210,7 @@ export class SupplierRequestsService {
       const nextStatus = input.status;
       const assignedSupplierProfileId =
         input.assignedSupplierProfileId?.trim() || null;
-      const assignedSupplierProfileName =
-        input.assignedSupplierProfileName?.trim() || null;
+      const assignedSupplierProfileName = resolvedAssignedSupplierProfileName;
 
       if (
         nextStatus === 'in_progress' &&

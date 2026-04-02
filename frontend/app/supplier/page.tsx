@@ -389,7 +389,13 @@ const getVisibleMessagesForTicket = (
       typeof message.displayContent === "string" &&
       message.displayContent.startsWith("Запрошен поставщик:");
 
-    if (isDuplicatedSupplierRequestSystemMessage) {
+    const isSupplierClaimSystemMessage =
+      message.senderType === "system" &&
+      typeof message.displayContent === "string" &&
+      message.displayContent.startsWith("Поставщик ") &&
+      message.displayContent.includes("взял запрос в работу");
+
+    if (isDuplicatedSupplierRequestSystemMessage || isSupplierClaimSystemMessage) {
       return false;
     }
 

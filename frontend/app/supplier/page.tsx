@@ -774,6 +774,7 @@ export default function SupplierPage() {
   const [supplierId, setSupplierId] = useState("");
   const [supplierProfileId, setSupplierProfileId] = useState("");
   const [supplierName, setSupplierName] = useState("");
+  const [supplierEmployeeName, setSupplierEmployeeName] = useState("");
   const [supplierStatus, setSupplierStatus] = useState<ManagerPresence>("online");
   const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
@@ -950,14 +951,14 @@ export default function SupplierPage() {
     selectedTicket?.assignedManagerName ??
     "Менеджер";
   const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
-  const supplierEmployeeName = supplierName?.trim() || "Поставщик";
+  const resolvedSupplierEmployeeName = supplierEmployeeName?.trim() || "Поставщик";
   const supplierHeaderTitle = selectedRequest
     ? `${supplierCompanyName} / ${selectedManagerName}`
     : supplierCompanyName;
   const supplierProfileSubtitle = selectedRequest
     ? `${selectedManagerName} • ${supplierStatusLabels[supplierStatus]}`
-    : supplierEmployeeName !== supplierCompanyName
-      ? `${supplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
+    : resolvedSupplierEmployeeName !== supplierCompanyName
+      ? `${resolvedSupplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
       : supplierStatusLabels[supplierStatus];
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
@@ -1118,7 +1119,7 @@ export default function SupplierPage() {
 
     const syncPresence = async (status: ManagerPresence) => {
       try {
-        await updateSupplierPresence(supplierProfileId, supplierName, status);
+        await updateSupplierPresence(supplierProfileId, resolvedSupplierEmployeeName, status);
       } catch (error) {
         console.error("Ошибка синхронизации статуса поставщика:", error);
       }
@@ -1135,7 +1136,7 @@ export default function SupplierPage() {
     }, 15_000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, supplierName, supplierProfileId, supplierStatus]);
+  }, [authReady, resolvedSupplierEmployeeName, supplierProfileId, supplierStatus]);
 
   const selectedRequestCard =
     selectedRequest
@@ -1638,9 +1639,20 @@ export default function SupplierPage() {
       return;
     }
 
-    setSupplierId(session.supplierId);
-    setSupplierProfileId(session.userId ?? session.supplierId);
-    setSupplierName(session.supplierName ?? session.fullName ?? "Поставщик");
+    const resolvedSupplierId = session.supplierId;
+    const resolvedSupplierCompanyName = formatSupplierCompanyName(
+      resolvedSupplierId,
+      session.supplierName ?? session.fullName ?? "Поставщик"
+    );
+    const resolvedSupplierEmployeeName =
+      session.fullName?.trim() ||
+      session.supplierName?.trim() ||
+      resolvedSupplierCompanyName;
+
+    setSupplierId(resolvedSupplierId);
+    setSupplierProfileId(session.userId ?? resolvedSupplierId);
+    setSupplierName(resolvedSupplierCompanyName);
+    setSupplierEmployeeName(resolvedSupplierEmployeeName);
     writeSupplierStatus("online");
     setAuthReady(true);
     setSupplierStatus("online");
@@ -2373,7 +2385,7 @@ export default function SupplierPage() {
         body: JSON.stringify({
           status: "in_progress",
           assignedSupplierProfileId: supplierProfileId,
-          assignedSupplierProfileName: supplierName,
+          assignedSupplierProfileName: resolvedSupplierEmployeeName,
         }),
       });
 
@@ -2472,7 +2484,7 @@ export default function SupplierPage() {
             content: replyText,
             senderType: "supplier",
             senderId: supplierProfileId,
-            senderName: supplierName,
+            senderName: resolvedSupplierEmployeeName,
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
           }),
@@ -2494,7 +2506,7 @@ export default function SupplierPage() {
         formData.append("ticketId", selectedRequest.ticketId);
         formData.append("senderType", "supplier");
         formData.append("senderId", supplierProfileId);
-        formData.append("senderName", supplierName);
+        formData.append("senderName", resolvedSupplierEmployeeName);
         if (replyTarget?.id) {
           formData.append("replyToMessageId", replyTarget.id);
           formData.append("replyToContent", getReplyPreviewContent(replyTarget));

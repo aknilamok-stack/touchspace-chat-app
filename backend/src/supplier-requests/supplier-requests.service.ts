@@ -38,8 +38,10 @@ export class SupplierRequestsService {
     assignedSupplierProfileName?: string | null,
   ) {
     const employeeName = assignedSupplierProfileName?.trim();
+    const normalizedSupplierName = supplierName.trim().toLowerCase();
+    const normalizedEmployeeName = employeeName?.toLowerCase();
 
-    return employeeName
+    return employeeName && normalizedEmployeeName !== normalizedSupplierName
       ? `Поставщик ${supplierName} / ${employeeName} взял запрос в работу`
       : `Поставщик ${supplierName} взял запрос в работу`;
   }

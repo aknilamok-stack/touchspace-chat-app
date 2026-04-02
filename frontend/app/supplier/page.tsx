@@ -3796,22 +3796,6 @@ export default function SupplierPage() {
                   isLoading={isLoadingContacts}
                   error={contactsError}
                 />
-
-                <div className="rounded-[18px] border border-[#E5E5EA] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
-                    Контекст
-                  </p>
-                  <div className="mt-4 space-y-3 text-sm text-[#6C6C70]">
-                    <div className="flex items-start justify-between gap-4">
-                      <span>Клиент</span>
-                      <span className="text-right text-[#1E1E1E]">{selectedClientLabel}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-4">
-                      <span>Обращение</span>
-                      <span className="text-right text-[#1E1E1E]">#{selectedRequest.ticketId}</span>
-                    </div>
-                  </div>
-                </div>
               </aside>
             </>
           ) : (

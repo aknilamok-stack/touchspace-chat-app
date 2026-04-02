@@ -35,6 +35,7 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
   "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
 };
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
+const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 20_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
@@ -977,6 +978,20 @@ export default function Home() {
     activeChat?.superuserEmail?.trim() ||
     "";
   const isAllOverview = filter === "all" && !activeChat;
+  const currentPageViewAgeMs = currentPageView?.visitedAt
+    ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
+    : null;
+  const clientIsOnSite =
+    typeof currentPageViewAgeMs === "number" &&
+    Number.isFinite(currentPageViewAgeMs) &&
+    currentPageViewAgeMs >= 0 &&
+    currentPageViewAgeMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
+  const shouldShowClientOfflineHint =
+    Boolean(activeChat) &&
+    sendMode === "chat" &&
+    !isLoadingPageViews &&
+    !pageViewsError &&
+    !clientIsOnSite;
   const clearReplyHoverTimeout = useCallback(() => {
     if (replyHoverTimeoutRef.current !== null) {
       window.clearTimeout(replyHoverTimeoutRef.current);
@@ -4594,6 +4609,9 @@ export default function Home() {
                   ) : null}
                 </button>
               </div>
+              {shouldShowClientOfflineHint ? (
+                <p className="mt-3 text-xs text-[#8E8E93]">Пользователь не на сайте</p>
+              ) : null}
                 </>
               )}
             </div>

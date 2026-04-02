@@ -51,6 +51,7 @@ const QUICK_REPLIES = [
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
+const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 20_000;
 
 type SupplierRequest = {
   id: string;
@@ -752,6 +753,19 @@ export default function SupplierPage() {
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
+  const currentPageViewAgeMs = currentPageView?.visitedAt
+    ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
+    : null;
+  const clientIsOnSite =
+    typeof currentPageViewAgeMs === "number" &&
+    Number.isFinite(currentPageViewAgeMs) &&
+    currentPageViewAgeMs >= 0 &&
+    currentPageViewAgeMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
+  const shouldShowClientOfflineHint =
+    Boolean(selectedRequest) &&
+    !isLoadingPageViews &&
+    !pageViewsError &&
+    !clientIsOnSite;
   const clearReplyHoverTimeout = useCallback(() => {
     if (replyHoverTimeoutRef.current !== null) {
       window.clearTimeout(replyHoverTimeoutRef.current);
@@ -3050,6 +3064,7 @@ export default function SupplierPage() {
                     ) : null}
 
                     {!isSupplierDialogResolved ? (
+                      <>
                       <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                       <div className="min-w-0 flex-1">
                         <textarea
@@ -3274,9 +3289,13 @@ export default function SupplierPage() {
                           <div className="absolute bottom-[calc(100%+10px)] right-0 z-20 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                             Отправить
                           </div>
-                        ) : null}
-                      </button>
-                    </div>
+                          ) : null}
+                        </button>
+                      </div>
+                      {shouldShowClientOfflineHint ? (
+                        <p className="mt-3 text-xs text-[#8E8E93]">Пользователь не на сайте</p>
+                      ) : null}
+                      </>
                     ) : null}
 
                     {replyError ? (

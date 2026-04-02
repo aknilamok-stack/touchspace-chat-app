@@ -3719,41 +3719,21 @@ export default function Home() {
                           ) : null}
                         </button>
 
-                        <div
-                          className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
-                            message.messageType === "email" && message.from === "manager"
-                              ? "border border-[#CFE0FF] bg-[linear-gradient(135deg,#F5F9FF_0%,#E9F2FF_100%)] text-[#0B3B78] shadow-[0_10px_24px_rgba(10,132,255,0.12)]"
-                              : message.messageType === "email"
-                                ? "border border-[#F1DFC7] bg-[linear-gradient(135deg,#FFFDF8_0%,#FFF4E8_100%)] text-[#533816] shadow-[0_12px_28px_rgba(191,132,56,0.12)]"
-                              : message.from === "manager"
-                              ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                              : message.from === "ai"
-                                ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
-                              : message.from === "client"
-                                ? "border border-[#E6EAF2] bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
-                                : message.from === "supplier"
-                                  ? "bg-[#EAF8EF] text-[#166534]"
-                                  : "bg-[#EFEFF4] text-[#1E1E1E]"
-                          }`}
-                        >
-                          <div className="min-w-0 max-w-full">
-                            {message.messageType === "email" ? (
-                              <div className="mb-2 rounded-[16px] border border-black/5 bg-white/55 px-3 py-2 text-[12px] leading-5">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
-                                    Email
-                                  </span>
-                                  {message.subject ? (
-                                    <span className="font-medium">{message.subject}</span>
-                                  ) : null}
-                                </div>
-                                <p className="mt-1 text-[11px] opacity-75">
-                                  {message.from === "manager"
-                                    ? `Кому: ${message.toEmail || "email не указан"}`
-                                    : `От: ${message.fromEmail || "email не указан"}`}
-                                </p>
-                              </div>
-                            ) : null}
+                        <div className="inline-flex max-w-full flex-col">
+                          <div
+                            className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
+                              message.from === "manager"
+                                ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                : message.from === "ai"
+                                  ? "border border-[#D9E8FF] bg-[#EFF6FF] text-[#0B3B78]"
+                                  : message.from === "client"
+                                    ? "border border-[#E6EAF2] bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
+                                    : message.from === "supplier"
+                                      ? "bg-[#EAF8EF] text-[#166534]"
+                                      : "bg-[#EFEFF4] text-[#1E1E1E]"
+                            }`}
+                          >
+                            <div className="min-w-0 max-w-full">
                             {message.from === "ai" || message.from === "supplier" ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
@@ -3814,18 +3794,30 @@ export default function Home() {
                                 {message.text}
                               </p>
                             )}
-                            <div
-                              className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
-                                message.from === "manager" && message.messageType !== "email"
-                                  ? "text-white/65"
-                                  : message.from === "ai"
-                                    ? "text-[#4C6A92]"
-                                    : "text-[#8E8E93]"
-                              }`}
-                            >
-                              {message.time ? <p className="shrink-0">{message.time}</p> : null}
+                              <div
+                                className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
+                                  message.from === "manager"
+                                    ? "text-white/65"
+                                    : message.from === "ai"
+                                      ? "text-[#4C6A92]"
+                                      : "text-[#8E8E93]"
+                                }`}
+                              >
+                                {message.time ? <p className="shrink-0">{message.time}</p> : null}
+                              </div>
                             </div>
                           </div>
+                          {message.messageType === "email" ? (
+                            <p
+                              className={`mt-2 px-1 text-[13px] leading-5 text-[#98A2B3] ${
+                                message.from === "manager" ? "text-right" : "text-left"
+                              }`}
+                            >
+                              {message.from === "manager"
+                                ? "отправлено email"
+                                : "получено email"}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>

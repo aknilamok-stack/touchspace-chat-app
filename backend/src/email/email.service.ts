@@ -150,7 +150,6 @@ export class EmailService {
       to: toEmail,
       subject,
       text: this.buildPlainTextBody(params.content, ticket.id),
-      html: this.buildHtmlBody(params.content, ticket.id),
       inReplyTo: inReplyTo ?? undefined,
       references: references ?? undefined,
       headers: {
@@ -367,33 +366,22 @@ export class EmailService {
   }
 
   private buildTicketSubject(ticketTitle: string | null, ticketId: string) {
-    const normalizedTitle = ticketTitle?.trim() || 'Диалог TouchSpace';
-    const marker = `ticket ${ticketId}`;
-    const prefix = 'TouchSpace Chat: ';
-    const suffix = ` • ${marker}`;
-    const maxTitleLength = Math.max(191 - prefix.length - suffix.length, 0);
+    const normalizedTitle = ticketTitle?.trim() || 'Новое сообщение';
+    const marker = `[TouchSpace #ticket_${ticketId}]`;
+    const maxTitleLength = Math.max(191 - marker.length - 1, 0);
     const safeTitle = normalizedTitle.slice(0, maxTitleLength).trim();
 
-    return `${prefix}${safeTitle || 'Новое сообщение'}${suffix}`;
+    return `${safeTitle || 'Новое сообщение'} ${marker}`;
   }
 
   private buildPlainTextBody(content: string, ticketId: string) {
-    return `${content.trim()}\n\n---\nС уважением,\nTouchSpace Chat\n\nИдентификатор переписки: ticket ${ticketId}`;
-  }
-
-  private buildHtmlBody(content: string, ticketId: string) {
-    const escapedContent = this.escapeHtml(content.trim()).replace(/\n/g, '<br />');
-
     return [
-      '<div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.55;color:#1f2937;">',
-      `<div>${escapedContent || '&nbsp;'}</div>`,
-      '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">',
-      '<div style="font-weight:600;color:#111827;">TouchSpace Chat</div>',
-      '<div style="margin-top:6px;">Ответьте на это письмо, и сообщение попадёт обратно в чат.</div>',
-      `<div style="margin-top:8px;font-size:12px;color:#9ca3af;">Идентификатор переписки: ticket ${this.escapeHtml(ticketId)}</div>`,
-      '</div>',
-      '</div>',
-    ].join('');
+      content.trim(),
+      '',
+      'Ответьте на это письмо, и сообщение попадёт в чат.',
+      '',
+      `TouchSpace ticket: ${ticketId}`,
+    ].join('\n');
   }
 
   private cleanIncomingReply(rawText: string) {
@@ -499,14 +487,5 @@ export class EmailService {
     }
 
     return Array.from(mergedValues).join(' ');
-  }
-
-  private escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 }

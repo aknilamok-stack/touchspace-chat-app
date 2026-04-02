@@ -858,6 +858,7 @@ export default function Home() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState("");
   const [isQuickReplyModalOpen, setIsQuickReplyModalOpen] = useState(false);
+  const [isCreateClientModalOpen, setIsCreateClientModalOpen] = useState(false);
   const [newQuickReplyText, setNewQuickReplyText] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
@@ -893,6 +894,7 @@ export default function Home() {
   const [isInvitingManager, setIsInvitingManager] = useState(false);
   const [inviteManagerError, setInviteManagerError] = useState("");
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isCreatingClientDialog, setIsCreatingClientDialog] = useState(false);
   const [selectedTransferManagerId, setSelectedTransferManagerId] = useState(
     BASE_MANAGERS[0].id
   );
@@ -913,6 +915,10 @@ export default function Home() {
   const [isClientTyping, setIsClientTyping] = useState(false);
   const [clientTypingPreview, setClientTypingPreview] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
+  const [createClientTradePointName, setCreateClientTradePointName] = useState("");
+  const [createClientEmail, setCreateClientEmail] = useState("");
+  const [createClientPhone, setCreateClientPhone] = useState("");
+  const [createClientError, setCreateClientError] = useState("");
   const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
@@ -2772,6 +2778,70 @@ export default function Home() {
     setShowQuickReplies(false);
   };
 
+  const handleOpenCreateClientModal = () => {
+    setCreateClientTradePointName("");
+    setCreateClientEmail("");
+    setCreateClientPhone("");
+    setCreateClientError("");
+    setIsCreateClientModalOpen(true);
+  };
+
+  const handleCreateClientDialog = async () => {
+    const normalizedTradePointName = createClientTradePointName.trim();
+    const normalizedEmail = createClientEmail.trim();
+    const normalizedPhone = createClientPhone.trim();
+
+    if (!normalizedTradePointName || !normalizedEmail || !currentManagerId || !currentManagerName) {
+      setCreateClientError("Заполните торговую точку и email");
+      return;
+    }
+
+    setIsCreatingClientDialog(true);
+    setCreateClientError("");
+
+    try {
+      const response = await fetch(apiUrl("/tickets/manager-created-client"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: currentManagerName,
+          tradePointName: normalizedTradePointName,
+          clientEmail: normalizedEmail,
+          clientPhone: normalizedPhone || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(response, "Не удалось создать диалог для клиента")
+        );
+      }
+
+      const createdTicket = (await response.json()) as ApiTicket;
+      const tickets = await fetchTickets();
+
+      syncTickets(tickets);
+      setFilter("in_progress");
+      setIsChatPaneDismissed(false);
+      setActiveChatId(createdTicket.id);
+      setIsCreateClientModalOpen(false);
+      setToast({
+        message: "Клиент добавлен в список диалогов",
+        tone: "success",
+      });
+    } catch (error) {
+      console.error("Ошибка создания диалога для клиента:", error);
+      setCreateClientError(
+        error instanceof Error ? error.message : "Не удалось создать диалог для клиента"
+      );
+    } finally {
+      setIsCreatingClientDialog(false);
+    }
+  };
+
   const handleCreateSupplierRequest = async () => {
     if (!supplierRequestText.trim() || !activeChatId) return;
 
@@ -3242,6 +3312,15 @@ export default function Home() {
           </div>
 
           <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              onClick={handleOpenCreateClientModal}
+              className="flex h-[36px] w-[36px] items-center justify-center rounded-full bg-white text-[22px] leading-none text-[#0A84FF] shadow-[0_10px_24px_rgba(10,132,255,0.12)] transition hover:-translate-y-0.5 hover:bg-[#F4F8FF]"
+              aria-label="Завести клиента"
+              title="Завести клиента"
+            >
+              +
+            </button>
+
             <button
               onClick={() => setFilter("incoming")}
               className={`rounded-full px-3 py-1.5 text-sm ${
@@ -4897,6 +4976,90 @@ export default function Home() {
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
               >
                 {isInvitingManager ? "Приглашаем..." : "Пригласить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCreateClientModalOpen && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(30,30,30,0.28)] p-6">
+          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                  Новый клиент
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-[#1E1E1E]">
+                  Завести клиента в чат
+                </h3>
+                <p className="mt-1 text-sm text-[#8E8E93]">
+                  Обязательные поля: торговая точка и email. Телефон можно добавить позже.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsCreateClientModalOpen(false)}
+                className="rounded-full bg-[#F2F2F7] px-3 py-2 text-sm text-[#6C6C70]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                  Торговая точка
+                </span>
+                <input
+                  value={createClientTradePointName}
+                  onChange={(event) => setCreateClientTradePointName(event.target.value)}
+                  className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                  placeholder="Например, Revado"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                  Email
+                </span>
+                <input
+                  value={createClientEmail}
+                  onChange={(event) => setCreateClientEmail(event.target.value)}
+                  className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                  placeholder="client@example.com"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                  Телефон
+                </span>
+                <input
+                  value={createClientPhone}
+                  onChange={(event) => setCreateClientPhone(event.target.value)}
+                  className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                  placeholder="+7..."
+                />
+              </label>
+            </div>
+
+            {createClientError ? (
+              <p className="mt-4 text-sm text-red-500">{createClientError}</p>
+            ) : null}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setIsCreateClientModalOpen(false)}
+                className="rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#6C6C70]"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleCreateClientDialog}
+                disabled={isCreatingClientDialog}
+                className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {isCreatingClientDialog ? "Создаём..." : "Создать диалог"}
               </button>
             </div>
           </div>

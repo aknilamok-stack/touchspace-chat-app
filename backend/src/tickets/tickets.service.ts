@@ -199,6 +199,68 @@ export class TicketsService {
     return `profile:${profileId}:${type}`;
   }
 
+  private normalizeEmailForMatching(value?: string | null) {
+    return value?.trim().toLowerCase() || '';
+  }
+
+  private normalizeTradePointForMatching(value?: string | null) {
+    return value?.trim().replace(/\s+/g, ' ').toLowerCase() || '';
+  }
+
+  private async findExistingTicketByTradePointAndEmail(
+    tradePointName?: string | null,
+    email?: string | null,
+  ) {
+    const normalizedTradePointName =
+      this.normalizeTradePointForMatching(tradePointName);
+    const normalizedEmail = this.normalizeEmailForMatching(email);
+
+    if (!normalizedTradePointName || !normalizedEmail) {
+      return null;
+    }
+
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        tradePointName: {
+          not: null,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        tradePointName: true,
+        canonicalEmail: true,
+        clientEmail: true,
+        currentUserEmail: true,
+        superuserEmail: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+
+    const matchedTicket = tickets.find((ticket) => {
+      if (
+        this.normalizeTradePointForMatching(ticket.tradePointName) !==
+        normalizedTradePointName
+      ) {
+        return false;
+      }
+
+      const ticketEmails = [
+        ticket.canonicalEmail,
+        ticket.clientEmail,
+        ticket.currentUserEmail,
+        ticket.superuserEmail,
+      ]
+        .map((candidate) => this.normalizeEmailForMatching(candidate))
+        .filter(Boolean);
+
+      return ticketEmails.includes(normalizedEmail);
+    });
+
+    return matchedTicket ?? null;
+  }
+
   private parseProfileContactId(
     contactId: string,
   ): { profileId: string; type: ContactType } | null {
@@ -1040,6 +1102,136 @@ export class TicketsService {
     });
   }
 
+  async createManagerCreatedClient(
+    managerId: string,
+    managerName: string,
+    tradePointName: string,
+    clientEmail: string,
+    clientPhone?: string,
+  ) {
+    const normalizedTradePointName = tradePointName?.trim();
+
+    if (!normalizedTradePointName) {
+      throw new BadRequestException('Торговая точка обязательна');
+    }
+
+    const resolvedEmail = this.normalizeContactValue('email', clientEmail);
+    const resolvedPhone = clientPhone?.trim()
+      ? this.normalizeContactValue('phone', clientPhone)
+      : null;
+
+    await this.profilesService.ensureProfile({
+      id: managerId?.trim(),
+      fullName: managerName?.trim(),
+      role: 'manager',
+    });
+
+    const existingTicket = await this.findExistingTicketByTradePointAndEmail(
+      normalizedTradePointName,
+      resolvedEmail.value,
+    );
+
+    if (existingTicket) {
+      return this.prisma.ticket.findUnique({
+        where: { id: existingTicket.id },
+      });
+    }
+
+    const now = new Date();
+    const clientContext = resolveTicketClientContext({
+      clientName: normalizedTradePointName,
+      tradePointName: normalizedTradePointName,
+      canonicalEmail: resolvedEmail.value,
+      canonicalEmailSource: 'manual',
+      clientEmail: resolvedEmail.value,
+      clientPhone: resolvedPhone?.value,
+    });
+    const clientVisualIdentityKey = this.normalizeClientVisualIdentityKey(
+      normalizedTradePointName,
+      resolvedEmail.value,
+    );
+    const clientVisualDisplayName = this.getClientVisualIdentityDisplayName(
+      normalizedTradePointName,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
+        tx,
+        clientVisualIdentityKey,
+        clientVisualDisplayName,
+      );
+
+      const ticket = await tx.ticket.create({
+        data: {
+          title: normalizedTradePointName,
+          status: 'in_progress',
+          conversationMode: 'manager',
+          currentHandlerType: 'manager',
+          aiEnabled: false,
+          aiResolved: false,
+          invitedManagerIds: [],
+          invitedManagerNames: [],
+          assignedManagerId: managerId.trim(),
+          assignedManagerName: managerName.trim(),
+          lastResolvedByManagerId: null,
+          lastResolvedByManagerName: null,
+          clientId: clientContext.clientId,
+          clientName: clientContext.clientName,
+          tradePointExternalId: clientContext.tradePointExternalId,
+          tradePointName: clientContext.tradePointName,
+          clientEmail: clientContext.clientEmail,
+          clientPhone: clientContext.clientPhone,
+          currentUserId: clientContext.currentUserId,
+          currentUserEmail: clientContext.currentUserEmail,
+          currentUserPhone: clientContext.currentUserPhone,
+          currentUserXmlId: clientContext.currentUserXmlId,
+          isSuperuser: clientContext.isSuperuser,
+          superuserId: clientContext.superuserId,
+          superuserEmail: clientContext.superuserEmail,
+          superuserPhone: clientContext.superuserPhone,
+          canonicalEmail: clientContext.canonicalEmail,
+          canonicalEmailSource: clientContext.canonicalEmailSource,
+          lockedBySuperuser: clientContext.lockedBySuperuser,
+          avatarColor,
+          avatarEmoji,
+          supplierId: null,
+          supplierName: null,
+          firstResponseStartedAt: null,
+          firstResponseAt: null,
+          firstResponseTime: null,
+          firstResponseBreached: false,
+          lastMessageAt: now,
+        },
+      });
+
+      await tx.ticketContact.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'email',
+          value: resolvedEmail.value,
+          normalizedValue: resolvedEmail.normalizedValue,
+          label: 'Email',
+          createdByProfileId: managerId.trim(),
+        },
+      });
+
+      if (resolvedPhone) {
+        await tx.ticketContact.create({
+          data: {
+            ticketId: ticket.id,
+            type: 'phone',
+            value: resolvedPhone.value,
+            normalizedValue: resolvedPhone.normalizedValue,
+            label: 'Телефон',
+            createdByProfileId: managerId.trim(),
+          },
+        });
+      }
+
+      return ticket;
+    });
+  }
+
   async createWithFirstMessage(
     title: string,
     firstMessage: string,
@@ -1065,28 +1257,38 @@ export class TicketsService {
     clientPhone?: string,
     aiEnabled = false,
   ) {
+    const incomingClientContext = resolveTicketClientContext({
+      clientId,
+      clientName,
+      tradePointId,
+      tradePointExternalId,
+      tradePointName,
+      currentUserId,
+      currentUserEmail,
+      currentUserPhone,
+      currentUserXmlId,
+      isSuperuser,
+      superuserId,
+      superuserEmail,
+      superuserPhone,
+      canonicalEmail,
+      canonicalEmailSource,
+      clientEmail,
+      clientPhone,
+    });
+    const matchedTicket =
+      senderType === 'client'
+        ? await this.findExistingTicketByTradePointAndEmail(
+            incomingClientContext.tradePointName,
+            incomingClientContext.canonicalEmail ??
+              incomingClientContext.clientEmail,
+          )
+        : null;
+
     const createdTicket = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const isClientStart = senderType === 'client';
-      const clientContext = resolveTicketClientContext({
-        clientId,
-        clientName,
-        tradePointId,
-        tradePointExternalId,
-        tradePointName,
-        currentUserId,
-        currentUserEmail,
-        currentUserPhone,
-        currentUserXmlId,
-        isSuperuser,
-        superuserId,
-        superuserEmail,
-        superuserPhone,
-        canonicalEmail,
-        canonicalEmailSource,
-        clientEmail,
-        clientPhone,
-      });
+      const clientContext = incomingClientContext;
       const normalizedClientId = clientContext.clientId;
       const normalizedClientName = clientContext.clientName;
       const firstResponseTime = senderType === 'manager' ? 0 : null;
@@ -1120,6 +1322,142 @@ export class TicketsService {
         clientVisualIdentityKey,
         clientVisualDisplayName,
       );
+
+      if (matchedTicket?.id && senderType === 'client') {
+        const existingTicket = await tx.ticket.findUnique({
+          where: { id: matchedTicket.id },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            aiEnabled: true,
+            firstResponseStartedAt: true,
+            assignedManagerId: true,
+            clientId: true,
+            clientName: true,
+            tradePointExternalId: true,
+            tradePointName: true,
+            clientEmail: true,
+            clientPhone: true,
+            currentUserId: true,
+            currentUserEmail: true,
+            currentUserPhone: true,
+            currentUserXmlId: true,
+            isSuperuser: true,
+            superuserId: true,
+            superuserEmail: true,
+            superuserPhone: true,
+            canonicalEmail: true,
+            canonicalEmailSource: true,
+            lockedBySuperuser: true,
+          },
+        });
+
+        if (!existingTicket) {
+          throw new NotFoundException(
+            `Ticket with id "${matchedTicket.id}" not found`,
+          );
+        }
+
+        const isReopened =
+          existingTicket.status === 'resolved' || existingTicket.status === 'closed';
+
+        if (isReopened) {
+          await tx.ticket.update({
+            where: { id: existingTicket.id },
+            data: {
+              status: 'new',
+              assignedManagerId: null,
+              assignedManagerName: null,
+              handedToManagerAt: null,
+              conversationMode: 'manager',
+              currentHandlerType: 'manager',
+              aiEnabled: false,
+              firstResponseStartedAt: now,
+              firstResponseAt: null,
+              firstResponseTime: null,
+              firstResponseBreached: false,
+              managerRating: null,
+              managerRatingSubmittedAt: null,
+              resolvedAt: null,
+              closedAt: null,
+              lastMessageAt: now,
+            },
+          });
+        }
+
+        const message = await tx.message.create({
+          data: {
+            ticketId: existingTicket.id,
+            content: firstMessage,
+            senderType,
+            senderRole: senderType,
+            senderProfileId: senderId ?? null,
+            status: 'sent',
+            deliveryStatus: 'sent',
+            messageType: 'text',
+          },
+        });
+
+        const mergedClientContext = resolveTicketClientContext(
+          {
+            clientId,
+            clientName,
+            tradePointId,
+            tradePointExternalId,
+            tradePointName,
+            currentUserId,
+            currentUserEmail,
+            currentUserPhone,
+            currentUserXmlId,
+            isSuperuser,
+            superuserId,
+            superuserEmail,
+            superuserPhone,
+            canonicalEmail,
+            canonicalEmailSource,
+            clientEmail,
+            clientPhone,
+          },
+          existingTicket,
+        );
+
+        await tx.ticket.update({
+          where: { id: existingTicket.id },
+          data: {
+            title: existingTicket.title || normalizedClientName || title,
+            status: 'new',
+            clientId: mergedClientContext.clientId ?? existingTicket.clientId,
+            clientName:
+              mergedClientContext.clientName ?? existingTicket.clientName,
+            tradePointExternalId: mergedClientContext.tradePointExternalId,
+            tradePointName:
+              mergedClientContext.tradePointName ??
+              existingTicket.tradePointName,
+            clientEmail: mergedClientContext.clientEmail,
+            clientPhone: mergedClientContext.clientPhone,
+            currentUserId: mergedClientContext.currentUserId,
+            currentUserEmail: mergedClientContext.currentUserEmail,
+            currentUserPhone: mergedClientContext.currentUserPhone,
+            currentUserXmlId: mergedClientContext.currentUserXmlId,
+            isSuperuser: mergedClientContext.isSuperuser,
+            superuserId: mergedClientContext.superuserId,
+            superuserEmail: mergedClientContext.superuserEmail,
+            superuserPhone: mergedClientContext.superuserPhone,
+            canonicalEmail: mergedClientContext.canonicalEmail,
+            canonicalEmailSource: mergedClientContext.canonicalEmailSource,
+            lockedBySuperuser: mergedClientContext.lockedBySuperuser,
+            avatarColor,
+            avatarEmoji,
+            lastMessageAt: message.createdAt,
+            closedAt: null,
+          },
+        });
+
+        return {
+          id: existingTicket.id,
+        };
+      }
 
       const ticket = await tx.ticket.create({
         data: {

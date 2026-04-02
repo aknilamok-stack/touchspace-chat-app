@@ -90,6 +90,26 @@ export class TicketsController {
     );
   }
 
+  @Post('manager-created-client')
+  createManagerCreatedClient(
+    @Body()
+    body: {
+      managerId: string;
+      managerName: string;
+      tradePointName: string;
+      clientEmail: string;
+      clientPhone?: string;
+    },
+  ) {
+    return this.ticketsService.createManagerCreatedClient(
+      body.managerId,
+      body.managerName,
+      body.tradePointName,
+      body.clientEmail,
+      body.clientPhone,
+    );
+  }
+
   @Get()
   findAll(
     @Query('viewerType') viewerType?: string,

@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UploadedFiles,
@@ -57,6 +58,24 @@ export class MessagesController {
     },
   ) {
     return this.messagesService.create(body);
+  }
+
+  @Patch('messages/:id')
+  update(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      content: string;
+      senderType: 'manager' | 'supplier';
+      senderId: string;
+    },
+  ) {
+    return this.messagesService.update(
+      id,
+      body.content,
+      body.senderType,
+      body.senderId,
+    );
   }
 
   @Get('messages/manager-suggestions')

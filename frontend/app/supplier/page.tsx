@@ -73,9 +73,11 @@ type TicketMessageApi = {
   content: string;
   senderType: string;
   senderName?: string | null;
+  senderProfileId?: string | null;
   replyToMessageId?: string | null;
   replyToContent?: string | null;
   messageType?: string;
+  transport?: string | null;
   status: string;
   ticketId: string;
   createdAt: string;
@@ -97,6 +99,11 @@ type ApiTicketPageViewsResponse = {
 type ReplyMeta = {
   replyToId: string;
   replyToContent: string;
+};
+
+type EditMeta = {
+  messageId: string;
+  originalText: string;
 };
 
 type ToastTone = "success" | "error" | "info";
@@ -215,6 +222,8 @@ const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
         : message.content,
     replyToMessageId: message.replyToMessageId ?? null,
     replyToContent: message.replyToContent ?? null,
+    senderProfileId: message.senderProfileId ?? null,
+    transport: message.transport ?? null,
     attachment: attachments[0] ?? null,
     attachments,
   };
@@ -670,7 +679,9 @@ export default function SupplierPage() {
   const [isQuickReplyModalOpen, setIsQuickReplyModalOpen] = useState(false);
   const [newQuickReplyText, setNewQuickReplyText] = useState("");
   const [replyTarget, setReplyTarget] = useState<TicketMessage | null>(null);
+  const [editTarget, setEditTarget] = useState<EditMeta | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState("");
+  const [hoveredEditMessageId, setHoveredEditMessageId] = useState("");
   const [replyMap, setReplyMap] = useState<Record<string, ReplyMeta>>({});
   const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState("");
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
@@ -695,6 +706,7 @@ export default function SupplierPage() {
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
+  const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
   const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState("");
@@ -746,6 +758,40 @@ export default function SupplierPage() {
       clearReplyHoverTimeout();
     };
   }, [clearReplyHoverTimeout]);
+
+  const canEditSupplierMessage = useCallback(
+    (message: TicketMessage) => {
+      if (
+        message.senderType !== "supplier" ||
+        message.senderProfileId !== supplierId ||
+        message.messageType !== "text" ||
+        message.transport === "email"
+      ) {
+        return false;
+      }
+
+      const now = currentTimeMs ?? Date.now();
+      return now - new Date(message.createdAt).getTime() <= 20 * 60 * 1000;
+    },
+    [currentTimeMs]
+  );
+
+  const startEditingMessage = useCallback((message: TicketMessage) => {
+    setEditTarget({
+      messageId: message.id,
+      originalText: message.displayContent,
+    });
+    setReplyTarget(null);
+    setSelectedFiles([]);
+    setAttachmentName("");
+    setReplyText(message.displayContent);
+    composerTextareaRef.current?.focus();
+  }, []);
+
+  const cancelEditingMessage = useCallback(() => {
+    setEditTarget(null);
+    setReplyText("");
+  }, []);
 
   const selectedManagerName =
     (selectedRequest?.createdByManagerId
@@ -1511,6 +1557,25 @@ export default function SupplierPage() {
   }, [selectedRequestId, visibleSupplierMessages.length]);
 
   useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    setCurrentTimeMs(Date.now());
+
+    const intervalId = window.setInterval(() => {
+      setCurrentTimeMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady]);
+
+  useEffect(() => {
+    setEditTarget(null);
+    setHoveredEditMessageId("");
+  }, [selectedRequestId]);
+
+  useEffect(() => {
     if (!quickRepliesRef.current || (!showQuickReplies && !showEmojiPicker)) {
       return;
     }
@@ -1754,6 +1819,40 @@ export default function SupplierPage() {
     setReplyError("");
 
     try {
+      if (editTarget) {
+        if (!hasTextToSend) {
+          return;
+        }
+
+        const response = await fetch(apiUrl(`/messages/${editTarget.messageId}`), {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content: replyText,
+            senderType: "supplier",
+            senderId: supplierId,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Не удалось сохранить изменения");
+        }
+
+        const data = await fetchTicketMessages(selectedRequest.ticketId);
+
+        setTicketMessages(data);
+        setTicketMessagesByTicketId((prev) => ({
+          ...prev,
+          [selectedRequest.ticketId]: data,
+        }));
+        setEditTarget(null);
+        setReplyText("");
+        setHoveredEditMessageId("");
+        return;
+      }
+
       const createdMessages: TicketMessage[] = [];
 
       if (hasTextToSend) {
@@ -2328,49 +2427,89 @@ export default function SupplierPage() {
                                 onMouseEnter={() => showReplyAction(message.id)}
                                 onMouseLeave={hideReplyAction}
                               >
-                                <button
-                                  onClick={() => {
-                                    setReplyTarget(message);
-                                    composerTextareaRef.current?.focus();
-                                  }}
-                                  onMouseEnter={() => showReplyAction(message.id)}
-                                  onMouseLeave={hideReplyAction}
-                                  className={`absolute top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition ${
-                                    hoveredMessageId === message.id
+                                <div
+                                  className={`absolute top-2 z-10 flex flex-col gap-2 transition ${
+                                    hoveredMessageId === message.id ||
+                                    hoveredEditMessageId === message.id
                                       ? "opacity-100"
                                       : "pointer-events-none opacity-0"
-                                  } ${
-                                    message.senderType === "supplier" ? "left-0" : "right-0"
-                                  } hover:bg-[#F5F8FF] hover:text-[#0A84FF]`}
-                                  aria-label="Ответить"
+                                  } ${message.senderType === "supplier" ? "left-0" : "right-0"}`}
                                 >
-                                  <svg
-                                    viewBox="0 0 20 20"
-                                    fill="none"
-                                    className="h-4 w-4"
-                                    aria-hidden="true"
+                                  <button
+                                    onClick={() => {
+                                      setReplyTarget(message);
+                                      composerTextareaRef.current?.focus();
+                                    }}
+                                    onMouseEnter={() => showReplyAction(message.id)}
+                                    onMouseLeave={hideReplyAction}
+                                    className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition hover:bg-[#F5F8FF] hover:text-[#0A84FF]"
+                                    aria-label="Ответить"
                                   >
-                                    <path
-                                      d="M8.25 5.5L4.5 9.25L8.25 13"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                    <path
-                                      d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                  {hoveredMessageId === message.id ? (
-                                    <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
-                                      Ответить
-                                    </span>
+                                    <svg
+                                      viewBox="0 0 20 20"
+                                      fill="none"
+                                      className="h-4 w-4"
+                                      aria-hidden="true"
+                                    >
+                                      <path
+                                        d="M8.25 5.5L4.5 9.25L8.25 13"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                      <path
+                                        d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                    </svg>
+                                    {hoveredMessageId === message.id ? (
+                                      <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                                        Ответить
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                  {canEditSupplierMessage(message) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditingMessage(message)}
+                                      onMouseEnter={() => setHoveredEditMessageId(message.id)}
+                                      onMouseLeave={() => setHoveredEditMessageId("")}
+                                      className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition hover:bg-[#FFF8EE] hover:text-[#C1812B]"
+                                      aria-label="Редактировать"
+                                    >
+                                      <svg
+                                        viewBox="0 0 20 20"
+                                        fill="none"
+                                        className="h-4 w-4"
+                                        aria-hidden="true"
+                                      >
+                                        <path
+                                          d="M11.916 4.583a1.768 1.768 0 1 1 2.5 2.5l-7 7-3.416.917.916-3.417 7-7Z"
+                                          stroke="currentColor"
+                                          strokeWidth="1.6"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                        <path
+                                          d="M10.833 5.667 14.333 9.167"
+                                          stroke="currentColor"
+                                          strokeWidth="1.6"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
+                                      {hoveredEditMessageId === message.id ? (
+                                        <span className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-[#E5E5EA] bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                                          Редактировать
+                                        </span>
+                                      ) : null}
+                                    </button>
                                   ) : null}
-                                </button>
+                                </div>
 
                                 <div
                                   className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
@@ -2567,6 +2706,25 @@ export default function SupplierPage() {
                         </button>
                         <button
                           onClick={() => setReplyTarget(null)}
+                          className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {editTarget ? (
+                      <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#F6D7B0] bg-[#FFF8EE] px-3 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-[#C1812B]">
+                            Редактирование сообщения
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-xs text-[#7A6A50]">
+                            {editTarget.originalText}
+                          </p>
+                        </div>
+                        <button
+                          onClick={cancelEditingMessage}
                           className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"
                         >
                           ×

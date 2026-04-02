@@ -61,6 +61,8 @@ type CreateMessageInput = {
 
 @Injectable()
 export class MessagesService {
+  private static readonly EDIT_WINDOW_MS = 20 * 60 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly typingService: TypingService,
@@ -1030,5 +1032,80 @@ export class MessagesService {
         senderName: message.senderProfile?.fullName ?? null,
       }));
     });
+  }
+
+  async update(
+    messageId: string,
+    content: string,
+    senderType: 'manager' | 'supplier',
+    senderId: string,
+  ) {
+    const normalizedContent = content.trim();
+    const normalizedSenderId = senderId.trim();
+
+    if (!normalizedContent) {
+      throw new BadRequestException('Сообщение не может быть пустым');
+    }
+
+    if (!normalizedSenderId) {
+      throw new BadRequestException('senderId is required');
+    }
+
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        senderProfile: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException(`Message with id "${messageId}" not found`);
+    }
+
+    if (message.senderType !== senderType) {
+      throw new ForbiddenException('Можно редактировать только свои сообщения');
+    }
+
+    if (message.senderProfileId !== normalizedSenderId) {
+      throw new ForbiddenException('Можно редактировать только свои сообщения');
+    }
+
+    if (message.messageType !== 'text' || message.transport !== 'chat') {
+      throw new BadRequestException(
+        'Редактировать можно только обычные чат-сообщения',
+      );
+    }
+
+    if (
+      Date.now() - new Date(message.createdAt).getTime() >
+      MessagesService.EDIT_WINDOW_MS
+    ) {
+      throw new BadRequestException(
+        'Сообщение можно редактировать только в течение 20 минут после отправки',
+      );
+    }
+
+    const updatedMessage = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        content: normalizedContent,
+      },
+      include: {
+        senderProfile: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...updatedMessage,
+      senderName: updatedMessage.senderProfile?.fullName ?? null,
+    };
   }
 }

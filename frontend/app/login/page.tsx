@@ -79,6 +79,7 @@ export default function LoginPage() {
             fullName: string;
             email?: string | null;
             supplierId?: string | null;
+            chatAccessEnabled?: boolean;
             passwordChangeRequired?: boolean;
             sessionToken?: string;
           };
@@ -87,6 +88,7 @@ export default function LoginPage() {
         writeAuthSession({
           login: payload.user.login,
           role: payload.user.role,
+          chatAccessEnabled: payload.user.chatAccessEnabled ?? true,
           sessionToken: payload.user.sessionToken,
           userId: payload.user.id,
           fullName: payload.user.fullName,

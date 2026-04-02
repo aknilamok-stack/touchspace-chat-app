@@ -38,6 +38,7 @@ model Profile {
   notifySupplierRequests  Boolean           @default(true)
   notifyAiHandoffs        Boolean           @default(true)
   notifyAdminAlerts       Boolean           @default(true)
+  chatAccessEnabled       Boolean           @default(true)
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
   clientTickets           Ticket[]          @relation("TicketClient")

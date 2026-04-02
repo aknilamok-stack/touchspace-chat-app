@@ -88,6 +88,7 @@ export class NotificationsService {
         fullName: true,
         email: true,
         supplierId: true,
+        chatAccessEnabled: true,
         notificationPushEnabled: true,
         notifyClientChats: true,
         notifySupplierChats: true,
@@ -362,6 +363,7 @@ export class NotificationsService {
         role: profile.role,
         fullName: profile.fullName,
         email: profile.email,
+        chatAccessEnabled: profile.chatAccessEnabled,
       },
       preferences: {
         notificationPushEnabled: profile.notificationPushEnabled,
@@ -379,7 +381,11 @@ export class NotificationsService {
   async getManagerNotificationCandidates(profileId: string) {
     const profile = await this.ensureSettingsProfile(profileId, 'manager');
 
-    if (!profile.notificationPushEnabled || !profile.notifyClientChats) {
+    if (
+      !profile.chatAccessEnabled ||
+      !profile.notificationPushEnabled ||
+      !profile.notifyClientChats
+    ) {
       return {
         items: [],
       };
@@ -479,6 +485,7 @@ export class NotificationsService {
     const supplierScopeId = profile.supplierId || profile.id;
 
     if (
+      !profile.chatAccessEnabled ||
       !profile.notificationPushEnabled ||
       (!profile.notifySupplierChats && !profile.notifySupplierRequests)
     ) {

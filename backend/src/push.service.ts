@@ -140,6 +140,7 @@ export class PushService {
         role: {
           in: [...MANAGER_ROLES],
         },
+        chatAccessEnabled: true,
         isActive: true,
         approvalStatus: 'approved',
         status: {
@@ -164,6 +165,7 @@ export class PushService {
         role: {
           in: [...SUPPLIER_ROLES],
         },
+        chatAccessEnabled: true,
         isActive: true,
         approvalStatus: 'approved',
         status: {
@@ -247,6 +249,7 @@ export class PushService {
             notifySupplierRequests: true,
             notifyAiHandoffs: true,
             notifyAdminAlerts: true,
+            chatAccessEnabled: true,
           },
         },
       },
@@ -262,7 +265,10 @@ export class PushService {
           return;
         }
 
-        if (!this.isEventEnabledForProfile(subscription.profile, eventType)) {
+        if (
+          !subscription.profile.chatAccessEnabled ||
+          !this.isEventEnabledForProfile(subscription.profile, eventType)
+        ) {
           return;
         }
 

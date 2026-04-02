@@ -37,6 +37,7 @@ type EnsureProfileInput = {
   notifySupplierRequests?: boolean | null;
   notifyAiHandoffs?: boolean | null;
   notifyAdminAlerts?: boolean | null;
+  chatAccessEnabled?: boolean | null;
 };
 
 @Injectable()
@@ -282,6 +283,7 @@ export class ProfilesService {
         notifySupplierRequests: input.notifySupplierRequests ?? true,
         notifyAiHandoffs: input.notifyAiHandoffs ?? true,
         notifyAdminAlerts: input.notifyAdminAlerts ?? true,
+        chatAccessEnabled: input.chatAccessEnabled ?? true,
       },
       update: {
         fullName,
@@ -313,6 +315,7 @@ export class ProfilesService {
         notifySupplierRequests: input.notifySupplierRequests ?? undefined,
         notifyAiHandoffs: input.notifyAiHandoffs ?? undefined,
         notifyAdminAlerts: input.notifyAdminAlerts ?? undefined,
+        chatAccessEnabled: input.chatAccessEnabled ?? undefined,
       },
     });
   }

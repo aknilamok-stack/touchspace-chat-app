@@ -297,6 +297,7 @@ export class AuthService {
         fullName: profile.fullName,
         email: profile.email,
         supplierId: profile.supplierId,
+        chatAccessEnabled: profile.chatAccessEnabled,
         passwordChangeRequired: profile.passwordChangeRequired,
         sessionToken,
       },

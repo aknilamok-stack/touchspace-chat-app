@@ -2838,7 +2838,7 @@ export default function SupplierPage() {
                 <div className="my-2 h-px bg-[#EEF0F4]" />
 
                 <button
-                  onClick={() => router.push("/settings")}
+                  onClick={() => router.push("/supplier-supervisor/settings")}
                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#1E1E1E] transition hover:bg-[#F7F8FB]"
                 >
                   <span>Настройки уведомлений</span>

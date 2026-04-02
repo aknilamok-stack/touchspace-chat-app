@@ -19,6 +19,8 @@ import { ProfilesService } from './profiles.service';
 import { PushController } from './push.controller';
 import { PushService } from './push.service';
 import { SupplierRequestsModule } from './supplier-requests/supplier-requests.module';
+import { SupervisorsController } from './supervisors.controller';
+import { SupervisorsService } from './supervisors.service';
 import { TicketsController } from './tickets/tickets.controller';
 import { TicketsService } from './tickets/tickets.service';
 import { TypingService } from './typing.service';
@@ -37,6 +39,7 @@ import { TypingService } from './typing.service';
     PushController,
     NotificationsController,
     ProfilesController,
+    SupervisorsController,
     TicketsController,
     MessagesController,
   ],
@@ -50,6 +53,7 @@ import { TypingService } from './typing.service';
     PrismaService,
     ProfilesService,
     PushService,
+    SupervisorsService,
     TicketsService,
     MessagesService,
     TypingService,

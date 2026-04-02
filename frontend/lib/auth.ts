@@ -12,6 +12,7 @@ export type ManagerPresence = "online" | "break" | "offline";
 export type AuthSession = {
   login: string;
   role: UserRole;
+  chatAccessEnabled?: boolean;
   sessionToken?: string;
   userId?: string;
   fullName?: string;

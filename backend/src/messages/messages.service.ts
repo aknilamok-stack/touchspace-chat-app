@@ -60,6 +60,11 @@ type CreateMessageInput = {
   isInternal?: boolean;
 };
 
+type ChatAccessActor = {
+  id?: string | null;
+  role: string;
+};
+
 @Injectable()
 export class MessagesService {
   private static readonly EDIT_WINDOW_MS = 20 * 60 * 1000;
@@ -225,6 +230,35 @@ export class MessagesService {
     throw new ForbiddenException('No access to this ticket');
   }
 
+  private async assertActorChatAccess(actor: ChatAccessActor) {
+    const normalizedId = actor.id?.trim();
+
+    if (!normalizedId || (actor.role !== 'manager' && actor.role !== 'supplier')) {
+      return;
+    }
+
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: normalizedId },
+      select: {
+        id: true,
+        fullName: true,
+        chatAccessEnabled: true,
+      },
+    });
+
+    if (!profile) {
+      return;
+    }
+
+    if (!profile.chatAccessEnabled) {
+      throw new ForbiddenException(
+        actor.role === 'manager'
+          ? 'Менеджеру отключена возможность отвечать в чатах'
+          : 'Оператору поставщика отключена возможность отвечать в чатах',
+      );
+    }
+  }
+
   async create(input: CreateMessageInput) {
     const {
       ticketId,
@@ -289,6 +323,11 @@ export class MessagesService {
         role: senderType,
       });
     }
+
+    await this.assertActorChatAccess({
+      id: actorId,
+      role: senderType,
+    });
 
     const { message, shouldAiReply, ticketSnapshot } =
       await this.prisma.$transaction(async (tx) => {
@@ -886,6 +925,11 @@ export class MessagesService {
       });
     }
 
+    await this.assertActorChatAccess({
+      id: actorId,
+      role: senderType,
+    });
+
     const trimmedCaption = caption?.trim() || '';
     const attachments = files.map((file) => ({
       name: file.originalname,
@@ -1104,6 +1148,11 @@ export class MessagesService {
     if (message.senderProfileId !== normalizedSenderId) {
       throw new ForbiddenException('Можно редактировать только свои сообщения');
     }
+
+    await this.assertActorChatAccess({
+      id: normalizedSenderId,
+      role: senderType,
+    });
 
     if (message.messageType !== 'text' || message.transport !== 'chat') {
       throw new BadRequestException(

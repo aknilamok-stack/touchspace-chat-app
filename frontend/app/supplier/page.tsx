@@ -756,16 +756,6 @@ export default function SupplierPage() {
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;
-  const clientIsOnSite =
-    typeof currentPageViewAgeMs === "number" &&
-    Number.isFinite(currentPageViewAgeMs) &&
-    currentPageViewAgeMs >= 0 &&
-    currentPageViewAgeMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
-  const shouldShowClientOfflineHint =
-    Boolean(selectedRequest) &&
-    !isLoadingPageViews &&
-    !pageViewsError &&
-    !clientIsOnSite;
   const clearReplyHoverTimeout = useCallback(() => {
     if (replyHoverTimeoutRef.current !== null) {
       window.clearTimeout(replyHoverTimeoutRef.current);
@@ -846,6 +836,33 @@ export default function SupplierPage() {
   const visibleSupplierMessages = selectedRequest
     ? getVisibleMessagesForRequest(selectedRequest, ticketMessages)
     : [];
+  const lastClientMessageAtMs = visibleSupplierMessages.reduce<number | null>((latest, message) => {
+    if (message.senderType !== "client") {
+      return latest;
+    }
+
+    const createdAtMs = new Date(message.createdAt).getTime();
+
+    if (!Number.isFinite(createdAtMs)) {
+      return latest;
+    }
+
+    return latest === null ? createdAtMs : Math.max(latest, createdAtMs);
+  }, null);
+  const hasRecentClientMessage =
+    typeof lastClientMessageAtMs === "number" &&
+    (currentTimeMs ?? Date.now()) - lastClientMessageAtMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
+  const clientIsOnSite =
+    hasRecentClientMessage ||
+    typeof currentPageViewAgeMs === "number" &&
+    Number.isFinite(currentPageViewAgeMs) &&
+    currentPageViewAgeMs >= 0 &&
+    currentPageViewAgeMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
+  const shouldShowClientOfflineHint =
+    Boolean(selectedRequest) &&
+    !isLoadingPageViews &&
+    !pageViewsError &&
+    !clientIsOnSite;
   const supplierRequestCards = buildSupplierRequestCards(
     supplierRequests,
     ticketMessagesByTicketId,

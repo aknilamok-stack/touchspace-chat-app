@@ -983,7 +983,27 @@ export default function Home() {
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;
+  const lastClientMessageAtMs = activeChat
+    ? activeChat.messages.reduce<number | null>((latest, message) => {
+        if (message.from !== "client") {
+          return latest;
+        }
+
+        const createdAtMs = new Date(message.createdAt).getTime();
+
+        if (!Number.isFinite(createdAtMs)) {
+          return latest;
+        }
+
+        return latest === null ? createdAtMs : Math.max(latest, createdAtMs);
+      }, null)
+    : null;
+  const hasRecentClientMessage =
+    typeof lastClientMessageAtMs === "number" &&
+    (currentTimeMs ?? Date.now()) - lastClientMessageAtMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
   const clientIsOnSite =
+    isClientTyping ||
+    hasRecentClientMessage ||
     typeof currentPageViewAgeMs === "number" &&
     Number.isFinite(currentPageViewAgeMs) &&
     currentPageViewAgeMs >= 0 &&

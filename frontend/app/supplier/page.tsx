@@ -381,6 +381,15 @@ const getVisibleMessagesForTicket = (
       return false;
     }
 
+    const isDuplicatedSupplierRequestSystemMessage =
+      message.senderType === "system" &&
+      typeof message.displayContent === "string" &&
+      message.displayContent.startsWith("Запрошен поставщик:");
+
+    if (isDuplicatedSupplierRequestSystemMessage) {
+      return false;
+    }
+
     return (
       message.senderType === "client" ||
       message.senderType === "supplier" ||

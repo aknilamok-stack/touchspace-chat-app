@@ -1486,7 +1486,7 @@ export default function ClientPage() {
                               </p>
                             ) : null}
                             <div
-                              className={`rounded-[18px] px-4 py-3 text-sm leading-6 shadow-sm ${
+                              className={`relative rounded-[18px] px-4 pb-[10px] pt-3 text-sm leading-6 shadow-sm ${
                                 message.senderType === "client"
                                   ? "rounded-tr-[6px] bg-[#0A84FF] text-white"
                                   : message.senderType === "ai"
@@ -1535,12 +1535,12 @@ export default function ClientPage() {
                                 </div>
                               </button>
                             ) : null}
-                            <div className="mt-1 flex items-end gap-3">
-                              <p className="min-w-0 flex-1 break-words leading-6">
+                            <div className="mt-1">
+                              <p className="min-w-0 break-words pr-[56px] leading-6">
                                 {message.displayContent}
                               </p>
                               <div
-                                className={`flex shrink-0 items-center gap-1 text-[10px] leading-none ${
+                                className={`absolute bottom-[10px] right-4 flex shrink-0 items-center gap-1 text-[10px] leading-none ${
                                   message.senderType === "client"
                                     ? "text-white/78"
                                     : message.senderType === "ai"

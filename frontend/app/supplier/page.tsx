@@ -13,7 +13,6 @@ import {
   managerAccounts,
   type ManagerPresence,
   readAuthSession,
-  supplierAccounts,
 } from "@/lib/auth";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -29,12 +28,6 @@ import {
   updateSupplierPresence,
 } from "@/lib/manager-presence";
 
-const defaultSupplierAccount = supplierAccounts[0] ?? {
-  id: "supplier_karelia",
-  name: "Karelia",
-};
-const supplierId = defaultSupplierAccount.id;
-const supplierName = defaultSupplierAccount.name;
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
 const supplierReplyMapStorageKey = "touchspace_supplier_reply_map";
@@ -404,7 +397,8 @@ const buildSupplierRequestCards = (
     );
 
 const fetchTicketMessagesSnapshot = async (
-  ticketId: string
+  ticketId: string,
+  supplierId: string
 ): Promise<TicketMessage[]> => {
   const response = await fetch(
     apiUrl(
@@ -483,19 +477,22 @@ const getSupplierCardTone = (queueTab: SupplierQueueTab) => {
   };
 };
 
-const fetchMessagesMapForRequests = async (requests: SupplierRequest[]) => {
+const fetchMessagesMapForRequests = async (
+  requests: SupplierRequest[],
+  supplierId: string
+) => {
   const uniqueTicketIds = [...new Set(requests.map((request) => request.ticketId))];
   const ticketEntries = await Promise.all(
     uniqueTicketIds.map(async (ticketId) => [
       ticketId,
-      await fetchTicketMessagesSnapshot(ticketId),
+      await fetchTicketMessagesSnapshot(ticketId, supplierId),
     ] as const)
   );
 
   return Object.fromEntries(ticketEntries);
 };
 
-const fetchTicketsMap = async () => {
+const fetchTicketsMap = async (supplierId: string) => {
   const response = await fetch(
     apiUrl(`/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`)
   );
@@ -664,6 +661,8 @@ const areMessagesEqual = (
 export default function SupplierPage() {
   const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierName, setSupplierName] = useState("");
   const [supplierStatus, setSupplierStatus] = useState<ManagerPresence>("online");
   const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
@@ -1425,6 +1424,14 @@ export default function SupplierPage() {
       return;
     }
 
+    if (!session.supplierId) {
+      clearAuthSession();
+      router.replace("/login");
+      return;
+    }
+
+    setSupplierId(session.supplierId);
+    setSupplierName(session.supplierName ?? session.fullName ?? "Поставщик");
     setAuthReady(true);
     setSupplierStatus(readSupplierStatus());
     setPinnedRequestIds(readPinnedRequestIds());
@@ -1463,8 +1470,8 @@ export default function SupplierPage() {
 
       try {
         const data = await fetchSupplierRequests();
-        const ticketsMap = await fetchTicketsMap();
-        const messagesMap = await fetchMessagesMapForRequests(data);
+        const ticketsMap = await fetchTicketsMap(supplierId);
+        const messagesMap = await fetchMessagesMapForRequests(data, supplierId);
         syncSupplierRequests(data);
         setTicketsById(ticketsMap);
         setTicketMessagesByTicketId((currentMap) =>
@@ -1610,8 +1617,8 @@ export default function SupplierPage() {
       const refreshSupplierWorkspace = async () => {
         try {
           const requests = await fetchSupplierRequests();
-          const ticketsMap = await fetchTicketsMap();
-          const messagesMap = await fetchMessagesMapForRequests(requests);
+          const ticketsMap = await fetchTicketsMap(supplierId);
+          const messagesMap = await fetchMessagesMapForRequests(requests, supplierId);
           const nextRequestCards = buildSupplierRequestCards(
             requests,
             messagesMap,
@@ -2090,7 +2097,7 @@ export default function SupplierPage() {
 
       const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
         fetchSupplierRequests(),
-        fetchTicketsMap(),
+        fetchTicketsMap(supplierId),
         fetchTicketMessages(selectedRequest.ticketId),
       ]);
 

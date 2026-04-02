@@ -541,15 +541,21 @@ const getStatusBadgeClass = (rawStatus?: string) => {
 
 const formatMessage = (msg: ApiMessage): ChatMessage => {
   const attachments = parseChatAttachmentPayloads(msg.content);
-
-  return {
-    id: msg.id,
-    text:
-      msg.messageType === "attachment" && attachments.length > 0
+  const normalizedContent = msg.content.trim();
+  const managerSystemText =
+    msg.senderType === "system" &&
+    normalizedContent.startsWith("Запрос поставщику ") &&
+    normalizedContent.includes('переведён в статус "Решён"')
+      ? "Поставщик отметил диалог решённым. Вы снова ведёте диалог."
+      : msg.messageType === "attachment" && attachments.length > 0
         ? attachments.length === 1
           ? attachments[0].name
           : `${attachments.length} файлов`
-        : msg.content,
+        : msg.content;
+
+  return {
+    id: msg.id,
+    text: managerSystemText,
     messageType: msg.messageType,
     transport: msg.transport,
     from:

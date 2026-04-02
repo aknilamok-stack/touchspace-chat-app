@@ -3960,7 +3960,7 @@ export default function Home() {
                 </div>
               ) : null}
 
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7]/0 bg-transparent px-0 py-0">
                 <button
                   type="button"
                   onClick={() => setSendMode("chat")}
@@ -3983,27 +3983,20 @@ export default function Home() {
                 >
                   Email
                 </button>
+                {sendMode === "email" ? (
+                  <>
+                    <span className="ml-1 text-sm font-medium text-[#9A6B2E]">
+                      Получатель:
+                    </span>
+                    <input
+                      value={emailRecipient}
+                      onChange={(event) => setEmailRecipient(event.target.value)}
+                      placeholder="client@example.com"
+                      className="min-w-[240px] flex-1 rounded-full border border-[#E5D2B8] bg-[#FFF9F2] px-4 py-2 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
+                    />
+                  </>
+                ) : null}
               </div>
-
-              {sendMode === "email" ? (
-                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7] bg-[#FFF9F2] px-3 py-2.5">
-                  <span className="rounded-full bg-[#111827] px-3 py-1 text-sm font-medium text-white">
-                    Email
-                  </span>
-                  <span className="text-sm font-medium text-[#9A6B2E]">
-                    Получатель:
-                  </span>
-                  <input
-                    value={emailRecipient}
-                    onChange={(event) => setEmailRecipient(event.target.value)}
-                    placeholder="client@example.com"
-                    className="min-w-[240px] flex-1 rounded-full border border-[#E5D2B8] bg-white px-4 py-2 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
-                  />
-                  <span className="text-xs font-medium text-[#C1812B]">
-                    Ответ клиента попадёт в этот же тикет
-                  </span>
-                </div>
-              ) : null}
 
               <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                 <div className="min-w-0 flex-1">

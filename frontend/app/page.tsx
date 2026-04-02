@@ -4901,7 +4901,7 @@ export default function Home() {
                       <textarea
                         value={supplierFollowUpText}
                         onChange={(e) => setSupplierFollowUpText(e.target.value)}
-                        className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] px-3 py-3 text-sm outline-none"
+                        className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: клиент ждёт ответ сегодня до 16:00. Это сообщение увидит только поставщик."
                       />
                       <p className="mt-2 text-xs text-[#8E8E93]">
@@ -4949,7 +4949,7 @@ export default function Home() {
                       <textarea
                         value={supplierRequestText}
                         onChange={(e) => setSupplierRequestText(e.target.value)}
-                        className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] px-3 py-3 text-sm outline-none"
+                        className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: подтвердите наличие и срок поставки по заказу..."
                       />
                     </div>

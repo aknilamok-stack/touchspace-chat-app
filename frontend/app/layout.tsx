@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SessionGuard } from "@/components/auth/session-guard";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="ru" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-[radial-gradient(circle_at_top,#eef4ff_0%,#f8fafc_48%,#e8eef8_100%)] text-slate-950">
+        <SessionGuard />
         {children}
       </body>
     </html>

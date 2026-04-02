@@ -15,6 +15,8 @@ model Profile {
   passwordHash            String?
   passwordChangeRequired  Boolean           @default(false)
   passwordIssuedAt        DateTime?
+  activeSessionToken      String?
+  activeSessionIssuedAt   DateTime?
   fullName                String
   role                    String
   status                  String            @default("active")

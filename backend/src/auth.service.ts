@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
@@ -134,10 +134,14 @@ export class AuthService {
       );
     }
 
+    const sessionToken = randomUUID();
+
     await this.prisma.profile.update({
       where: { id: profile.id },
       data: {
         lastLoginAt: new Date(),
+        activeSessionToken: sessionToken,
+        activeSessionIssuedAt: new Date(),
         managerStatus: profile.role === 'manager' ? 'online' : undefined,
         managerPresenceHeartbeatAt:
           profile.role === 'manager' ? new Date() : undefined,
@@ -156,7 +160,88 @@ export class AuthService {
         email: profile.email,
         supplierId: profile.supplierId,
         passwordChangeRequired: profile.passwordChangeRequired,
+        sessionToken,
       },
+    };
+  }
+
+  async validateSession(userId: string, sessionToken: string) {
+    const normalizedUserId = userId?.trim();
+    const normalizedSessionToken = sessionToken?.trim();
+
+    if (!normalizedUserId || !normalizedSessionToken) {
+      throw new BadRequestException('userId и sessionToken обязательны');
+    }
+
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: normalizedUserId },
+      select: {
+        id: true,
+        activeSessionToken: true,
+      },
+    });
+
+    if (!profile || !profile.activeSessionToken) {
+      return {
+        valid: false,
+        reason: 'session_missing',
+      };
+    }
+
+    if (profile.activeSessionToken !== normalizedSessionToken) {
+      return {
+        valid: false,
+        reason: 'other_device_login',
+      };
+    }
+
+    return {
+      valid: true,
+    };
+  }
+
+  async logout(userId: string, sessionToken?: string) {
+    const normalizedUserId = userId?.trim();
+    const normalizedSessionToken = sessionToken?.trim();
+
+    if (!normalizedUserId) {
+      throw new BadRequestException('userId обязателен');
+    }
+
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: normalizedUserId },
+      select: {
+        id: true,
+        activeSessionToken: true,
+      },
+    });
+
+    if (!profile) {
+      return {
+        ok: true,
+      };
+    }
+
+    if (
+      normalizedSessionToken &&
+      profile.activeSessionToken &&
+      profile.activeSessionToken !== normalizedSessionToken
+    ) {
+      return {
+        ok: true,
+      };
+    }
+
+    await this.prisma.profile.update({
+      where: { id: normalizedUserId },
+      data: {
+        activeSessionToken: null,
+        activeSessionIssuedAt: null,
+      },
+    });
+
+    return {
+      ok: true,
     };
   }
 

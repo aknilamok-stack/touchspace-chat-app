@@ -10,6 +10,7 @@ import { ContactCard, type ChatContactItem } from "@/components/chat/contact-car
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
   clearAuthSession,
+  logoutServerSession,
   managerAccounts,
   type ManagerPresence,
   readAuthSession,
@@ -1906,8 +1907,12 @@ export default function SupplierPage() {
   }, [replyText]);
 
   const handleLogout = () => {
-    clearAuthSession();
-    router.replace("/login");
+    const session = readAuthSession();
+
+    void logoutServerSession(session).finally(() => {
+      clearAuthSession();
+      router.replace("/login");
+    });
   };
 
   const handleChangeSupplierStatus = (status: ManagerPresence) => {

@@ -11,6 +11,7 @@ import { ContactCard, type ChatContactItem } from "@/components/chat/contact-car
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
   clearAuthSession,
+  logoutServerSession,
   type ManagerPresence,
   managerAccounts,
   readAuthSession,
@@ -2895,16 +2896,22 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    const session = readAuthSession();
+
     if (currentManagerId && currentManagerName) {
       void updateManagerPresence(currentManagerId, currentManagerName, "offline").finally(() => {
-        clearAuthSession();
-        router.replace("/login");
+        void logoutServerSession(session).finally(() => {
+          clearAuthSession();
+          router.replace("/login");
+        });
       });
       return;
     }
 
-    clearAuthSession();
-    router.replace("/login");
+    void logoutServerSession(session).finally(() => {
+      clearAuthSession();
+      router.replace("/login");
+    });
   };
 
   const handleChangeManagerStatus = (status: ManagerPresence) => {

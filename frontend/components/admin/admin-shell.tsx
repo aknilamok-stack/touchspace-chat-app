@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearAuthSession, readAuthSession, type AuthSession } from "@/lib/auth";
+import {
+  clearAuthSession,
+  logoutServerSession,
+  readAuthSession,
+  type AuthSession,
+} from "@/lib/auth";
 
 const navigation = [
   { href: "/admin", label: "Обзор" },
@@ -97,8 +102,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => {
-                clearAuthSession();
-                router.replace("/login");
+                void logoutServerSession(session).finally(() => {
+                  clearAuthSession();
+                  router.replace("/login");
+                });
               }}
               className="mt-4 rounded-xl bg-white/10 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/16"
             >

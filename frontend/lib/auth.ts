@@ -1,9 +1,12 @@
+import { apiUrl } from "@/lib/api";
+
 export type UserRole = "admin" | "client" | "manager" | "supplier";
 export type ManagerPresence = "online" | "break" | "offline";
 
 export type AuthSession = {
   login: string;
   role: UserRole;
+  sessionToken?: string;
   userId?: string;
   fullName?: string;
   email?: string;
@@ -65,6 +68,55 @@ export function writeAuthSession(session: AuthSession) {
 
 export function clearAuthSession() {
   window.localStorage.removeItem(authStorageKey);
+}
+
+export async function validateServerSession(session: AuthSession) {
+  if (!session.userId || !session.sessionToken) {
+    return {
+      valid: true,
+    };
+  }
+
+  const response = await fetch(apiUrl("/auth/validate-session"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: session.userId,
+      sessionToken: session.sessionToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Не удалось проверить активную сессию");
+  }
+
+  return (await response.json()) as {
+    valid: boolean;
+    reason?: string;
+  };
+}
+
+export async function logoutServerSession(session: AuthSession | null) {
+  if (!session?.userId) {
+    return;
+  }
+
+  try {
+    await fetch(apiUrl("/auth/logout"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: session.userId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+  } catch {
+    return;
+  }
 }
 
 export function readManagerStatuses(): Record<string, ManagerPresence> {

@@ -35,6 +35,18 @@ export default function LoginPage() {
     );
   }, [router]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("reason") === "other-device") {
+      setError("Выполнен вход с другого устройства. Пожалуйста, войдите снова.");
+    }
+  }, []);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -61,12 +73,14 @@ export default function LoginPage() {
             email?: string | null;
             supplierId?: string | null;
             passwordChangeRequired?: boolean;
+            sessionToken?: string;
           };
         };
 
         writeAuthSession({
           login: payload.user.login,
           role: payload.user.role,
+          sessionToken: payload.user.sessionToken,
           userId: payload.user.id,
           fullName: payload.user.fullName,
           email: payload.user.email ?? undefined,

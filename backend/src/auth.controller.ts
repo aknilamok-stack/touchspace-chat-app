@@ -31,4 +31,26 @@ export class AuthController {
       body.newPassword,
     );
   }
+
+  @Post('validate-session')
+  validateSession(
+    @Body()
+    body: {
+      userId: string;
+      sessionToken: string;
+    },
+  ) {
+    return this.authService.validateSession(body.userId, body.sessionToken);
+  }
+
+  @Post('logout')
+  logout(
+    @Body()
+    body: {
+      userId: string;
+      sessionToken?: string;
+    },
+  ) {
+    return this.authService.logout(body.userId, body.sessionToken);
+  }
 }

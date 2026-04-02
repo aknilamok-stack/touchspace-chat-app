@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api";
-import { clearAuthSession, readAuthSession, type AuthSession } from "@/lib/auth";
+import {
+  clearAuthSession,
+  logoutServerSession,
+  readAuthSession,
+  type AuthSession,
+} from "@/lib/auth";
 import {
   enablePushNotifications,
   getCurrentPushEndpoint,
@@ -410,8 +415,10 @@ export default function NotificationSettingsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearAuthSession();
-                  router.replace("/login");
+                  void logoutServerSession(session).finally(() => {
+                    clearAuthSession();
+                    router.replace("/login");
+                  });
                 }}
                 className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
               >

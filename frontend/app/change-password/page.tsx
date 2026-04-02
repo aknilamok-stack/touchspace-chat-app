@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
-import { readAuthSession, writeAuthSession } from "@/lib/auth";
+import { getHomePathForRole, readAuthSession, writeAuthSession } from "@/lib/auth";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -23,9 +23,7 @@ export default function ChangePasswordPage() {
     }
 
     if (!session.passwordChangeRequired) {
-      router.replace(
-        session.role === "admin" ? "/admin" : session.role === "manager" ? "/" : "/supplier",
-      );
+      router.replace(getHomePathForRole(session.role));
     }
   }, [router, session]);
 
@@ -77,9 +75,7 @@ export default function ChangePasswordPage() {
       setSuccess("Пароль обновлён. Перенаправляем...");
 
       window.setTimeout(() => {
-        router.replace(
-          session.role === "admin" ? "/admin" : session.role === "manager" ? "/" : "/supplier",
-        );
+        router.replace(getHomePathForRole(session.role));
       }, 700);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось сменить пароль");

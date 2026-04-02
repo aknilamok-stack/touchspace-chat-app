@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import { ProfilesService } from './profiles.service';
 import { PrismaService } from './prisma.service';
 import { readJsonStringArray } from './prisma-json.util';
+import { getDefaultFullNameForRole, MANAGER_ROLES, SUPPLIER_ROLES } from './role.utils';
 
 type StoredSubscriptionInput = {
   profileId: string;
@@ -93,12 +94,7 @@ export class PushService {
     await this.profilesService.ensureProfile({
       id: input.profileId,
       role: input.role,
-      fullName:
-        input.role === 'admin'
-          ? 'Администратор'
-          : input.role === 'supplier'
-            ? 'Поставщик'
-            : 'Менеджер',
+      fullName: getDefaultFullNameForRole(input.role),
     });
 
     return this.prisma.pushSubscription.upsert({
@@ -141,7 +137,9 @@ export class PushService {
   async getActiveManagerProfileIds() {
     const managers = await this.prisma.profile.findMany({
       where: {
-        role: 'manager',
+        role: {
+          in: [...MANAGER_ROLES],
+        },
         isActive: true,
         approvalStatus: 'approved',
         status: {
@@ -163,7 +161,9 @@ export class PushService {
     const normalizedSupplierId = supplierId?.trim();
     const suppliers = await this.prisma.profile.findMany({
       where: {
-        role: 'supplier',
+        role: {
+          in: [...SUPPLIER_ROLES],
+        },
         isActive: true,
         approvalStatus: 'approved',
         status: {

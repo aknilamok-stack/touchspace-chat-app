@@ -1,6 +1,12 @@
 import { apiUrl } from "@/lib/api";
 
-export type UserRole = "admin" | "client" | "manager" | "supplier";
+export type UserRole =
+  | "admin"
+  | "client"
+  | "manager"
+  | "supplier"
+  | "manager_supervisor"
+  | "supplier_supervisor";
 export type ManagerPresence = "online" | "break" | "offline";
 
 export type AuthSession = {
@@ -39,6 +45,25 @@ export const supplierAccounts = [
   { login: "supplier", password: "supplier123", id: "supplier_karelia", name: "Karelia" },
 ] as const;
 
+export const managerSupervisorAccounts = [
+  {
+    login: "managerlead",
+    password: "managerlead123",
+    id: "manager_supervisor_touchspace",
+    name: "Управленец менеджеров",
+  },
+] as const;
+
+export const supplierSupervisorAccounts = [
+  {
+    login: "supplierlead",
+    password: "supplierlead123",
+    id: "supplier_supervisor_karelia",
+    name: "Управленец поставщика",
+    supplierId: "supplier_karelia",
+  },
+] as const;
+
 export const authStorageKey = "touchspace_auth";
 const clientSessionStorageKey = "touchspace_client_session";
 const managerStatusStorageKey = "touchspace_manager_statuses";
@@ -60,6 +85,38 @@ export function readAuthSession(): AuthSession | null {
     window.localStorage.removeItem(authStorageKey);
     return null;
   }
+}
+
+export function isManagerRole(role?: string | null): role is "manager" | "manager_supervisor" {
+  return role === "manager" || role === "manager_supervisor";
+}
+
+export function isSupplierRole(role?: string | null): role is "supplier" | "supplier_supervisor" {
+  return role === "supplier" || role === "supplier_supervisor";
+}
+
+export function isInternalRole(role?: string | null) {
+  return role === "admin" || isManagerRole(role) || isSupplierRole(role);
+}
+
+export function getHomePathForRole(role?: string | null) {
+  if (role === "admin") {
+    return "/admin";
+  }
+
+  if (role === "manager_supervisor") {
+    return "/manager-supervisor";
+  }
+
+  if (role === "supplier_supervisor") {
+    return "/supplier-supervisor";
+  }
+
+  if (isSupplierRole(role)) {
+    return "/supplier";
+  }
+
+  return "/";
 }
 
 export function writeAuthSession(session: AuthSession) {

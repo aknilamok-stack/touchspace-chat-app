@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
 import { PrismaService } from './prisma.service';
+import { isManagerRole, isSupplierRole } from './role.utils';
 
 type DemoAccount = {
   aliases: string[];
@@ -14,7 +15,12 @@ type DemoAccount = {
     id: string;
     authLogin: string;
     fullName: string;
-    role: 'admin' | 'manager' | 'supplier';
+    role:
+      | 'admin'
+      | 'manager'
+      | 'supplier'
+      | 'manager_supervisor'
+      | 'supplier_supervisor';
     supplierId?: string | null;
   };
 };
@@ -72,6 +78,27 @@ export class AuthService {
         authLogin: 'supplier',
         fullName: 'Karelia',
         role: 'supplier',
+        supplierId: 'supplier_karelia',
+      },
+    },
+    {
+      aliases: ['managerlead', 'manager.supervisor'],
+      password: 'managerlead123',
+      profile: {
+        id: 'manager_supervisor_touchspace',
+        authLogin: 'managerlead',
+        fullName: 'Управленец менеджеров',
+        role: 'manager_supervisor',
+      },
+    },
+    {
+      aliases: ['supplierlead', 'supplier.supervisor'],
+      password: 'supplierlead123',
+      profile: {
+        id: 'supplier_supervisor_karelia',
+        authLogin: 'supplierlead',
+        fullName: 'Управленец поставщика',
+        role: 'supplier_supervisor',
         supplierId: 'supplier_karelia',
       },
     },
@@ -253,12 +280,12 @@ export class AuthService {
         lastLoginAt: new Date(),
         activeSessionToken: sessionToken,
         activeSessionIssuedAt: new Date(),
-        managerStatus: profile.role === 'manager' ? 'online' : undefined,
+        managerStatus: isManagerRole(profile.role) ? 'online' : undefined,
         managerPresenceHeartbeatAt:
-          profile.role === 'manager' ? new Date() : undefined,
-        supplierStatus: profile.role === 'supplier' ? 'online' : undefined,
+          isManagerRole(profile.role) ? new Date() : undefined,
+        supplierStatus: isSupplierRole(profile.role) ? 'online' : undefined,
         supplierPresenceHeartbeatAt:
-          profile.role === 'supplier' ? new Date() : undefined,
+          isSupplierRole(profile.role) ? new Date() : undefined,
       },
     });
 

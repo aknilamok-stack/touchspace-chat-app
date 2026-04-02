@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   clearAuthSession,
+  isInternalRole,
   readAuthSession,
   validateServerSession,
 } from "@/lib/auth";
@@ -25,12 +26,7 @@ export function SessionGuard() {
       return;
     }
 
-    const isInternalRole =
-      session.role === "admin" ||
-      session.role === "manager" ||
-      session.role === "supplier";
-
-    if (isInternalRole && (!session.userId || !session.sessionToken)) {
+    if (isInternalRole(session.role) && (!session.userId || !session.sessionToken)) {
       clearAuthSession();
       router.replace("/login?reason=reauth-required");
       return;

@@ -6,6 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import {
   clearAuthSession,
+  getHomePathForRole,
+  isInternalRole,
+  isSupplierRole,
   logoutServerSession,
   readAuthSession,
   type AuthSession,
@@ -56,7 +59,9 @@ type BeforeInstallPromptEvent = Event & {
 const roleLabels: Record<string, string> = {
   admin: "Администратор",
   manager: "Менеджер",
+  manager_supervisor: "Управленец менеджеров",
   supplier: "Поставщик",
+  supplier_supervisor: "Управленец поставщика",
 };
 
 const preferenceLabels = [
@@ -112,7 +117,7 @@ const buildCounters = (role: string, counters: Record<string, number>) => {
     ];
   }
 
-  if (role === "supplier") {
+  if (isSupplierRole(role)) {
     return [
       { label: "Непрочитанные диалоги", value: counters.unreadDialogs ?? 0, tone: "bg-sky-50 text-sky-900 border-sky-200" },
       { label: "Новые запросы", value: counters.newRequests ?? 0, tone: "bg-emerald-50 text-emerald-900 border-emerald-200" },
@@ -144,7 +149,7 @@ export default function NotificationSettingsPage() {
   const [desktopPlatform, setDesktopPlatform] = useState("");
 
   const profileId = getInternalProfileId(session);
-  const homeHref = session?.role === "admin" ? "/admin" : session?.role === "supplier" ? "/supplier" : "/";
+  const homeHref = getHomePathForRole(session?.role);
 
   const counters = useMemo(
     () => buildCounters(session?.role ?? "manager", data?.counters ?? {}),
@@ -175,7 +180,7 @@ export default function NotificationSettingsPage() {
   useEffect(() => {
     const currentSession = readAuthSession();
 
-    if (!currentSession || (currentSession.role !== "admin" && currentSession.role !== "manager" && currentSession.role !== "supplier")) {
+    if (!currentSession || !isInternalRole(currentSession.role)) {
       router.replace("/login");
       return;
     }

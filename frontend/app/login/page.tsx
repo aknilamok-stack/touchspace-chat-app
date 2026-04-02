@@ -3,7 +3,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
-import { readAuthSession, writeAuthSession } from "@/lib/auth";
+import {
+  getHomePathForRole,
+  isManagerRole,
+  isSupplierRole,
+  managerSupervisorAccounts,
+  readAuthSession,
+  supplierSupervisorAccounts,
+  writeAuthSession,
+} from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,13 +27,7 @@ export default function LoginPage() {
     }
 
     router.replace(
-      existingSession.passwordChangeRequired
-        ? "/change-password"
-        : existingSession.role === "admin"
-        ? "/admin"
-        : existingSession.role === "manager"
-          ? "/"
-          : "/supplier",
+      existingSession.passwordChangeRequired ? "/change-password" : getHomePathForRole(existingSession.role),
     );
   }, [router]);
 
@@ -67,7 +69,13 @@ export default function LoginPage() {
           user: {
             id: string;
             login: string;
-            role: "admin" | "manager" | "supplier" | "client";
+            role:
+              | "admin"
+              | "manager"
+              | "supplier"
+              | "client"
+              | "manager_supervisor"
+              | "supplier_supervisor";
             fullName: string;
             email?: string | null;
             supplierId?: string | null;
@@ -86,24 +94,16 @@ export default function LoginPage() {
           passwordChangeRequired: payload.user.passwordChangeRequired ?? false,
           adminId: payload.user.role === "admin" ? payload.user.id : undefined,
           adminName: payload.user.role === "admin" ? payload.user.fullName : undefined,
-          managerId: payload.user.role === "manager" ? payload.user.id : undefined,
-          managerName: payload.user.role === "manager" ? payload.user.fullName : undefined,
+          managerId: isManagerRole(payload.user.role) ? payload.user.id : undefined,
+          managerName: isManagerRole(payload.user.role) ? payload.user.fullName : undefined,
           supplierId:
-            payload.user.role === "supplier"
+            isSupplierRole(payload.user.role)
               ? payload.user.supplierId ?? payload.user.id
               : undefined,
-          supplierName: payload.user.role === "supplier" ? payload.user.fullName : undefined,
+          supplierName: isSupplierRole(payload.user.role) ? payload.user.fullName : undefined,
         });
 
-        router.replace(
-          payload.user.passwordChangeRequired
-            ? "/change-password"
-            : payload.user.role === "admin"
-              ? "/admin"
-              : payload.user.role === "manager"
-                ? "/"
-                : "/supplier",
-        );
+        router.replace(payload.user.passwordChangeRequired ? "/change-password" : getHomePathForRole(payload.user.role));
         return;
       }
 
@@ -134,7 +134,7 @@ export default function LoginPage() {
           Вход в систему
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Войдите как администратор, менеджер или поставщик для тестирования ролей.
+          Войдите как администратор, менеджер, управленец менеджеров, поставщик или управленец поставщика для тестирования ролей.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -146,7 +146,7 @@ export default function LoginPage() {
               value={login}
               onChange={(event) => setLogin(event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
-              placeholder="admin, manager или supplier"
+              placeholder="admin, anna, managerlead, supplier или supplierlead"
             />
           </div>
 
@@ -177,8 +177,14 @@ export default function LoginPage() {
           <p>anna / manager123</p>
           <p className="mt-1">ekaterina / manager123</p>
           <p className="mt-1">mikhail / manager123</p>
+          <p className="mt-1">
+            {managerSupervisorAccounts[0].login} / {managerSupervisorAccounts[0].password}
+          </p>
           <p className="mt-1">admin / admin123</p>
           <p className="mt-1">supplier / supplier123</p>
+          <p className="mt-1">
+            {supplierSupervisorAccounts[0].login} / {supplierSupervisorAccounts[0].password}
+          </p>
         </div>
       </div>
     </main>

@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import {
+  getDefaultFullNameForRole,
+  isManagerRole,
+  isSupplierRole,
+  MANAGER_ROLES,
+  SUPPLIER_ROLES,
+} from './role.utils';
 
 type EnsureProfileInput = {
   id?: string | null;
@@ -36,6 +43,23 @@ type EnsureProfileInput = {
 export class ProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async resolveCompatibleRole(id: string, fallbackRole: string) {
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id },
+      select: { role: true },
+    });
+
+    if (isManagerRole(fallbackRole) && isManagerRole(existingProfile?.role)) {
+      return existingProfile?.role ?? fallbackRole;
+    }
+
+    if (isSupplierRole(fallbackRole) && isSupplierRole(existingProfile?.role)) {
+      return existingProfile?.role ?? fallbackRole;
+    }
+
+    return existingProfile?.role?.trim() || fallbackRole;
+  }
+
   private resolvePresenceStatus(
     presenceStatus: string | null,
     _heartbeatAt: Date | null,
@@ -50,7 +74,9 @@ export class ProfilesService {
   async getManagerStatuses() {
     const managers = await this.prisma.profile.findMany({
       where: {
-        role: 'manager',
+        role: {
+          in: [...MANAGER_ROLES],
+        },
         isActive: true,
         approvalStatus: {
           not: 'rejected',
@@ -92,9 +118,14 @@ export class ProfilesService {
       return null;
     }
 
+    const resolvedRole = await this.resolveCompatibleRole(
+      normalizedId,
+      'manager',
+    );
+
     await this.ensureProfile({
       id: normalizedId,
-      role: 'manager',
+      role: resolvedRole,
       fullName,
       managerStatus: normalizedStatus,
       managerPresenceHeartbeatAt:
@@ -122,7 +153,9 @@ export class ProfilesService {
   async getSupplierStatuses() {
     const suppliers = await this.prisma.profile.findMany({
       where: {
-        role: 'supplier',
+        role: {
+          in: [...SUPPLIER_ROLES],
+        },
         isActive: true,
         approvalStatus: {
           not: 'rejected',
@@ -166,11 +199,23 @@ export class ProfilesService {
       return null;
     }
 
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id: normalizedId },
+      select: {
+        role: true,
+        supplierId: true,
+      },
+    });
+    const resolvedRole =
+      isSupplierRole(existingProfile?.role) && existingProfile?.role
+        ? existingProfile.role
+        : 'supplier';
+
     await this.ensureProfile({
       id: normalizedId,
-      role: 'supplier',
+      role: resolvedRole,
       fullName,
-      supplierId: normalizedId,
+      supplierId: existingProfile?.supplierId?.trim() || normalizedId,
       supplierStatus: normalizedStatus,
       supplierPresenceHeartbeatAt:
         normalizedStatus === 'offline' ? null : new Date(),
@@ -204,11 +249,7 @@ export class ProfilesService {
 
     const fullName =
       input.fullName?.trim() ||
-      (role === 'client'
-        ? 'Клиент'
-        : role === 'supplier'
-          ? 'Поставщик'
-          : 'Менеджер');
+      (role === 'client' ? 'Клиент' : getDefaultFullNameForRole(role));
 
     return this.prisma.profile.upsert({
       where: { id },

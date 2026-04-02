@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api";
-import { readAuthSession } from "@/lib/auth";
+import { isInternalRole, readAuthSession } from "@/lib/auth";
 import {
   enablePushNotifications,
   getInternalProfileId,
@@ -34,8 +34,7 @@ export function AppRuntimeHub() {
   const [dismissed, setDismissed] = useState(false);
 
   const session = useMemo(() => readAuthSession(), [pathname]);
-  const isInternalRole = session?.role === "admin" || session?.role === "manager" || session?.role === "supplier";
-  const shouldShow = isInternalRole && pathname !== "/login" && pathname !== "/client";
+  const shouldShow = isInternalRole(session?.role) && pathname !== "/login" && pathname !== "/client";
 
   const profileId = getInternalProfileId(session);
 

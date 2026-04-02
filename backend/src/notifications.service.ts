@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ProfilesService } from './profiles.service';
+import {
+  getDefaultFullNameForRole,
+  isManagerRole,
+  isSupplierRole,
+} from './role.utils';
 
 type NotificationPreferencesInput = {
   notificationPushEnabled?: boolean;
@@ -39,6 +44,23 @@ export class NotificationsService {
     private readonly profilesService: ProfilesService,
   ) {}
 
+  private async resolveScopedRole(profileId: string, fallbackRole: string) {
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { role: true },
+    });
+
+    if (isManagerRole(fallbackRole) && isManagerRole(existingProfile?.role)) {
+      return existingProfile?.role ?? fallbackRole;
+    }
+
+    if (isSupplierRole(fallbackRole) && isSupplierRole(existingProfile?.role)) {
+      return existingProfile?.role ?? fallbackRole;
+    }
+
+    return existingProfile?.role?.trim() || fallbackRole;
+  }
+
   private async ensureSettingsProfile(profileId: string, role: string) {
     const normalizedProfileId = profileId?.trim();
     const normalizedRole = role?.trim();
@@ -47,15 +69,15 @@ export class NotificationsService {
       throw new BadRequestException('profileId и role обязательны');
     }
 
+    const resolvedRole = await this.resolveScopedRole(
+      normalizedProfileId,
+      normalizedRole,
+    );
+
     await this.profilesService.ensureProfile({
       id: normalizedProfileId,
-      role: normalizedRole,
-      fullName:
-        normalizedRole === 'admin'
-          ? 'Администратор'
-          : normalizedRole === 'supplier'
-            ? 'Поставщик'
-            : 'Менеджер',
+      role: resolvedRole,
+      fullName: getDefaultFullNameForRole(resolvedRole),
     });
 
     const profile = await this.prisma.profile.findUnique({
@@ -296,11 +318,11 @@ export class NotificationsService {
   }
 
   private async getCounters(profileId: string, role: string) {
-    if (role === 'manager') {
+    if (isManagerRole(role)) {
       return this.getManagerCounters(profileId);
     }
 
-    if (role === 'supplier') {
+    if (isSupplierRole(role)) {
       return this.getSupplierCounters(profileId);
     }
 

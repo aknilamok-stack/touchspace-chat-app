@@ -17,7 +17,16 @@ export class SupplierRequestsService {
     supplierName: string,
     status: UpdateSupplierRequestStatusDto['status'],
   ) {
-    return `Запрос поставщику ${supplierName} переведён в статус: ${status}`;
+    const statusLabel =
+      status === 'closed'
+        ? 'Решён'
+        : status === 'answered'
+          ? 'Отвечен'
+          : status === 'cancelled'
+            ? 'Отменён'
+            : status;
+
+    return `Запрос поставщику ${supplierName} переведён в статус "${statusLabel}"`;
   }
 
   async create(createSupplierRequestDto: CreateSupplierRequestDto) {

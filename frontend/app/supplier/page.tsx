@@ -785,6 +785,30 @@ const buildSupplierSlaVisual = ({
   };
 };
 
+const getSupplierRequestStatusLabel = (status?: string) => {
+  if (status === "pending") {
+    return "Новый";
+  }
+
+  if (status === "in_progress") {
+    return "В работе";
+  }
+
+  if (status === "answered") {
+    return "Отвечен";
+  }
+
+  if (status === "closed" || status === "resolved") {
+    return "Решён";
+  }
+
+  if (status === "cancelled") {
+    return "Отменён";
+  }
+
+  return status || "—";
+};
+
 const areMessagesEqual = (
   left: TicketMessage[],
   right: TicketMessage[]
@@ -3797,7 +3821,7 @@ export default function SupplierPage() {
                                 {formatDateTimeLabel(request.createdAt)}
                               </span>
                               <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#6C6C70]">
-                                {request.status}
+                                {getSupplierRequestStatusLabel(request.status)}
                               </span>
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[#1E1E1E]">

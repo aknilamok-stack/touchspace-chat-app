@@ -192,15 +192,17 @@ export class EmailService {
   extractTextContent(
     parsedMessage: Awaited<ReturnType<EmailService['parseIncomingMessage']>>,
   ) {
-    const text = (parsedMessage.text ?? '').replace(/\r\n/g, '\n').trim();
+    const text = this.cleanIncomingReply(
+      (parsedMessage.text ?? '').replace(/\r\n/g, '\n'),
+    );
 
     if (text) {
       return text;
     }
 
-    const htmlText = (parsedMessage.htmlToText ?? '')
-      .replace(/\r\n/g, '\n')
-      .trim();
+    const htmlText = this.cleanIncomingReply(
+      (parsedMessage.htmlToText ?? '').replace(/\r\n/g, '\n'),
+    );
 
     return htmlText || '(Пустое письмо)';
   }
@@ -376,6 +378,87 @@ export class EmailService {
 
   private buildPlainTextBody(content: string, ticketId: string) {
     return `${content.trim()}\n\n---\nTouchSpace ticket: ${ticketId}`;
+  }
+
+  private cleanIncomingReply(rawText: string) {
+    const normalizedText = rawText
+      .replace(/\u00a0/g, ' ')
+      .replace(/\r/g, '')
+      .trim();
+
+    if (!normalizedText) {
+      return '';
+    }
+
+    const lines = normalizedText.split('\n');
+    const cleanedLines: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      const normalizedLine = line.trim();
+
+      if (this.isReplyBoundaryLine(normalizedLine)) {
+        break;
+      }
+
+      if (this.isQuotedLine(normalizedLine)) {
+        break;
+      }
+
+      if (this.isSignatureLine(normalizedLine)) {
+        continue;
+      }
+
+      cleanedLines.push(line);
+    }
+
+    return cleanedLines
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  private isQuotedLine(line: string) {
+    return /^>+/.test(line);
+  }
+
+  private isReplyBoundaryLine(line: string) {
+    if (!line) {
+      return false;
+    }
+
+    return (
+      /^On .+wrote:$/i.test(line) ||
+      /^From:\s.+$/i.test(line) ||
+      /^Sent:\s.+$/i.test(line) ||
+      /^Subject:\s.+$/i.test(line) ||
+      /^To:\s.+$/i.test(line) ||
+      /^От:\s.+$/i.test(line) ||
+      /^Тема:\s.+$/i.test(line) ||
+      /^Кому:\s.+$/i.test(line) ||
+      /^Дата:\s.+$/i.test(line) ||
+      /^-+\s*Original Message\s*-+$/i.test(line) ||
+      /^TouchSpace ticket:\s.+$/i.test(line) ||
+      /^_{3,}$/.test(line) ||
+      /^-{3,}$/.test(line)
+    );
+  }
+
+  private isSignatureLine(line: string) {
+    if (!line) {
+      return false;
+    }
+
+    return (
+      /^Sent from my /i.test(line) ||
+      /^Get Outlook for /i.test(line) ||
+      /^Отправлено с iPhone$/i.test(line) ||
+      /^Отправлено с iPad$/i.test(line) ||
+      /^Отправлено с Android$/i.test(line) ||
+      /^Отправлено из мобильной Почты Mail$/i.test(line) ||
+      /^Отправлено из мобильной Яндекс Почты$/i.test(line) ||
+      /^Отправлено из приложения Почта$/i.test(line)
+    );
   }
 
   private mergeReferences(

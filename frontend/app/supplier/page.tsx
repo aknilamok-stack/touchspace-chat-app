@@ -2995,6 +2995,16 @@ export default function SupplierPage() {
                   </div>
                 ) : null}
 
+                {shouldShowClientOfflineHint ? (
+                  <div className="border-t border-transparent bg-white px-6 pb-2 pt-1">
+                    <div className="mx-auto w-full max-w-3xl">
+                      <div className="inline-flex items-center rounded-[16px] bg-[#F7F8FB] px-4 py-2 text-xs font-medium text-[#8E8E93]">
+                        Пользователь не на сайте
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="border-t border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="mx-auto w-full max-w-3xl">
                     {isSupplierDialogResolved ? (
@@ -3292,9 +3302,6 @@ export default function SupplierPage() {
                           ) : null}
                         </button>
                       </div>
-                      {shouldShowClientOfflineHint ? (
-                        <p className="mt-3 text-xs text-[#8E8E93]">Пользователь не на сайте</p>
-                      ) : null}
                       </>
                     ) : null}
 

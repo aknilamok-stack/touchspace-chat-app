@@ -1577,6 +1577,11 @@ export default function Home() {
     );
   };
 
+  const resolvedCurrentManagerName =
+    currentManagerName.trim() ||
+    managerAccounts.find((account) => account.id === currentManagerId)?.name ||
+    "Менеджер";
+
   const isChatMine = useCallback(
     (chat: ChatItem) => {
       if (chat.rawStatus === "resolved") {
@@ -1588,9 +1593,9 @@ export default function Home() {
       }
 
       if (
-        currentManagerName &&
+        resolvedCurrentManagerName &&
         chat.assignedManagerName &&
-        chat.assignedManagerName === currentManagerName
+        chat.assignedManagerName === resolvedCurrentManagerName
       ) {
         return true;
       }
@@ -1605,7 +1610,7 @@ export default function Home() {
 
       return false;
     },
-    [currentManagerId, currentManagerName]
+    [currentManagerId, resolvedCurrentManagerName]
   );
 
   const filteredChats = chatData.filter((chat) => {
@@ -1663,9 +1668,9 @@ export default function Home() {
     (chat: ChatItem) =>
       chat.assignedManagerName?.trim() ||
       chat.lastResolvedByManagerName?.trim() ||
-      (isChatMine(chat) ? currentManagerName : "") ||
+      (isChatMine(chat) ? resolvedCurrentManagerName : "") ||
       "Не назначен",
-    [currentManagerName, isChatMine]
+    [resolvedCurrentManagerName, isChatMine]
   );
   const onlineManagers = dedupeManagers(
     availableManagers.filter((manager) => manager.status === "online")
@@ -3405,7 +3410,7 @@ export default function Home() {
 
                 <div className="min-w-0 flex-1 text-left leading-none">
                   <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
-                    {currentManagerName}
+                    {resolvedCurrentManagerName}
                   </p>
                   <p className="mt-1 text-[11px] text-[#8E8E93]">
                     {managerStatusLabels[currentManagerStatus]}
@@ -3900,7 +3905,7 @@ export default function Home() {
 
           {activeChat?.assignedManagerName ||
           activeChat?.lastResolvedByManagerName ||
-          (activeChat && isChatMine(activeChat) && currentManagerName) ||
+          (activeChat && isChatMine(activeChat) && resolvedCurrentManagerName) ||
           activeChat?.aiEnabled ? (
             <div className="border-b border-[#EDEDF1] bg-white px-6 py-3">
               <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 text-sm text-[#6C6C70]">
@@ -3913,16 +3918,16 @@ export default function Home() {
                   </>
                 ) : null}
 
-                {activeChat.assignedManagerName || (isChatMine(activeChat) && currentManagerName) ? (
+                {activeChat.assignedManagerName || (isChatMine(activeChat) && resolvedCurrentManagerName) ? (
                   <>
                     <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-[#8E8E93]">
                       Сейчас ведёт
                     </span>
                     <span className="mr-3">
-                      {activeChat.assignedManagerName || currentManagerName}
+                      {activeChat.assignedManagerName || resolvedCurrentManagerName}
                       {(activeChat.assignedManagerId === currentManagerId ||
                         (!activeChat.assignedManagerId &&
-                          (activeChat.assignedManagerName || currentManagerName) === currentManagerName))
+                          (activeChat.assignedManagerName || resolvedCurrentManagerName) === resolvedCurrentManagerName))
                         ? " (Вы)"
                         : ""}
                     </span>

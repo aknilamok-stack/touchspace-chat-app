@@ -24,7 +24,7 @@ import {
   parseChatAttachmentPayloads,
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
-import { formatDialogActivityLabel, getDialogManagerLabel } from "@/lib/dialog-list";
+import { formatDialogActivityLabel } from "@/lib/dialog-list";
 import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
@@ -1658,6 +1658,15 @@ export default function Home() {
   const myCount = chatData.filter((chat) => {
     return isChatMine(chat) && !chat.aiEnabled;
   }).length;
+
+  const getManagerDisplayName = useCallback(
+    (chat: ChatItem) =>
+      chat.assignedManagerName?.trim() ||
+      chat.lastResolvedByManagerName?.trim() ||
+      (isChatMine(chat) ? currentManagerName : "") ||
+      "Не назначен",
+    [currentManagerName, isChatMine]
+  );
   const onlineManagers = dedupeManagers(
     availableManagers.filter((manager) => manager.status === "online")
   );
@@ -3578,10 +3587,7 @@ export default function Home() {
                       avatarEmoji={chat.avatarEmoji}
                       statusDotClassName={chatTone.dot}
                       preview={getChatPreview(chat)}
-                      managerLabel={getDialogManagerLabel(
-                        chat.assignedManagerName,
-                        chat.lastResolvedByManagerName
-                      )}
+                      managerLabel={getManagerDisplayName(chat)}
                       timeLabel={formatDialogActivityLabel(
                         chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
                       )}
@@ -3839,10 +3845,7 @@ export default function Home() {
                           avatarColor={chat.avatarColor}
                           avatarEmoji={chat.avatarEmoji}
                           statusDotClassName={chatTone.dot}
-                          managerLabel={getDialogManagerLabel(
-                            chat.assignedManagerName,
-                            chat.lastResolvedByManagerName
-                          )}
+                          managerLabel={getManagerDisplayName(chat)}
                           lastMessageTimeLabel={formatDialogActivityLabel(
                             chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
                           )}
@@ -3895,7 +3898,10 @@ export default function Home() {
             </div>
           ) : null}
 
-          {activeChat?.assignedManagerName || activeChat?.lastResolvedByManagerName || activeChat?.aiEnabled ? (
+          {activeChat?.assignedManagerName ||
+          activeChat?.lastResolvedByManagerName ||
+          (activeChat && isChatMine(activeChat) && currentManagerName) ||
+          activeChat?.aiEnabled ? (
             <div className="border-b border-[#EDEDF1] bg-white px-6 py-3">
               <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 text-sm text-[#6C6C70]">
                 {activeChat?.aiEnabled ? (
@@ -3907,14 +3913,18 @@ export default function Home() {
                   </>
                 ) : null}
 
-                {activeChat.assignedManagerName ? (
+                {activeChat.assignedManagerName || (isChatMine(activeChat) && currentManagerName) ? (
                   <>
                     <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-[#8E8E93]">
                       Сейчас ведёт
                     </span>
                     <span className="mr-3">
-                      {activeChat.assignedManagerName}
-                      {activeChat.assignedManagerId === currentManagerId ? " (Вы)" : ""}
+                      {activeChat.assignedManagerName || currentManagerName}
+                      {(activeChat.assignedManagerId === currentManagerId ||
+                        (!activeChat.assignedManagerId &&
+                          (activeChat.assignedManagerName || currentManagerName) === currentManagerName))
+                        ? " (Вы)"
+                        : ""}
                     </span>
                     {activeChat.handedToManagerAt ? (
                       <span className="rounded-full bg-[#EEF6FF] px-2.5 py-1 text-xs text-[#0A84FF]">

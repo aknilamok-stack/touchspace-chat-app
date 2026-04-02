@@ -2692,15 +2692,17 @@ export default function SupplierPage() {
                     </div>
 
                     <div className="flex justify-center py-2">
-                      <div className="w-full max-w-[560px] rounded-full border border-[#E5E5EA] bg-[#F7F7FA] px-5 py-3 text-center">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
-                          Запрос менеджера
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[#6C6C70]">
+                      <div className="w-full max-w-[620px] rounded-[24px] border border-[#D7E6FF] bg-[linear-gradient(135deg,#F5F9FF_0%,#EEF6FF_100%)] px-5 py-4 shadow-[0_18px_40px_rgba(10,132,255,0.10)]">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0A84FF]">
+                            Запрос менеджера
+                          </p>
+                          <p className="shrink-0 text-[11px] font-medium text-[#7B8AA0]">
+                            {new Date(selectedRequest.createdAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+                        <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
                           {selectedRequest.requestText}
-                        </p>
-                        <p className="mt-2 text-[10px] text-[#AEAEB2]">
-                          {new Date(selectedRequest.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
                     </div>
@@ -2927,12 +2929,6 @@ export default function SupplierPage() {
                           </div>
                         );
                       })}
-
-                    {!isLoadingMessages && !messagesError && visibleSupplierMessages.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        После запроса менеджера здесь будут видны только сообщения клиента и поставщика.
-                      </p>
-                    ) : null}
 
                     <div ref={messagesEndRef} />
                   </div>

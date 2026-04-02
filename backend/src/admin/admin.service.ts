@@ -58,8 +58,6 @@ export class AdminService {
     private readonly authService: AuthService,
   ) {}
 
-  private readonly managerPresenceTtlMs = 45_000;
-
   private toDate(value?: string | null, fallback?: Date | null) {
     if (!value) {
       return fallback ?? null;
@@ -128,19 +126,13 @@ export class AdminService {
 
   private resolveManagerPresenceStatus(
     managerStatus?: string | null,
-    heartbeatAt?: Date | null,
+    _heartbeatAt?: Date | null,
   ) {
     if (!managerStatus || managerStatus === 'offline') {
       return 'offline';
     }
 
-    if (!heartbeatAt) {
-      return 'offline';
-    }
-
-    return Date.now() - heartbeatAt.getTime() <= this.managerPresenceTtlMs
-      ? managerStatus
-      : 'offline';
+    return managerStatus;
   }
 
   private buildTopicBuckets(

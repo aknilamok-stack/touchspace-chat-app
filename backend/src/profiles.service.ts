@@ -36,23 +36,15 @@ type EnsureProfileInput = {
 export class ProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private readonly managerPresenceTtlMs = 45_000;
-
   private resolvePresenceStatus(
     presenceStatus: string | null,
-    heartbeatAt: Date | null,
+    _heartbeatAt: Date | null,
   ) {
     if (!presenceStatus || presenceStatus === 'offline') {
       return 'offline';
     }
 
-    if (!heartbeatAt) {
-      return 'offline';
-    }
-
-    const isFresh =
-      Date.now() - heartbeatAt.getTime() <= this.managerPresenceTtlMs;
-    return isFresh ? presenceStatus : 'offline';
+    return presenceStatus;
   }
 
   async getManagerStatuses() {

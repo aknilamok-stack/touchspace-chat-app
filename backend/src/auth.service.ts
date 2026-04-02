@@ -141,6 +141,9 @@ export class AuthService {
         managerStatus: profile.role === 'manager' ? 'online' : undefined,
         managerPresenceHeartbeatAt:
           profile.role === 'manager' ? new Date() : undefined,
+        supplierStatus: profile.role === 'supplier' ? 'online' : undefined,
+        supplierPresenceHeartbeatAt:
+          profile.role === 'supplier' ? new Date() : undefined,
       },
     });
 

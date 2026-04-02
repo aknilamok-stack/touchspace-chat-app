@@ -1722,7 +1722,7 @@ export default function Home() {
           setManagerStatuses(remoteStatuses);
           setNotificationCandidates(candidates);
           if (currentManagerId) {
-            setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "offline");
+            setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
           }
           syncTickets(tickets);
 
@@ -1782,32 +1782,6 @@ export default function Home() {
 
     return () => window.clearInterval(intervalId);
   }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
-
-  useEffect(() => {
-    if (!authReady || !currentManagerId || !currentManagerName || typeof window === "undefined") {
-      return;
-    }
-
-    const handlePageHide = () => {
-      void fetch(apiUrl(`/profiles/${currentManagerId}/manager-status`), {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fullName: currentManagerName,
-          managerStatus: "offline",
-        }),
-        keepalive: true,
-      }).catch(() => undefined);
-    };
-
-    window.addEventListener("pagehide", handlePageHide);
-
-    return () => {
-      window.removeEventListener("pagehide", handlePageHide);
-    };
-  }, [authReady, currentManagerId, currentManagerName]);
 
   useEffect(() => {
     if (!activeChatId) return;

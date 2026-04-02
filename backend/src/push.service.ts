@@ -150,9 +150,6 @@ export class PushService {
         managerStatus: {
           in: ['online'],
         },
-        managerPresenceHeartbeatAt: {
-          gte: new Date(Date.now() - 45_000),
-        },
       },
       select: {
         id: true,
@@ -174,9 +171,6 @@ export class PushService {
         },
         supplierStatus: {
           in: ['online'],
-        },
-        supplierPresenceHeartbeatAt: {
-          gte: new Date(Date.now() - 45_000),
         },
         ...(normalizedSupplierId
           ? {

@@ -868,11 +868,11 @@ export default function SupplierPage() {
     const loadSupplierStatuses = async () => {
       try {
         const statuses = await fetchSupplierStatuses();
-        const nextStatus = statuses[supplierId] ?? readSupplierStatus();
+        const nextStatus = statuses[supplierId] ?? "online";
         setSupplierStatus(nextStatus);
       } catch (error) {
         console.error("Ошибка загрузки статусов поставщиков:", error);
-        setSupplierStatus(readSupplierStatus());
+        setSupplierStatus("online");
       }
     };
 
@@ -929,31 +929,6 @@ export default function SupplierPage() {
     return () => window.clearInterval(intervalId);
   }, [authReady, supplierStatus]);
 
-  useEffect(() => {
-    if (!authReady || typeof window === "undefined") {
-      return;
-    }
-
-    const markOffline = () => {
-      void fetch(apiUrl(`/profiles/${supplierId}/supplier-status`), {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fullName: supplierName,
-          supplierStatus: "offline",
-        }),
-        keepalive: true,
-      }).catch(() => undefined);
-    };
-
-    window.addEventListener("pagehide", markOffline);
-
-    return () => {
-      window.removeEventListener("pagehide", markOffline);
-    };
-  }, [authReady]);
   const selectedRequestCard =
     selectedRequest
       ? supplierRequestCards.find((card) => card.request.id === selectedRequest.id) ?? null
@@ -1432,8 +1407,9 @@ export default function SupplierPage() {
 
     setSupplierId(session.supplierId);
     setSupplierName(session.supplierName ?? session.fullName ?? "Поставщик");
+    writeSupplierStatus("online");
     setAuthReady(true);
-    setSupplierStatus(readSupplierStatus());
+    setSupplierStatus("online");
     setPinnedRequestIds(readPinnedRequestIds());
   }, [router]);
 

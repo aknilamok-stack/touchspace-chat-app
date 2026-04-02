@@ -3983,27 +3983,25 @@ export default function Home() {
                 >
                   Email
                 </button>
-                {sendMode === "email" ? (
-                  <span className="rounded-full bg-[#FFF4E8] px-3 py-1 text-xs font-medium text-[#B7791F]">
-                    Ответ клиента попадёт в этот же тикет
-                  </span>
-                ) : null}
               </div>
 
               {sendMode === "email" ? (
-                <div className="mb-3 rounded-[18px] border border-[#F1DFC7] bg-[#FFF9F2] px-3 py-3">
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-[#9A6B2E]">
-                    Получатель email
-                  </label>
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7] bg-[#FFF9F2] px-3 py-2.5">
+                  <span className="rounded-full bg-[#111827] px-3 py-1 text-sm font-medium text-white">
+                    Email
+                  </span>
+                  <span className="text-sm font-medium text-[#9A6B2E]">
+                    Получатель:
+                  </span>
                   <input
                     value={emailRecipient}
                     onChange={(event) => setEmailRecipient(event.target.value)}
                     placeholder="client@example.com"
-                    className="w-full rounded-2xl border border-[#E5D2B8] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
+                    className="min-w-[240px] flex-1 rounded-full border border-[#E5D2B8] bg-white px-4 py-2 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
                   />
-                  <p className="mt-2 text-xs text-[#9A7A49]">
-                    Если email уже известен, поле заполнится автоматически из контактов клиента.
-                  </p>
+                  <span className="text-xs font-medium text-[#C1812B]">
+                    Ответ клиента попадёт в этот же тикет
+                  </span>
                 </div>
               ) : null}
 

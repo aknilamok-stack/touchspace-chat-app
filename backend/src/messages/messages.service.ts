@@ -648,8 +648,27 @@ export class MessagesService {
           ),
         );
     } else if (senderType === 'manager' && ticketSnapshot.supplierId) {
-      void this.pushService
-        .getActiveSupplierProfileIds(ticketSnapshot.supplierId)
+      void this.prisma.supplierRequest
+        .findFirst({
+          where: {
+            ticketId,
+            supplierId: ticketSnapshot.supplierId,
+            status: {
+              notIn: ['closed', 'cancelled'],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            assignedSupplierProfileId: true,
+          },
+        })
+        .then((activeRequest) =>
+          activeRequest?.assignedSupplierProfileId
+            ? [activeRequest.assignedSupplierProfileId]
+            : this.pushService.getActiveSupplierProfileIds(ticketSnapshot.supplierId),
+        )
         .then((supplierTargets) =>
           this.pushService.sendToProfiles(
             supplierTargets,

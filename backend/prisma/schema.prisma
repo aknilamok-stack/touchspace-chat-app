@@ -47,6 +47,7 @@ model Profile {
   sentMessages            Message[]         @relation("MessageSender")
   createdSupplierRequests SupplierRequest[] @relation("SupplierRequestCreatedByManager")
   supplierRequests        SupplierRequest[] @relation("SupplierRequestSupplier")
+  assignedSupplierRequests SupplierRequest[] @relation("SupplierRequestAssignedSupplier")
   reviewedRegistrations   RegistrationRequest[] @relation("RegistrationReviewedByAdmin")
   registrationRequests    RegistrationRequest[] @relation("RegistrationLinkedProfile")
   pushSubscriptions       PushSubscription[]
@@ -223,10 +224,13 @@ model SupplierRequest {
   ticketId           String
   supplierId         String?
   supplierName       String
+  assignedSupplierProfileId   String?
+  assignedSupplierProfileName String?
   requestText        String
   status             String    @default("pending")
   slaMinutes         Int?
   createdByManagerId String?
+  claimedAt          DateTime?
   requestedAt        DateTime?
   responseStartedAt  DateTime?
   firstResponseAt    DateTime?
@@ -240,6 +244,7 @@ model SupplierRequest {
   ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   supplierProfile   Profile? @relation("SupplierRequestSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
   createdByManager  Profile? @relation("SupplierRequestCreatedByManager", fields: [createdByManagerId], references: [id], onDelete: SetNull)
+  assignedSupplierProfile Profile? @relation("SupplierRequestAssignedSupplier", fields: [assignedSupplierProfileId], references: [id], onDelete: SetNull)
 }
 
 model RegistrationRequest {

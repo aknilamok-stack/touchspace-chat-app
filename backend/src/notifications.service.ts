@@ -189,6 +189,8 @@ export class NotificationsService {
   }
 
   private async getSupplierCounters(profileId: string) {
+    const profile = await this.ensureSettingsProfile(profileId, 'supplier');
+    const supplierScopeId = profile.supplierId || profile.id;
     const [unreadDialogs, newRequests, openDialogs] = await Promise.all([
       this.prisma.message.findMany({
         where: {
@@ -198,11 +200,15 @@ export class NotificationsService {
           },
           ticket: {
             OR: [
-              { supplierId: profileId },
+              { supplierId: supplierScopeId },
               {
                 supplierRequests: {
                   some: {
-                    supplierId: profileId,
+                    supplierId: supplierScopeId,
+                    OR: [
+                      { assignedSupplierProfileId: null },
+                      { assignedSupplierProfileId: profile.id },
+                    ],
                   },
                 },
               },
@@ -214,7 +220,11 @@ export class NotificationsService {
       }),
       this.prisma.supplierRequest.count({
         where: {
-          supplierId: profileId,
+          supplierId: supplierScopeId,
+          OR: [
+            { assignedSupplierProfileId: null },
+            { assignedSupplierProfileId: profile.id },
+          ],
           firstResponseAt: null,
           status: {
             notIn: ['closed', 'cancelled'],
@@ -224,11 +234,15 @@ export class NotificationsService {
       this.prisma.ticket.count({
         where: {
           OR: [
-            { supplierId: profileId },
+            { supplierId: supplierScopeId },
             {
               supplierRequests: {
                 some: {
-                  supplierId: profileId,
+                  supplierId: supplierScopeId,
+                  OR: [
+                    { assignedSupplierProfileId: null },
+                    { assignedSupplierProfileId: profile.id },
+                  ],
                 },
               },
             },
@@ -440,7 +454,7 @@ export class NotificationsService {
 
   async getSupplierNotificationCandidates(profileId: string) {
     const profile = await this.ensureSettingsProfile(profileId, 'supplier');
-    const supplierScopeId = profile.id;
+    const supplierScopeId = profile.supplierId || profile.id;
 
     if (
       !profile.notificationPushEnabled ||
@@ -520,9 +534,11 @@ export class NotificationsService {
             orderBy: {
               createdAt: 'desc',
             },
-            take: 1,
+            take: 5,
             select: {
               id: true,
+              status: true,
+              assignedSupplierProfileId: true,
             },
           },
         },
@@ -530,14 +546,25 @@ export class NotificationsService {
 
       tickets.forEach((ticket) => {
         const latestUnreadMessage = ticket.messages[0];
+        const latestActiveRequest =
+          ticket.supplierRequests.find(
+            (request) => !['closed', 'cancelled'].includes(request.status),
+          ) ?? ticket.supplierRequests[0];
 
         if (!latestUnreadMessage) {
           return;
         }
 
+        if (
+          latestActiveRequest?.assignedSupplierProfileId &&
+          latestActiveRequest.assignedSupplierProfileId !== profile.id
+        ) {
+          return;
+        }
+
         items.push({
           ticketId: ticket.id,
-          requestId: ticket.supplierRequests[0]?.id ?? null,
+          requestId: latestActiveRequest?.id ?? ticket.supplierRequests[0]?.id ?? null,
           title:
             ticket.tradePointName?.trim() ||
             ticket.title?.trim() ||
@@ -555,6 +582,10 @@ export class NotificationsService {
       const requests = await this.prisma.supplierRequest.findMany({
         where: {
           supplierId: supplierScopeId,
+          OR: [
+            { assignedSupplierProfileId: null },
+            { assignedSupplierProfileId: profile.id },
+          ],
           firstResponseAt: null,
           status: {
             notIn: ['closed', 'cancelled'],

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateSupplierRequestDto } from './dto/create-supplier-request.dto';
 import { UpdateSupplierRequestStatusDto } from './dto/update-supplier-request-status.dto';
@@ -27,6 +31,17 @@ export class SupplierRequestsService {
             : status;
 
     return `Запрос поставщику ${supplierName} переведён в статус "${statusLabel}"`;
+  }
+
+  private buildClaimedMessage(
+    supplierName: string,
+    assignedSupplierProfileName?: string | null,
+  ) {
+    const employeeName = assignedSupplierProfileName?.trim();
+
+    return employeeName
+      ? `Поставщик ${supplierName} / ${employeeName} взял запрос в работу`
+      : `Поставщик ${supplierName} взял запрос в работу`;
   }
 
   async create(createSupplierRequestDto: CreateSupplierRequestDto) {
@@ -151,10 +166,17 @@ export class SupplierRequestsService {
     });
   }
 
-  async updateStatus(
-    id: string,
-    status: UpdateSupplierRequestStatusDto['status'],
-  ) {
+  async updateStatus(id: string, input: UpdateSupplierRequestStatusDto) {
+    if (input.assignedSupplierProfileId?.trim()) {
+      await this.profilesService.ensureProfile({
+        id: input.assignedSupplierProfileId.trim(),
+        fullName:
+          input.assignedSupplierProfileName?.trim() ||
+          input.assignedSupplierProfileId.trim(),
+        role: 'supplier',
+      });
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const supplierRequest = await tx.supplierRequest.findUnique({
         where: { id },
@@ -166,25 +188,61 @@ export class SupplierRequestsService {
         );
       }
 
+      const now = new Date();
+      const nextStatus = input.status;
+      const assignedSupplierProfileId =
+        input.assignedSupplierProfileId?.trim() || null;
+      const assignedSupplierProfileName =
+        input.assignedSupplierProfileName?.trim() || null;
+
+      if (
+        nextStatus === 'in_progress' &&
+        assignedSupplierProfileId &&
+        supplierRequest.assignedSupplierProfileId &&
+        supplierRequest.assignedSupplierProfileId !== assignedSupplierProfileId
+      ) {
+        throw new BadRequestException(
+          'Этот запрос уже взят в работу другим сотрудником поставщика',
+        );
+      }
+
       const updatedSupplierRequest = await tx.supplierRequest.update({
         where: { id },
         data: {
-          status,
+          status: nextStatus,
+          assignedSupplierProfileId:
+            assignedSupplierProfileId ?? supplierRequest.assignedSupplierProfileId,
+          assignedSupplierProfileName:
+            assignedSupplierProfileName ??
+            supplierRequest.assignedSupplierProfileName,
+          claimedAt:
+            nextStatus === 'in_progress'
+              ? supplierRequest.claimedAt ?? now
+              : supplierRequest.claimedAt,
           respondedAt:
-            status === 'answered' ? new Date() : supplierRequest.respondedAt,
-          closedAt: status === 'closed' ? new Date() : null,
+            nextStatus === 'answered' ? now : supplierRequest.respondedAt,
+          closedAt: nextStatus === 'closed' ? now : null,
         },
       });
 
-      const now = new Date();
+      const shouldCreateClaimMessage =
+        nextStatus === 'in_progress' &&
+        Boolean(assignedSupplierProfileId) &&
+        (!supplierRequest.assignedSupplierProfileId ||
+          supplierRequest.status === 'pending');
 
       await tx.message.create({
         data: {
           ticketId: supplierRequest.ticketId,
-          content: this.buildStatusChangedMessage(
-            supplierRequest.supplierName,
-            status,
-          ),
+          content: shouldCreateClaimMessage
+            ? this.buildClaimedMessage(
+                supplierRequest.supplierName,
+                assignedSupplierProfileName,
+              )
+            : this.buildStatusChangedMessage(
+                supplierRequest.supplierName,
+                nextStatus,
+              ),
           senderType: 'system',
           senderRole: 'system',
           status: 'sent',
@@ -193,7 +251,7 @@ export class SupplierRequestsService {
         },
       });
 
-      if (status === 'answered') {
+      if (nextStatus === 'answered') {
         await tx.ticket.update({
           where: { id: supplierRequest.ticketId },
           data: {
@@ -201,7 +259,7 @@ export class SupplierRequestsService {
             lastMessageAt: now,
           },
         });
-      } else if (status === 'closed') {
+      } else if (nextStatus === 'closed') {
         await tx.ticket.update({
           where: { id: supplierRequest.ticketId },
           data: {

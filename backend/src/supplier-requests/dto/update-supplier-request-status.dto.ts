@@ -1,4 +1,4 @@
-import { IsIn, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export const updatableSupplierRequestStatuses = [
   'pending',
@@ -12,4 +12,12 @@ export class UpdateSupplierRequestStatusDto {
   @IsString()
   @IsIn(updatableSupplierRequestStatuses)
   status: (typeof updatableSupplierRequestStatuses)[number];
+
+  @IsOptional()
+  @IsString()
+  assignedSupplierProfileId?: string;
+
+  @IsOptional()
+  @IsString()
+  assignedSupplierProfileName?: string;
 }

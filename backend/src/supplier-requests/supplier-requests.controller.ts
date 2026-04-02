@@ -41,10 +41,7 @@ export class SupplierRequestsController {
     @Param('id') id: string,
     @Body() updateSupplierRequestStatusDto: UpdateSupplierRequestStatusDto,
   ) {
-    return this.supplierRequestsService.updateStatus(
-      id,
-      updateSupplierRequestStatusDto.status,
-    );
+    return this.supplierRequestsService.updateStatus(id, updateSupplierRequestStatusDto);
   }
 
   @Get('supplier-requests')

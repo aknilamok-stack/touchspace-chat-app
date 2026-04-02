@@ -58,10 +58,13 @@ type SupplierRequest = {
   ticketId: string;
   supplierId?: string | null;
   supplierName: string;
+  assignedSupplierProfileId?: string | null;
+  assignedSupplierProfileName?: string | null;
   requestText: string;
   status: string;
   slaMinutes?: number | null;
   createdByManagerId?: string | null;
+  claimedAt?: string | null;
   firstResponseAt?: string | null;
   responseTime?: number | null;
   responseBreached?: boolean;
@@ -439,7 +442,6 @@ const buildSupplierTimelineItems = (
 
 const getSupplierQueueTab = (
   request: SupplierRequest,
-  visibleMessages: TicketMessage[],
   ticketStatus?: string
 ): SupplierQueueTab => {
   const isRequestClosed = ["closed", "cancelled", "resolved"].includes(request.status);
@@ -448,17 +450,7 @@ const getSupplierQueueTab = (
     return "completed";
   }
 
-  const requestCreatedAt = new Date(request.createdAt).getTime();
-  const requestMessages = visibleMessages.filter((message) => {
-    const messageCreatedAt = new Date(message.createdAt).getTime();
-    return !Number.isFinite(requestCreatedAt) || messageCreatedAt >= requestCreatedAt;
-  });
-
-  const hasSupplierReply =
-    requestMessages.some((message) => message.senderType === "supplier") ||
-    Boolean(request.firstResponseAt);
-
-  if (!hasSupplierReply) {
+  if (request.status === "pending") {
     return "new";
   }
 
@@ -499,7 +491,7 @@ const buildSupplierRequestCards = (
       return {
         request: activeRequest,
         requests: sortedRequests,
-        queueTab: getSupplierQueueTab(activeRequest, visibleMessages, ticketStatus),
+        queueTab: getSupplierQueueTab(activeRequest, ticketStatus),
         managerName:
           (activeRequest.createdByManagerId
             ? managerNameById[activeRequest.createdByManagerId]
@@ -774,6 +766,7 @@ export default function SupplierPage() {
   const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [supplierId, setSupplierId] = useState("");
+  const [supplierProfileId, setSupplierProfileId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierStatus, setSupplierStatus] = useState<ManagerPresence>("online");
   const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
@@ -914,7 +907,7 @@ export default function SupplierPage() {
     (message: TicketMessage) => {
       if (
         message.senderType !== "supplier" ||
-        message.senderProfileId !== supplierId ||
+        message.senderProfileId !== supplierProfileId ||
         message.messageType !== "text" ||
         message.transport === "email"
       ) {
@@ -924,7 +917,7 @@ export default function SupplierPage() {
       const now = currentTimeMs ?? Date.now();
       return now - new Date(message.createdAt).getTime() <= 20 * 60 * 1000;
     },
-    [currentTimeMs]
+    [currentTimeMs, supplierProfileId]
   );
 
   const startEditingMessage = useCallback((message: TicketMessage) => {
@@ -1070,14 +1063,14 @@ export default function SupplierPage() {
   }, []);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!authReady || !supplierId || !supplierProfileId) {
       return;
     }
 
     const loadSupplierStatuses = async () => {
       try {
         const statuses = await fetchSupplierStatuses();
-        const nextStatus = statuses[supplierId] ?? "online";
+        const nextStatus = statuses[supplierProfileId] ?? "online";
         setSupplierStatus(nextStatus);
       } catch (error) {
         console.error("Ошибка загрузки статусов поставщиков:", error);
@@ -1086,10 +1079,10 @@ export default function SupplierPage() {
     };
 
     void loadSupplierStatuses();
-  }, [authReady]);
+  }, [authReady, supplierProfileId]);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!authReady || !supplierProfileId) {
       return;
     }
 
@@ -1113,13 +1106,13 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!authReady || !supplierProfileId) {
       return;
     }
 
     const syncPresence = async (status: ManagerPresence) => {
       try {
-        await updateSupplierPresence(supplierId, supplierName, status);
+        await updateSupplierPresence(supplierProfileId, supplierName, status);
       } catch (error) {
         console.error("Ошибка синхронизации статуса поставщика:", error);
       }
@@ -1136,7 +1129,7 @@ export default function SupplierPage() {
     }, 15_000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, supplierStatus]);
+  }, [authReady, supplierName, supplierProfileId, supplierStatus]);
 
   const selectedRequestCard =
     selectedRequest
@@ -1179,6 +1172,22 @@ export default function SupplierPage() {
     : null;
   const isSupplierDialogResolved =
     selectedTicket?.status === "resolved" || selectedRequestCard?.queueTab === "completed";
+  const isSelectedRequestClaimedByAnotherSupplier =
+    Boolean(
+      selectedActiveRequest?.assignedSupplierProfileId &&
+        supplierProfileId &&
+        selectedActiveRequest.assignedSupplierProfileId !== supplierProfileId
+    );
+  const canSupplierTakeRequestInWork =
+    Boolean(selectedActiveRequest) &&
+    !isSupplierDialogResolved &&
+    selectedRequestCard?.queueTab === "new" &&
+    !isSelectedRequestClaimedByAnotherSupplier;
+  const canSupplierReply =
+    Boolean(selectedActiveRequest) &&
+    !isSupplierDialogResolved &&
+    !canSupplierTakeRequestInWork &&
+    !isSelectedRequestClaimedByAnotherSupplier;
   const canSupplierMarkResolved =
     !isResolvingTicket &&
     selectedTicket?.status !== "resolved" &&
@@ -1416,8 +1425,9 @@ export default function SupplierPage() {
 
         return ticketRequests.filter(
           (request) =>
-            request.supplierName === supplierName ||
-            request.supplierId === supplierId
+            (request.supplierName === supplierName || request.supplierId === supplierId) &&
+            (!request.assignedSupplierProfileId ||
+              request.assignedSupplierProfileId === supplierProfileId)
         );
       })
     );
@@ -1516,8 +1526,16 @@ export default function SupplierPage() {
   const fetchSupplierNotificationCandidates = async (): Promise<
     SupplierNotificationCandidate[]
   > => {
+    if (!supplierProfileId) {
+      return [];
+    }
+
     const response = await fetch(
-      apiUrl(`/notifications/supplier-candidates?profileId=${encodeURIComponent(supplierId)}`)
+      apiUrl(
+        `/notifications/supplier-candidates?profileId=${encodeURIComponent(
+          supplierProfileId
+        )}`
+      )
     );
 
     if (!response.ok) {
@@ -1535,7 +1553,7 @@ export default function SupplierPage() {
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений поставщика:", error);
     }
-  }, []);
+  }, [supplierProfileId]);
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
@@ -1615,6 +1633,7 @@ export default function SupplierPage() {
     }
 
     setSupplierId(session.supplierId);
+    setSupplierProfileId(session.userId ?? session.supplierId);
     setSupplierName(session.supplierName ?? session.fullName ?? "Поставщик");
     writeSupplierStatus("online");
     setAuthReady(true);
@@ -1671,10 +1690,10 @@ export default function SupplierPage() {
     };
 
     void loadSupplierRequests();
-  }, [authReady]);
+  }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!authReady || !supplierId || !supplierProfileId) {
       return;
     }
 
@@ -1840,10 +1859,10 @@ export default function SupplierPage() {
     }, 4000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, pinnedRequestIds, selectedRequestId]);
+  }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!authReady || !supplierProfileId) {
       return;
     }
 
@@ -1854,7 +1873,7 @@ export default function SupplierPage() {
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, refreshNotificationCandidates]);
+  }, [authReady, refreshNotificationCandidates, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady || !selectedRequest?.ticketId) {
@@ -2331,6 +2350,63 @@ export default function SupplierPage() {
     }
   };
 
+  const handleTakeRequestInWork = async () => {
+    if (!selectedActiveRequest || !supplierProfileId || !canSupplierTakeRequestInWork) {
+      return;
+    }
+
+    setIsSendingReply(true);
+    setReplyError("");
+
+    try {
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "in_progress",
+          assignedSupplierProfileId: supplierProfileId,
+          assignedSupplierProfileName: supplierName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось взять диалог в работу");
+      }
+
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(supplierId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
+      ]);
+
+      syncSupplierRequests(updatedRequests);
+      setTicketsById(updatedTicketsMap);
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((currentMap) => {
+        const nextMap = {
+          ...currentMap,
+          [selectedActiveRequest.ticketId]: refreshedMessages,
+        };
+
+        return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
+      });
+      setActiveQueueTab("in_progress");
+      setToast({
+        message: "Диалог взят в работу. SLA остановится после первого ответа клиенту.",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка взятия диалога в работу:", error);
+      setReplyError(
+        error instanceof Error ? error.message : "Не удалось взять диалог в работу"
+      );
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
   const handleSendReply = async () => {
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
@@ -2338,7 +2414,7 @@ export default function SupplierPage() {
     if (
       !selectedRequest ||
       (!hasTextToSend && !hasAttachmentToSend) ||
-      isSupplierDialogResolved
+      !canSupplierReply
     ) {
       return;
     }
@@ -2360,7 +2436,7 @@ export default function SupplierPage() {
           body: JSON.stringify({
             content: replyText,
             senderType: "supplier",
-            senderId: supplierId,
+            senderId: supplierProfileId,
           }),
         });
 
@@ -2393,7 +2469,7 @@ export default function SupplierPage() {
             ticketId: selectedRequest.ticketId,
             content: replyText,
             senderType: "supplier",
-            senderId: supplierId,
+            senderId: supplierProfileId,
             senderName: supplierName,
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
@@ -2415,7 +2491,7 @@ export default function SupplierPage() {
         });
         formData.append("ticketId", selectedRequest.ticketId);
         formData.append("senderType", "supplier");
-        formData.append("senderId", supplierId);
+        formData.append("senderId", supplierProfileId);
         formData.append("senderName", supplierName);
         if (replyTarget?.id) {
           formData.append("replyToMessageId", replyTarget.id);
@@ -3246,6 +3322,36 @@ export default function SupplierPage() {
                           Пока диалог завершён, новое сообщение клиенту отправить нельзя.
                         </p>
                       </div>
+                    ) : canSupplierTakeRequestInWork ? (
+                      <div className="rounded-[24px] border border-[#DCE7FF] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF6FF_100%)] px-5 py-5 shadow-[0_14px_32px_rgba(10,132,255,0.10)]">
+                        <p className="text-center text-sm font-semibold text-[#1E1E1E]">
+                          Новый запрос ожидает ответа
+                        </p>
+                        <p className="mt-2 text-center text-xs leading-5 text-[#6A7687]">
+                          Нажмите кнопку ниже, чтобы взять диалог в работу. После этого чат
+                          закрепится за вами, а SLA остановится только после первого ответа
+                          клиенту.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleTakeRequestInWork}
+                          disabled={isSendingReply}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[#0A84FF] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                        >
+                          {isSendingReply ? "Берём в работу..." : "Взять в работу"}
+                        </button>
+                      </div>
+                    ) : isSelectedRequestClaimedByAnotherSupplier ? (
+                      <div className="rounded-[24px] border border-[#F4E3C2] bg-[#FFFBF4] px-5 py-4 text-center shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                        <p className="text-sm font-medium text-[#1E1E1E]">
+                          Диалог уже взят в работу
+                        </p>
+                        <p className="mt-1 text-xs text-[#8E8E93]">
+                          {selectedActiveRequest?.assignedSupplierProfileName
+                            ? `Сейчас этот запрос ведёт ${selectedActiveRequest.assignedSupplierProfileName}.`
+                            : "Сейчас этот запрос ведёт другой сотрудник поставщика."}
+                        </p>
+                      </div>
                     ) : attachmentName ? (
                       <div className="mb-3 flex">
                         <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
@@ -3303,7 +3409,7 @@ export default function SupplierPage() {
                       </div>
                     ) : null}
 
-                    {!isSupplierDialogResolved ? (
+                    {canSupplierReply ? (
                       <>
                       <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                       <div className="min-w-0 flex-1">

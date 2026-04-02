@@ -428,7 +428,15 @@ export class EmailService {
     }
 
     return (
+      /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday),?.+\bwrote:$/i.test(
+        line,
+      ) ||
+      /^(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье),?.+\bот\s.+:\s*$/i.test(
+        line,
+      ) ||
       /^On .+wrote:$/i.test(line) ||
+      /^.+\s+at\s+.+\s+.+<[^>]+>:\s*$/i.test(line) ||
+      /^.+\s+в\s+.+\s+от\s+.+<[^>]+>:\s*$/i.test(line) ||
       /^From:\s.+$/i.test(line) ||
       /^Sent:\s.+$/i.test(line) ||
       /^Subject:\s.+$/i.test(line) ||

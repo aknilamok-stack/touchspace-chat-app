@@ -7,9 +7,75 @@ import {
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
 import { PrismaService } from './prisma.service';
 
+type DemoAccount = {
+  aliases: string[];
+  password: string;
+  profile: {
+    id: string;
+    authLogin: string;
+    fullName: string;
+    role: 'admin' | 'manager' | 'supplier';
+    supplierId?: string | null;
+  };
+};
+
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly demoAccounts: DemoAccount[] = [
+    {
+      aliases: ['admin'],
+      password: 'admin123',
+      profile: {
+        id: 'admin_touchspace',
+        authLogin: 'admin',
+        fullName: 'TouchSpace Admin',
+        role: 'admin',
+      },
+    },
+    {
+      aliases: ['manager', 'anna'],
+      password: 'manager123',
+      profile: {
+        id: 'manager_anna',
+        authLogin: 'anna',
+        fullName: 'Анна',
+        role: 'manager',
+      },
+    },
+    {
+      aliases: ['ekaterina'],
+      password: 'manager123',
+      profile: {
+        id: 'manager_ekaterina',
+        authLogin: 'ekaterina',
+        fullName: 'Екатерина',
+        role: 'manager',
+      },
+    },
+    {
+      aliases: ['mikhail'],
+      password: 'manager123',
+      profile: {
+        id: 'manager_mikhail',
+        authLogin: 'mikhail',
+        fullName: 'Михаил',
+        role: 'manager',
+      },
+    },
+    {
+      aliases: ['supplier'],
+      password: 'supplier123',
+      profile: {
+        id: 'supplier_karelia',
+        authLogin: 'supplier',
+        fullName: 'Karelia',
+        role: 'supplier',
+        supplierId: 'supplier_karelia',
+      },
+    },
+  ];
 
   private hashPassword(password: string) {
     const salt = randomBytes(16).toString('hex');
@@ -70,6 +136,38 @@ export class AuthService {
     return randomBytes(6).toString('base64url');
   }
 
+  private findDemoAccount(login: string) {
+    return this.demoAccounts.find((account) => account.aliases.includes(login));
+  }
+
+  private async ensureDemoProfile(account: DemoAccount) {
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id: account.profile.id },
+    });
+
+    const data = {
+      fullName: account.profile.fullName,
+      role: account.profile.role,
+      authLogin: account.profile.authLogin,
+      supplierId: account.profile.supplierId ?? null,
+      status: 'active',
+      approvalStatus: 'approved',
+      isActive: true,
+      passwordHash:
+        existingProfile?.passwordHash ?? this.hashPassword(account.password),
+      passwordChangeRequired: false,
+    };
+
+    return this.prisma.profile.upsert({
+      where: { id: account.profile.id },
+      create: {
+        id: account.profile.id,
+        ...data,
+      },
+      update: data,
+    });
+  }
+
   async issueCredentialsForProfile(
     profileId: string,
     preferredLogin?: string | null,
@@ -111,14 +209,27 @@ export class AuthService {
 
   async login(login: string, password: string) {
     const normalizedLogin = this.sanitizeLoginCandidate(login);
+    const demoAccount = this.findDemoAccount(normalizedLogin);
 
-    const profile = await this.prisma.profile.findFirst({
+    let profile = await this.prisma.profile.findFirst({
       where: {
         OR: [{ authLogin: normalizedLogin }, { email: normalizedLogin }],
       },
     });
 
-    if (!profile || !this.verifyPassword(password, profile.passwordHash)) {
+    const passwordMatchesProfile = profile
+      ? this.verifyPassword(password, profile.passwordHash)
+      : false;
+
+    if (!passwordMatchesProfile) {
+      if (!demoAccount || demoAccount.password !== password) {
+        throw new UnauthorizedException('Неверный логин или пароль');
+      }
+
+      profile = await this.ensureDemoProfile(demoAccount);
+    }
+
+    if (!profile) {
       throw new UnauthorizedException('Неверный логин или пароль');
     }
 

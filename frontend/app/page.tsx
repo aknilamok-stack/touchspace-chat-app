@@ -873,7 +873,7 @@ export default function Home() {
     ManagerMessageSuggestion[]
   >([]);
   const [activeManagerSuggestionIndex, setActiveManagerSuggestionIndex] =
-    useState(0);
+    useState(-1);
   const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -1137,7 +1137,7 @@ export default function Home() {
   const applyManagerSuggestion = useCallback((text: string) => {
     setMessageText(text);
     setManagerSuggestions([]);
-    setActiveManagerSuggestionIndex(0);
+    setActiveManagerSuggestionIndex(-1);
 
     window.requestAnimationFrame(() => {
       composerTextareaRef.current?.focus();
@@ -2414,7 +2414,7 @@ export default function Home() {
 
   useEffect(() => {
     setManagerSuggestions([]);
-    setActiveManagerSuggestionIndex(0);
+    setActiveManagerSuggestionIndex(-1);
   }, [activeChatId]);
 
   useEffect(() => {
@@ -2428,7 +2428,7 @@ export default function Home() {
       showEmojiPicker
     ) {
       setManagerSuggestions([]);
-      setActiveManagerSuggestionIndex(0);
+      setActiveManagerSuggestionIndex(-1);
       return;
     }
 
@@ -2467,7 +2467,7 @@ export default function Home() {
             : [];
 
           setManagerSuggestions(suggestions);
-          setActiveManagerSuggestionIndex(0);
+          setActiveManagerSuggestionIndex(-1);
         })
         .catch((error) => {
           if (managerSuggestionRequestIdRef.current !== requestId) {
@@ -2476,7 +2476,7 @@ export default function Home() {
 
           console.error("Не удалось загрузить подсказки менеджера:", error);
           setManagerSuggestions([]);
-          setActiveManagerSuggestionIndex(0);
+          setActiveManagerSuggestionIndex(-1);
         });
     }, 180);
 
@@ -2749,7 +2749,7 @@ export default function Home() {
       await refreshNotificationCandidates();
       setMessageText("");
       setManagerSuggestions([]);
-      setActiveManagerSuggestionIndex(0);
+      setActiveManagerSuggestionIndex(-1);
       setAttachmentName("");
       setSelectedFiles([]);
       setHoveredMessageId("");
@@ -4483,7 +4483,7 @@ export default function Home() {
                           }
 
                           setManagerSuggestions([]);
-                          setActiveManagerSuggestionIndex(0);
+                          setActiveManagerSuggestionIndex(-1);
                         }, 100);
                       }}
                       onChange={(e) => {
@@ -4499,7 +4499,7 @@ export default function Home() {
                           if (e.key === "ArrowDown") {
                             e.preventDefault();
                             setActiveManagerSuggestionIndex((prev) =>
-                              prev >= managerSuggestions.length - 1 ? 0 : prev + 1
+                              prev < 0 || prev >= managerSuggestions.length - 1 ? 0 : prev + 1
                             );
                             return;
                           }
@@ -4515,7 +4515,7 @@ export default function Home() {
                           if (e.key === "Escape") {
                             e.preventDefault();
                             setManagerSuggestions([]);
-                            setActiveManagerSuggestionIndex(0);
+                            setActiveManagerSuggestionIndex(-1);
                             return;
                           }
 
@@ -4525,13 +4525,14 @@ export default function Home() {
                           ) {
                             e.preventDefault();
                             const selectedSuggestion =
-                              managerSuggestions[activeManagerSuggestionIndex] ??
-                              managerSuggestions[0];
+                              activeManagerSuggestionIndex >= 0
+                                ? managerSuggestions[activeManagerSuggestionIndex]
+                                : null;
 
                             if (selectedSuggestion) {
                               applyManagerSuggestion(selectedSuggestion.text);
+                              return;
                             }
-                            return;
                           }
                         }
 
@@ -4629,7 +4630,7 @@ export default function Home() {
                       setShowQuickReplies((prev) => !prev);
                       setShowEmojiPicker(false);
                       setManagerSuggestions([]);
-                      setActiveManagerSuggestionIndex(0);
+                      setActiveManagerSuggestionIndex(-1);
                     }}
                     onMouseEnter={() => setHoveredComposerAction("quick")}
                     onMouseLeave={() => setHoveredComposerAction(null)}
@@ -4661,7 +4662,7 @@ export default function Home() {
                       setShowEmojiPicker((prev) => !prev);
                       setShowQuickReplies(false);
                       setManagerSuggestions([]);
-                      setActiveManagerSuggestionIndex(0);
+                      setActiveManagerSuggestionIndex(-1);
                     }}
                     onMouseEnter={() => setHoveredComposerAction("emoji")}
                     onMouseLeave={() => setHoveredComposerAction(null)}

@@ -3839,34 +3839,6 @@ export default function SupplierPage() {
                   ) : null}
                 </div>
 
-                {supplierSla ? (
-                  <div className="mb-4 rounded-[18px] border border-[#E5E5EA] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
-                          SLA
-                        </p>
-                        <p className="mt-3 text-sm font-medium text-[#1E1E1E]">
-                          {supplierSla.label}
-                        </p>
-                        <p className={`mt-1 text-xs font-medium ${supplierSla.tone}`}>
-                          {supplierSla.status}
-                        </p>
-                      </div>
-                      <span className={`text-xs font-medium ${supplierSla.tone}`}>
-                        {supplierSla.time}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 h-2 rounded-full bg-[#ECECF1]">
-                      <div
-                        className={`h-2 rounded-full ${supplierSla.bar}`}
-                        style={{ width: supplierSla.progress }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
                 <ContactCard
                   contacts={ticketContacts}
                   canManage={false}

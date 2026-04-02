@@ -4797,54 +4797,6 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
-              SLA
-            </p>
-
-            <div className="mt-4 space-y-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[#1E1E1E]">{managerSla.label}</p>
-                    <p className={`mt-1 text-xs font-medium ${managerSla.tone}`}>
-                      {managerSla.status}
-                    </p>
-                  </div>
-                  <span className={`text-xs font-medium ${managerSla.tone}`}>
-                    {managerSla.time}
-                  </span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-[#ECECF1]">
-                  <div
-                    className={`h-2 rounded-full ${managerSla.bar}`}
-                    style={{ width: managerSla.progress }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[#1E1E1E]">{supplierSla.label}</p>
-                    <p className={`mt-1 text-xs font-medium ${supplierSla.tone}`}>
-                      {supplierSla.status}
-                    </p>
-                  </div>
-                  <span className={`text-xs font-medium ${supplierSla.tone}`}>
-                    {supplierSla.time}
-                  </span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-[#ECECF1]">
-                  <div
-                    className={`h-2 rounded-full ${supplierSla.bar}`}
-                    style={{ width: supplierSla.progress }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
           <ContactCard
             contacts={ticketContacts}
             canManage

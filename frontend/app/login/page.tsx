@@ -3,13 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
-import {
-  adminAccounts,
-  managerAccounts,
-  readAuthSession,
-  supplierAccounts,
-  writeAuthSession,
-} from "@/lib/auth";
+import { readAuthSession, writeAuthSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,6 +38,11 @@ export default function LoginPage() {
 
     if (params.get("reason") === "other-device") {
       setError("Выполнен вход с другого устройства. Пожалуйста, войдите снова.");
+      return;
+    }
+
+    if (params.get("reason") === "reauth-required") {
+      setError("Сессия устарела. Пожалуйста, войдите заново через сервер.");
     }
   }, []);
 
@@ -107,68 +106,22 @@ export default function LoginPage() {
         );
         return;
       }
+
+      const errorPayload = (await authResponse.json().catch(() => null)) as
+        | { message?: string | string[] }
+        | null;
+
+      const backendMessage = Array.isArray(errorPayload?.message)
+        ? errorPayload?.message[0]
+        : errorPayload?.message;
+
+      setError(backendMessage || "Неверный логин или пароль");
+      return;
     } catch (requestError) {
       console.error("Ошибка backend auth:", requestError);
-    }
-
-    const matchedAdmin = adminAccounts.find((account) => account.login === login);
-
-    if (matchedAdmin) {
-      if (password !== matchedAdmin.password) {
-        setError("Неверный логин или пароль");
-        return;
-      }
-
-      writeAuthSession({
-        login: matchedAdmin.login,
-        role: "admin",
-        adminId: matchedAdmin.id,
-        adminName: matchedAdmin.name,
-      });
-
-      router.replace("/admin");
+      setError("Не удалось выполнить вход через сервер. Проверь backend и попробуй снова.");
       return;
     }
-
-    const matchedManager = managerAccounts.find((account) => account.login === login);
-
-    if (matchedManager) {
-      if (password !== matchedManager.password) {
-        setError("Неверный логин или пароль");
-        return;
-      }
-
-      writeAuthSession({
-        login: matchedManager.login,
-        role: "manager",
-        managerId: matchedManager.id,
-        managerName: matchedManager.name,
-      });
-
-      router.replace("/");
-      return;
-    }
-
-    const matchedSupplier = supplierAccounts.find((account) => account.login === login);
-
-    if (matchedSupplier) {
-      if (password !== matchedSupplier.password) {
-        setError("Неверный логин или пароль");
-        return;
-      }
-
-      writeAuthSession({
-        login,
-        role: "supplier",
-        supplierId: matchedSupplier.id,
-        supplierName: matchedSupplier.name,
-      });
-
-      router.replace("/supplier");
-      return;
-    }
-
-    setError("Неверный логин или пароль");
   };
 
   return (

@@ -21,7 +21,22 @@ export function SessionGuard() {
 
     const session = readAuthSession();
 
-    if (!session || !session.userId || !session.sessionToken) {
+    if (!session) {
+      return;
+    }
+
+    const isInternalRole =
+      session.role === "admin" ||
+      session.role === "manager" ||
+      session.role === "supplier";
+
+    if (isInternalRole && (!session.userId || !session.sessionToken)) {
+      clearAuthSession();
+      router.replace("/login?reason=reauth-required");
+      return;
+    }
+
+    if (!session.userId || !session.sessionToken) {
       return;
     }
 

@@ -2733,7 +2733,7 @@ export default function SupplierPage() {
                             Запрос менеджера
                           </p>
                           <p className="shrink-0 text-[11px] font-medium text-[#7B8AA0]">
-                            {new Date((selectedActiveRequest ?? selectedRequest).createdAt).toLocaleTimeString()}
+                            {formatTimeLabel((selectedActiveRequest ?? selectedRequest).createdAt)}
                           </p>
                         </div>
                         <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
@@ -2971,7 +2971,7 @@ export default function SupplierPage() {
                                       }`}
                                     >
                                       <p className="shrink-0">
-                                        {new Date(message.createdAt).toLocaleTimeString()}
+                                        {formatTimeLabel(message.createdAt)}
                                       </p>
                                     </div>
                                   </div>

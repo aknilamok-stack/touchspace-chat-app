@@ -3989,18 +3989,20 @@ export default function Home() {
 
                   {message.from === "system" ? (
                     <div className="flex justify-center py-2">
-                      <div className="w-full max-w-[560px] rounded-full border border-[#E5E5EA] bg-[#F7F7FA] px-5 py-3 text-center">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
-                          Системное событие
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[#6C6C70]">
+                      <div className="w-full max-w-[560px] rounded-[22px] border border-[#E5E5EA] bg-[#F7F7FA] px-5 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                            Системное событие
+                          </p>
+                          {message.time ? (
+                            <p className="shrink-0 text-[11px] text-[#AEAEB2]">
+                              {message.time}
+                            </p>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-sm leading-5 text-[#6C6C70]">
                           {message.text}
                         </p>
-                        {message.time && (
-                          <p className="mt-2 text-[10px] text-[#AEAEB2]">
-                            {message.time}
-                          </p>
-                        )}
                       </div>
                     </div>
                   ) : (

@@ -986,7 +986,8 @@ export default function SupplierPage() {
 
   const selectedRequestCard =
     selectedRequest
-      ? supplierRequestCards.find((card) => card.request.id === selectedRequest.id) ?? null
+      ? supplierRequestCards.find((card) => card.request.ticketId === selectedRequest.ticketId) ??
+        null
       : null;
   const supplierEmptyState =
     activeQueueTab === "requires_reply" || activeQueueTab === "new"
@@ -1664,6 +1665,7 @@ export default function SupplierPage() {
 
           const freshSelectedRequest =
             requests.find((request) => request.id === selectedRequestId) ??
+            requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
             nextRequestCards[0]?.request ??
             null;
 
@@ -1730,9 +1732,16 @@ export default function SupplierPage() {
 
   useEffect(() => {
     setSelectedRequestId((currentSelectedRequestId) => {
+      const currentSelectedRequest =
+        supplierRequests.find((request) => request.id === currentSelectedRequestId) ?? null;
+
       if (
         currentSelectedRequestId &&
-        supplierRequestCards.some((card) => card.request.id === currentSelectedRequestId)
+        supplierRequestCards.some(
+          (card) =>
+            card.request.id === currentSelectedRequestId ||
+            card.request.ticketId === currentSelectedRequest?.ticketId
+        )
       ) {
         return currentSelectedRequestId;
       }

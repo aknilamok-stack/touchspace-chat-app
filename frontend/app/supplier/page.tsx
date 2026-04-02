@@ -235,6 +235,26 @@ const formatDateTimeLabel = (createdAt: string) =>
     minute: "2-digit",
   });
 
+const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
+  const normalizedSupplierId = supplierId?.trim();
+
+  if (!normalizedSupplierId) {
+    return fallback?.trim() || "Поставщик";
+  }
+
+  const withoutPrefix = normalizedSupplierId.replace(/^supplier[_-]?/i, "");
+
+  if (!withoutPrefix) {
+    return fallback?.trim() || "Поставщик";
+  }
+
+  return withoutPrefix
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
   const attachments = parseChatAttachmentPayloads(message.content);
 
@@ -911,9 +931,13 @@ export default function SupplierPage() {
       : undefined) ??
     selectedTicket?.assignedManagerName ??
     "Менеджер";
-  const supplierHeaderTitle = selectedRequest
-    ? `${supplierName} / ${selectedManagerName}`
-    : supplierName;
+  const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
+  const supplierEmployeeName = supplierName?.trim() || "Поставщик";
+  const supplierHeaderTitle =
+    supplierEmployeeName &&
+    supplierEmployeeName.toLowerCase() !== supplierCompanyName.toLowerCase()
+      ? `${supplierCompanyName} / ${supplierEmployeeName}`
+      : supplierCompanyName;
   const availableManagers = uniqueManagers.map((manager) => ({
     ...manager,
     status: managerStatuses[manager.id] ?? "offline",
@@ -2476,10 +2500,12 @@ export default function SupplierPage() {
 
               <div className="min-w-0 flex-1 text-left leading-none">
                 <p className="truncate text-[14px] font-semibold text-[#1E1E1E]">
-                  {supplierName}
+                  {supplierCompanyName}
                 </p>
-                <p className="mt-0.5 text-[11px] text-[#8E8E93]">
-                  {supplierStatusLabels[supplierStatus]}
+                <p className="mt-0.5 truncate text-[11px] text-[#8E8E93]">
+                  {supplierEmployeeName !== supplierCompanyName
+                    ? `${supplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
+                    : supplierStatusLabels[supplierStatus]}
                 </p>
               </div>
 

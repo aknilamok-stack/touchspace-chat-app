@@ -191,6 +191,8 @@ type SupplierSlaVisual = {
   tone: string;
 };
 
+type SupplierRequestHistoryFilter = "all" | "day" | "week" | "month" | "custom";
+
 const appFontFamily = "Montserrat, ui-sans-serif, system-ui, sans-serif";
 const getMessageDayKey = (createdAt: string) => {
   const date = new Date(createdAt);
@@ -254,6 +256,11 @@ const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 };
+
+const isSameLocalDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
 
 const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
   const attachments = parseChatAttachmentPayloads(message.content);
@@ -813,6 +820,9 @@ export default function SupplierPage() {
   const [transferDialogError, setTransferDialogError] = useState("");
   const [deepLinkRequestId, setDeepLinkRequestId] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
+  const [requestHistoryFilter, setRequestHistoryFilter] =
+    useState<SupplierRequestHistoryFilter>("all");
+  const [requestHistoryCustomDate, setRequestHistoryCustomDate] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
@@ -957,6 +967,40 @@ export default function SupplierPage() {
         visibleSupplierMessages
       )
     : [];
+  const filteredHistoryRequests = selectedTicketRequests.filter((request) => {
+    if (requestHistoryFilter === "all") {
+      return true;
+    }
+
+    const requestDate = new Date(request.createdAt);
+    const nowDate = new Date();
+
+    if (requestHistoryFilter === "custom") {
+      if (!requestHistoryCustomDate) {
+        return true;
+      }
+
+      const selectedDate = new Date(`${requestHistoryCustomDate}T00:00:00`);
+      return isSameLocalDay(requestDate, selectedDate);
+    }
+
+    if (requestHistoryFilter === "day") {
+      return isSameLocalDay(requestDate, nowDate);
+    }
+
+    const diffMs = nowDate.getTime() - requestDate.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    if (requestHistoryFilter === "week") {
+      return diffDays <= 7;
+    }
+
+    if (requestHistoryFilter === "month") {
+      return diffDays <= 31;
+    }
+
+    return true;
+  });
   const lastClientMessageAtMs = visibleSupplierMessages.reduce<number | null>((latest, message) => {
     if (message.senderType !== "client") {
       return latest;
@@ -3513,8 +3557,16 @@ export default function SupplierPage() {
                   <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
                     Запрос от менеджера
                   </p>
-                  <div className="mt-4 rounded-[16px] bg-[#FBFBFD] p-4">
-                    <p className="text-[15px] leading-7 text-[#1E1E1E]">
+                  <div className="mt-4 rounded-[18px] border border-[#CFE0FF] bg-[linear-gradient(135deg,#F4F8FF_0%,#EAF2FF_100%)] p-4 shadow-[0_16px_34px_rgba(10,132,255,0.10)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0A84FF]">
+                        Активный запрос
+                      </p>
+                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#3267B2]">
+                        Текущий
+                      </span>
+                    </div>
+                    <p className="mt-3 text-[15px] font-medium leading-7 text-[#1E1E1E]">
                       {(selectedActiveRequest ?? selectedRequest).requestText}
                     </p>
                   </div>
@@ -3524,14 +3576,61 @@ export default function SupplierPage() {
                   </div>
                   {selectedTicketRequests.length > 1 ? (
                     <div className="mt-4 border-t border-[#EEF0F4] pt-4">
-                      <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
-                        История запросов
-                      </p>
-                      <div className="mt-3 space-y-3">
-                        {selectedTicketRequests.map((request) => (
+                      <div className="sticky top-0 z-10 bg-white pb-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                            История запросов
+                          </p>
+                          <span className="rounded-full bg-[#F2F4F8] px-2.5 py-1 text-[11px] text-[#6C6C70]">
+                            {filteredHistoryRequests.length}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {[
+                            ["all", "Все"],
+                            ["day", "День"],
+                            ["week", "Неделя"],
+                            ["month", "Месяц"],
+                            ["custom", "Дата"],
+                          ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() =>
+                                setRequestHistoryFilter(value as SupplierRequestHistoryFilter)
+                              }
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition ${
+                                requestHistoryFilter === value
+                                  ? "bg-[#0A84FF] text-white"
+                                  : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {requestHistoryFilter === "custom" ? (
+                          <div className="mt-3">
+                            <input
+                              type="date"
+                              value={requestHistoryCustomDate}
+                              onChange={(event) => setRequestHistoryCustomDate(event.target.value)}
+                              className="w-full rounded-[12px] border border-[#D7DBE3] bg-[#FBFBFD] px-3 py-2 text-sm text-[#1E1E1E] outline-none"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div
+                        className={`space-y-3 ${filteredHistoryRequests.length > 3 ? "max-h-[360px] overflow-y-auto pr-1" : ""}`}
+                      >
+                        {filteredHistoryRequests.map((request) => (
                           <div
                             key={request.id}
-                            className="rounded-[14px] border border-[#ECECF1] bg-[#FCFCFD] p-3"
+                            className={`rounded-[14px] border p-3 ${
+                              request.id === (selectedActiveRequest ?? selectedRequest).id
+                                ? "border-[#CFE0FF] bg-[#F5F9FF]"
+                                : "border-[#ECECF1] bg-[#FCFCFD]"
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-xs font-medium text-[#6C6C70]">
@@ -3546,6 +3645,11 @@ export default function SupplierPage() {
                             </p>
                           </div>
                         ))}
+                        {filteredHistoryRequests.length === 0 ? (
+                          <div className="rounded-[14px] border border-dashed border-[#D8D8DE] bg-[#FBFBFD] p-4 text-sm text-[#8E8E93]">
+                            По выбранному фильтру запросы не найдены.
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}

@@ -186,8 +186,8 @@ model Message {
   fromEmail       String?
   subject         String?
   messageId       String?   @unique
-  inReplyTo       String?
-  references      String?
+  inReplyTo       String?   @db.LongText
+  references      String?   @db.LongText
   isInternal      Boolean   @default(false)
   ticketId        String
   senderProfileId String?

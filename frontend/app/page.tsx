@@ -952,6 +952,12 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const hasOpenSupplierRequest = Boolean(
+    activeChat?.supplierRequests.some(
+      (request) =>
+        !["closed", "cancelled", "resolved"].includes(request.status)
+    )
+  );
   const resolvedTicketEmail =
     ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
     activeChat?.canonicalEmail?.trim() ||
@@ -2987,6 +2993,7 @@ export default function Home() {
     if (
       !activeChatId ||
       activeChat?.rawStatus === "resolved" ||
+      hasOpenSupplierRequest ||
       !currentManagerId ||
       !currentManagerName
     )
@@ -3007,7 +3014,9 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось отметить диалог как решённый");
+        throw new Error(
+          await extractApiErrorMessage(response, "Не удалось отметить диалог как решённый")
+        );
       }
 
       const updatedTicket = (await response.json()) as ApiTicket;
@@ -3035,7 +3044,8 @@ export default function Home() {
     } catch (error) {
       console.error("Ошибка завершения диалога:", error);
       setToast({
-        message: "Не удалось отметить диалог как решённый",
+        message:
+          error instanceof Error ? error.message : "Не удалось отметить диалог как решённый",
         tone: "error",
       });
     } finally {
@@ -3601,7 +3611,11 @@ export default function Home() {
                 <div className="relative">
                   <button
                     onClick={handleResolveTicket}
-                    disabled={isResolvingTicket || activeChat.rawStatus === "resolved"}
+                    disabled={
+                      isResolvingTicket ||
+                      activeChat.rawStatus === "resolved" ||
+                      hasOpenSupplierRequest
+                    }
                     className={`flex items-center gap-2 rounded-[10px] px-4 py-2 text-sm font-semibold transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80 ${
                       isResolveHighlighted
                         ? "bg-[#34C759] text-white shadow-[0_10px_24px_rgba(52,199,89,0.22)]"
@@ -3622,6 +3636,11 @@ export default function Home() {
                     />
                     <span>{isResolvingTicket ? "Сохраняем..." : "Решён"}</span>
                   </button>
+                  {hasOpenSupplierRequest ? (
+                    <div className="absolute right-0 top-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                      Сначала поставщик должен завершить свой запрос
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="relative">

@@ -1657,6 +1657,28 @@ export class TicketsService {
       role: 'manager',
     });
 
+    if (resolveTicketDto.resolverRole === 'supplier') {
+      throw new BadRequestException(
+        'Поставщик не может завершать весь диалог. Сначала закройте запрос поставщика.',
+      );
+    }
+
+    const hasActiveSupplierRequest = await this.prisma.supplierRequest.findFirst({
+      where: {
+        ticketId: id,
+        status: {
+          notIn: ['closed', 'cancelled', 'resolved'],
+        },
+      },
+      select: { id: true },
+    });
+
+    if (hasActiveSupplierRequest) {
+      throw new BadRequestException(
+        'Нельзя завершить диалог, пока поставщик не отметил запрос как решённый',
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const now = new Date();
 

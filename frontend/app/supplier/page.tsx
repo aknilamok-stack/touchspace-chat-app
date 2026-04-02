@@ -902,6 +902,10 @@ export default function SupplierPage() {
     : null;
   const isSupplierDialogResolved =
     selectedTicket?.status === "resolved" || selectedRequestCard?.queueTab === "completed";
+  const canSupplierMarkResolved =
+    !isResolvingTicket &&
+    selectedTicket?.status !== "resolved" &&
+    selectedRequestCard?.queueTab !== "completed";
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const activeTabRequests = supplierRequestCards.filter((card) => {
     if (card.queueTab !== activeQueueTab) {
@@ -1751,25 +1755,20 @@ export default function SupplierPage() {
   };
 
   const handleResolveTicket = async () => {
-    if (!selectedRequest || isResolvingTicket || selectedTicket?.status === "resolved") {
+    if (!selectedRequest || !canSupplierMarkResolved) {
       return;
     }
 
     setIsResolvingTicket(true);
 
     try {
-      const response = await fetch(apiUrl(`/tickets/${selectedRequest.ticketId}/resolve`), {
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedRequest.id}/status`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          managerId:
-            selectedRequest.createdByManagerId ??
-            selectedTicket?.assignedManagerId ??
-            "manager_anna",
-          managerName: selectedManagerName,
-          resolverRole: "supplier",
+          status: "closed",
         }),
       });
 
@@ -1777,10 +1776,28 @@ export default function SupplierPage() {
         throw new Error("Не удалось отметить диалог как решённый");
       }
 
-      const updatedTicket = (await response.json()) as Ticket;
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(),
+        fetchTicketMessages(selectedRequest.ticketId),
+      ]);
+
+      setSupplierRequests((current) =>
+        current.map((request) =>
+          request.id === selectedRequest.id
+            ? updatedRequests.find((item) => item.id === selectedRequest.id) ?? request
+            : request
+        )
+      );
       setTicketsById((current) => ({
         ...current,
-        [updatedTicket.id]: updatedTicket,
+        [selectedRequest.ticketId]:
+          updatedTicketsMap[selectedRequest.ticketId] ?? current[selectedRequest.ticketId],
+      }));
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((prev) => ({
+        ...prev,
+        [selectedRequest.ticketId]: refreshedMessages,
       }));
       setToast({
         message: "Диалог отмечен как решённый",

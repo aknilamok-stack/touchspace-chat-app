@@ -189,6 +189,14 @@ export class SupplierRequestsService {
             lastMessageAt: now,
           },
         });
+      } else if (status === 'closed') {
+        await tx.ticket.update({
+          where: { id: supplierRequest.ticketId },
+          data: {
+            status: 'in_progress',
+            lastMessageAt: now,
+          },
+        });
       } else {
         await tx.ticket.update({
           where: { id: supplierRequest.ticketId },

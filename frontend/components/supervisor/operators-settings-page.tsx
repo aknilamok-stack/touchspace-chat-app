@@ -26,6 +26,40 @@ type OperatorsResponse = {
   items?: OperatorItem[];
 };
 
+type AnalyticsPreset = "day" | "week" | "month" | "custom";
+
+type SupervisorAnalytics = {
+  summary: {
+    totalRequests: number;
+    markedRequests: number;
+    unmarkedRequests: number;
+    avgResponseMs: number | null;
+    onTimeRate: number;
+    rating: {
+      label: string;
+      tone: "good" | "warning" | "critical";
+    };
+  };
+  breakdown: {
+    byOperator: Array<{
+      id: string;
+      fullName: string;
+      totalRequests: number;
+      markedRequests: number;
+      avgResponseMs: number | null;
+      onTimeRate: number;
+    }>;
+  };
+  insights: {
+    activeOperators: number;
+    topOperator: string | null;
+    escalatedToSupplier?: number;
+    unresolvedDialogs?: number;
+    unansweredRequests?: number;
+    takenInWork?: number;
+  };
+};
+
 type ResetPasswordResponse = {
   credentials?: {
     login: string;
@@ -56,6 +90,50 @@ const formatDateTime = (value?: string | null) =>
       })
     : "Нет данных";
 
+const formatDuration = (value?: number | null) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "Нет данных";
+  }
+
+  const totalMinutes = Math.max(Math.round(value / 60000), 0);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) {
+    return `${minutes} мин`;
+  }
+
+  return `${hours} ч ${minutes} мин`;
+};
+
+const analyticsPresetLabels: Record<AnalyticsPreset, string> = {
+  day: "День",
+  week: "Неделя",
+  month: "Месяц",
+  custom: "Период",
+};
+
+const analyticsToneClasses: Record<
+  "good" | "warning" | "critical",
+  { ring: string; text: string; bg: string }
+> = {
+  good: {
+    ring: "#34C759",
+    text: "text-[#1B7A3C]",
+    bg: "bg-[#F3FFF6]",
+  },
+  warning: {
+    ring: "#FFB340",
+    text: "text-[#A06300]",
+    bg: "bg-[#FFF8EB]",
+  },
+  critical: {
+    ring: "#FF6B6B",
+    text: "text-[#C43D3D]",
+    bg: "bg-[#FFF3F3]",
+  },
+};
+
 export function OperatorsSettingsPage({
   scope,
   title,
@@ -72,7 +150,7 @@ export function OperatorsSettingsPage({
   const [operators, setOperators] = useState<OperatorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"operators">("operators");
+  const [activeTab, setActiveTab] = useState<"operators" | "analytics">("operators");
   const [savingOperatorId, setSavingOperatorId] = useState("");
   const [togglingOperatorId, setTogglingOperatorId] = useState("");
   const [resettingOperatorId, setResettingOperatorId] = useState("");
@@ -80,6 +158,12 @@ export function OperatorsSettingsPage({
   const [credentialsMessage, setCredentialsMessage] = useState("");
   const [draftAuthLogins, setDraftAuthLogins] = useState<Record<string, string>>({});
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
+  const [analytics, setAnalytics] = useState<SupervisorAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [analyticsPreset, setAnalyticsPreset] = useState<AnalyticsPreset>("day");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const pageAccent = scope === "manager_supervisor" ? "text-[#0A84FF]" : "text-[#0F9F6E]";
   const buttonAccent =
@@ -110,6 +194,40 @@ export function OperatorsSettingsPage({
     setDraftEmails(Object.fromEntries(nextItems.map((item) => [item.id, item.email ?? ""])));
   };
 
+  const loadAnalytics = async (currentSession: AuthSession, options?: {
+    preset?: AnalyticsPreset;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    if (!currentSession.userId) {
+      throw new Error("Не удалось определить управленца.");
+    }
+
+    const preset = options?.preset ?? analyticsPreset;
+    const params = new URLSearchParams({
+      supervisorId: currentSession.userId,
+      preset,
+    });
+
+    if (preset === "custom") {
+      if (options?.dateFrom) {
+        params.set("dateFrom", options.dateFrom);
+      }
+
+      if (options?.dateTo) {
+        params.set("dateTo", options.dateTo);
+      }
+    }
+
+    const response = await fetch(apiUrl(`/supervisors/analytics?${params.toString()}`));
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить аналитику");
+    }
+
+    setAnalytics((await response.json()) as SupervisorAnalytics);
+  };
+
   useEffect(() => {
     const currentSession = readAuthSession();
 
@@ -119,14 +237,20 @@ export function OperatorsSettingsPage({
     }
 
     setSession(currentSession);
-    loadOperators(currentSession)
+    Promise.all([loadOperators(currentSession), loadAnalytics(currentSession, { preset: "day" })])
       .catch((loadError) =>
-        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить операторов")
+        setError(
+          loadError instanceof Error ? loadError.message : "Не удалось загрузить настройки"
+        )
       )
       .finally(() => setLoading(false));
   }, [router, scope]);
 
   const operatorsCountLabel = useMemo(() => `${operators.length} операторов`, [operators.length]);
+  const analyticsTone = analytics
+    ? analyticsToneClasses[analytics.summary.rating.tone]
+    : analyticsToneClasses.good;
+  const donutAngle = analytics ? Math.round((analytics.summary.onTimeRate / 100) * 360) : 360;
 
   const handleToggleChatAccess = async (operatorId: string, enabled: boolean) => {
     if (!session?.userId) {
@@ -276,6 +400,29 @@ export function OperatorsSettingsPage({
     }
   };
 
+  const handleApplyAnalyticsFilter = async (nextPreset = analyticsPreset) => {
+    if (!session) {
+      return;
+    }
+
+    setAnalyticsLoading(true);
+    setAnalyticsError("");
+
+    try {
+      await loadAnalytics(session, {
+        preset: nextPreset,
+        dateFrom,
+        dateTo,
+      });
+    } catch (loadError) {
+      setAnalyticsError(
+        loadError instanceof Error ? loadError.message : "Не удалось загрузить аналитику"
+      );
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#F4F6F8] px-6 py-8 text-[#6C6C70]">
@@ -322,6 +469,22 @@ export function OperatorsSettingsPage({
             >
               Операторы
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("analytics");
+                if (!analytics) {
+                  void handleApplyAnalyticsFilter();
+                }
+              }}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                activeTab === "analytics"
+                  ? `${buttonAccent} text-white`
+                  : "bg-[#F2F4F8] text-[#5F6673] hover:bg-[#E9EEF7]"
+              }`}
+            >
+              Аналитика
+            </button>
           </div>
         </div>
 
@@ -343,6 +506,7 @@ export function OperatorsSettingsPage({
           </div>
         ) : null}
 
+        {activeTab === "operators" ? (
         <section className="mt-6 space-y-4">
           {operators.map((operator) => {
             const showLastSeen = operator.status !== "online";
@@ -476,6 +640,234 @@ export function OperatorsSettingsPage({
             </div>
           ) : null}
         </section>
+        ) : (
+        <section className="mt-6 space-y-6">
+          <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+            <div className="flex flex-wrap items-end gap-3">
+              {(Object.keys(analyticsPresetLabels) as AnalyticsPreset[]).map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    setAnalyticsPreset(preset);
+                    if (preset !== "custom") {
+                      void handleApplyAnalyticsFilter(preset);
+                    }
+                  }}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    analyticsPreset === preset
+                      ? `${buttonAccent} text-white`
+                      : "bg-[#F2F4F8] text-[#5F6673] hover:bg-[#E9EEF7]"
+                  }`}
+                >
+                  {analyticsPresetLabels[preset]}
+                </button>
+              ))}
+            </div>
+
+            {analyticsPreset === "custom" ? (
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Дата от
+                  </span>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => setDateFrom(event.target.value)}
+                    className="rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Дата до
+                  </span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => setDateTo(event.target.value)}
+                    className="rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleApplyAnalyticsFilter("custom")}
+                  className={`rounded-full px-4 py-3 text-sm font-semibold text-white transition ${buttonAccent}`}
+                >
+                  Применить
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {analyticsError ? (
+            <div className="rounded-[18px] border border-[#F3D0D0] bg-[#FFF4F4] px-4 py-3 text-sm text-[#C43D3D]">
+              {analyticsError}
+            </div>
+          ) : null}
+
+          {analyticsLoading && !analytics ? (
+            <div className="rounded-[24px] border border-[#E3E8F2] bg-white px-5 py-8 text-sm text-[#8E8E93]">
+              Загружаем аналитику...
+            </div>
+          ) : null}
+
+          {analytics ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Всего запросов
+                  </p>
+                  <p className="mt-3 text-[32px] font-semibold text-[#1E1E1E]">
+                    {analytics.summary.totalRequests}
+                  </p>
+                </div>
+
+                <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Отмеченные
+                  </p>
+                  <p className="mt-3 text-[32px] font-semibold text-[#1E1E1E]">
+                    {analytics.summary.markedRequests}
+                  </p>
+                  <p className="mt-2 text-sm text-[#6C6C70]">
+                    Не отмеченные: {analytics.summary.unmarkedRequests}
+                  </p>
+                </div>
+
+                <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Среднее время ответа
+                  </p>
+                  <p className="mt-3 text-[32px] font-semibold text-[#1E1E1E]">
+                    {formatDuration(analytics.summary.avgResponseMs)}
+                  </p>
+                </div>
+
+                <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Лучший оператор
+                  </p>
+                  <p className="mt-3 text-lg font-semibold text-[#1E1E1E]">
+                    {analytics.insights.topOperator || "Нет данных"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+                <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Рейтинг SLA
+                  </p>
+                  <div className="mt-5 flex flex-col items-center">
+                    <div
+                      className="relative flex h-[180px] w-[180px] items-center justify-center rounded-full"
+                      style={{
+                        background: `conic-gradient(${analyticsTone.ring} 0deg ${donutAngle}deg, #E9EDF5 ${donutAngle}deg 360deg)`,
+                      }}
+                    >
+                      <div className="flex h-[124px] w-[124px] flex-col items-center justify-center rounded-full bg-white">
+                        <span className="text-[34px] font-semibold text-[#1E1E1E]">
+                          {analytics.summary.onTimeRate}%
+                        </span>
+                        <span className="mt-1 text-xs text-[#8E8E93]">вовремя</span>
+                      </div>
+                    </div>
+                    <div className={`mt-5 rounded-[18px] px-4 py-3 text-center ${analyticsTone.bg}`}>
+                      <p className={`text-sm font-semibold ${analyticsTone.text}`}>
+                        {analytics.summary.rating.label}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Активные операторы
+                    </p>
+                    <p className="mt-3 text-[32px] font-semibold text-[#1E1E1E]">
+                      {analytics.insights.activeOperators}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Доп. метрика
+                    </p>
+                    <p className="mt-3 text-lg font-semibold text-[#1E1E1E]">
+                      {scope === "manager_supervisor"
+                        ? `Эскалаций поставщику: ${analytics.insights.escalatedToSupplier ?? 0}`
+                        : `Взято в работу: ${analytics.insights.takenInWork ?? 0}`}
+                    </p>
+                    <p className="mt-2 text-sm text-[#6C6C70]">
+                      {scope === "manager_supervisor"
+                        ? `Не решённых диалогов: ${analytics.insights.unresolvedDialogs ?? 0}`
+                        : `Без ответа: ${analytics.insights.unansweredRequests ?? 0}`}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)] md:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                        По операторам
+                      </p>
+                      <p className="text-xs text-[#8E8E93]">
+                        Кол-во запросов и среднее время ответа
+                      </p>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {analytics.breakdown.byOperator.map((item) => {
+                        const progressWidth =
+                          analytics.summary.totalRequests > 0
+                            ? `${Math.max(
+                                8,
+                                Math.round((item.totalRequests / analytics.summary.totalRequests) * 100)
+                              )}%`
+                            : "8%";
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="rounded-[18px] border border-[#EEF2F7] bg-[#FBFCFE] px-4 py-4"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-[#1E1E1E]">
+                                  {item.fullName}
+                                </p>
+                                <p className="mt-1 text-xs text-[#6C6C70]">
+                                  Отмечено: {item.markedRequests} из {item.totalRequests}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-semibold text-[#1E1E1E]">
+                                  {formatDuration(item.avgResponseMs)}
+                                </p>
+                                <p className="mt-1 text-xs text-[#6C6C70]">
+                                  SLA вовремя: {item.onTimeRate}%
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 h-2 rounded-full bg-[#E9EDF5]">
+                              <div
+                                className={`h-2 rounded-full ${scope === "manager_supervisor" ? "bg-[#0A84FF]" : "bg-[#0F9F6E]"}`}
+                                style={{ width: progressWidth }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </section>
+        )}
       </div>
     </main>
   );

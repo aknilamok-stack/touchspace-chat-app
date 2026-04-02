@@ -10,6 +10,20 @@ export class SupervisorsController {
     return this.supervisorsService.listOperators(supervisorId);
   }
 
+  @Get('analytics')
+  getAnalytics(
+    @Query('supervisorId') supervisorId: string,
+    @Query('preset') preset?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.supervisorsService.getAnalytics(supervisorId, {
+      preset,
+      dateFrom,
+      dateTo,
+    });
+  }
+
   @Patch('operators/:id/chat-access')
   updateOperatorChatAccess(
     @Param('id') operatorId: string,

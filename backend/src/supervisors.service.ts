@@ -13,6 +13,12 @@ type UpdateOperatorAccountInput = {
   email?: string | null;
 };
 
+type AnalyticsRangeInput = {
+  preset?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 @Injectable()
 export class SupervisorsService {
   constructor(
@@ -78,6 +84,82 @@ export class SupervisorsService {
     }
 
     return supervisor;
+  }
+
+  private toDate(value?: string | null) {
+    if (!value?.trim()) {
+      return null;
+    }
+
+    const parsedDate = new Date(value);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  }
+
+  private normalizeAnalyticsRange(input?: AnalyticsRangeInput) {
+    const now = new Date();
+    const preset = input?.preset?.trim() || 'day';
+    const customFrom = this.toDate(input?.dateFrom);
+    const customTo = this.toDate(input?.dateTo);
+
+    if (preset === 'custom' && customFrom && customTo) {
+      return {
+        preset,
+        from: new Date(customFrom.setHours(0, 0, 0, 0)),
+        to: new Date(customTo.setHours(23, 59, 59, 999)),
+      };
+    }
+
+    const to = new Date(now);
+    to.setHours(23, 59, 59, 999);
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+
+    if (preset === 'week') {
+      from.setDate(from.getDate() - 6);
+    } else if (preset === 'month') {
+      from.setDate(from.getDate() - 29);
+    }
+
+    return {
+      preset,
+      from,
+      to,
+    };
+  }
+
+  private average(values: Array<number | null | undefined>) {
+    const validValues = values.filter(
+      (value): value is number => typeof value === 'number' && Number.isFinite(value),
+    );
+
+    if (validValues.length === 0) {
+      return null;
+    }
+
+    return Math.round(
+      validValues.reduce((total, value) => total + value, 0) / validValues.length,
+    );
+  }
+
+  private buildSlaRating(onTimeRate: number) {
+    if (onTimeRate >= 80) {
+      return {
+        label: 'Отвечают вовремя',
+        tone: 'good',
+      };
+    }
+
+    if (onTimeRate >= 50) {
+      return {
+        label: 'Отвечают долговато',
+        tone: 'warning',
+      };
+    }
+
+    return {
+      label: 'Отвечают долго',
+      tone: 'critical',
+    };
   }
 
   private async ensureOperatorInScope(
@@ -296,6 +378,245 @@ export class SupervisorsService {
       operatorId: operator.id,
       fullName: operator.fullName,
       credentials,
+    };
+  }
+
+  async getAnalytics(supervisorId: string, input?: AnalyticsRangeInput) {
+    const supervisor = await this.getSupervisor(supervisorId);
+    const range = this.normalizeAnalyticsRange(input);
+
+    if (supervisor.role === 'supplier_supervisor') {
+      const operators = await this.prisma.profile.findMany({
+        where: {
+          role: 'supplier',
+          supplierId: supervisor.supplierId,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          supplierStatus: true,
+          lastLoginAt: true,
+        },
+        orderBy: {
+          fullName: 'asc',
+        },
+      });
+
+      const requests = await this.prisma.supplierRequest.findMany({
+        where: {
+          supplierId: supervisor.supplierId,
+          createdAt: {
+            gte: range.from,
+            lte: range.to,
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+          assignedSupplierProfileId: true,
+          firstResponseAt: true,
+          responseTime: true,
+          responseBreached: true,
+          createdAt: true,
+          claimedAt: true,
+        },
+      });
+
+      const markedRequests = requests.filter(
+        (request) =>
+          Boolean(request.firstResponseAt) ||
+          request.status === 'answered' ||
+          request.status === 'closed',
+      );
+      const unansweredRequests = requests.filter((request) => !request.firstResponseAt);
+      const onTimeRequests = requests.filter((request) => !request.responseBreached);
+      const onTimeRate = requests.length
+        ? Math.round((onTimeRequests.length / requests.length) * 100)
+        : 100;
+      const rating = this.buildSlaRating(onTimeRate);
+      const byOperator = operators.map((operator) => {
+        const operatorRequests = requests.filter(
+          (request) => request.assignedSupplierProfileId === operator.id,
+        );
+
+        return {
+          id: operator.id,
+          fullName: operator.fullName,
+          totalRequests: operatorRequests.length,
+          markedRequests: operatorRequests.filter(
+            (request) =>
+              Boolean(request.firstResponseAt) ||
+              request.status === 'answered' ||
+              request.status === 'closed',
+          ).length,
+          avgResponseMs: this.average(operatorRequests.map((request) => request.responseTime)),
+          onTimeRate: operatorRequests.length
+            ? Math.round(
+                (operatorRequests.filter((request) => !request.responseBreached).length /
+                  operatorRequests.length) *
+                  100,
+              )
+            : 100,
+        };
+      });
+
+      const topOperator =
+        byOperator
+          .slice()
+          .sort((left, right) => right.totalRequests - left.totalRequests)[0] ?? null;
+
+      return {
+        scope: supervisor.role,
+        period: {
+          preset: range.preset,
+          from: range.from,
+          to: range.to,
+        },
+        summary: {
+          totalRequests: requests.length,
+          markedRequests: markedRequests.length,
+          unmarkedRequests: requests.length - markedRequests.length,
+          avgResponseMs: this.average(requests.map((request) => request.responseTime)),
+          onTimeRate,
+          rating,
+        },
+        breakdown: {
+          byOperator,
+        },
+        insights: {
+          activeOperators: operators.filter((operator) => operator.supplierStatus === 'online')
+            .length,
+          unansweredRequests: unansweredRequests.length,
+          takenInWork: requests.filter((request) => Boolean(request.claimedAt)).length,
+          topOperator: topOperator?.fullName ?? null,
+        },
+      };
+    }
+
+    const operators = await this.prisma.profile.findMany({
+      where: {
+        role: 'manager',
+      },
+      select: {
+        id: true,
+        fullName: true,
+        managerStatus: true,
+        lastLoginAt: true,
+      },
+      orderBy: {
+        fullName: 'asc',
+      },
+    });
+
+    const operatorIds = operators.map((operator) => operator.id);
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        createdAt: {
+          gte: range.from,
+          lte: range.to,
+        },
+        OR: [
+          {
+            assignedManagerId: {
+              in: operatorIds,
+            },
+          },
+          {
+            lastResolvedByManagerId: {
+              in: operatorIds,
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        assignedManagerId: true,
+        lastResolvedByManagerId: true,
+        firstResponseTime: true,
+        firstResponseBreached: true,
+        slaBreached: true,
+        status: true,
+        resolvedAt: true,
+        createdAt: true,
+        supplierEscalatedAt: true,
+      },
+    });
+
+    const markedTickets = tickets.filter(
+      (ticket) => ticket.status === 'resolved' || ticket.status === 'closed' || Boolean(ticket.resolvedAt),
+    );
+    const onTimeTickets = tickets.filter(
+      (ticket) => !ticket.firstResponseBreached && !ticket.slaBreached,
+    );
+    const onTimeRate = tickets.length
+      ? Math.round((onTimeTickets.length / tickets.length) * 100)
+      : 100;
+    const rating = this.buildSlaRating(onTimeRate);
+    const byOperator = operators.map((operator) => {
+      const operatorTickets = tickets.filter(
+        (ticket) =>
+          ticket.assignedManagerId === operator.id ||
+          ticket.lastResolvedByManagerId === operator.id,
+      );
+
+      return {
+        id: operator.id,
+        fullName: operator.fullName,
+        totalRequests: operatorTickets.length,
+        markedRequests: operatorTickets.filter(
+          (ticket) =>
+            ticket.status === 'resolved' ||
+            ticket.status === 'closed' ||
+            Boolean(ticket.resolvedAt),
+        ).length,
+        avgResponseMs: this.average(
+          operatorTickets.map((ticket) => ticket.firstResponseTime),
+        ),
+        onTimeRate: operatorTickets.length
+          ? Math.round(
+              (operatorTickets.filter(
+                (ticket) => !ticket.firstResponseBreached && !ticket.slaBreached,
+              ).length /
+                operatorTickets.length) *
+                100,
+            )
+          : 100,
+      };
+    });
+
+    const topOperator =
+      byOperator
+        .slice()
+        .sort((left, right) => right.totalRequests - left.totalRequests)[0] ?? null;
+
+    return {
+      scope: supervisor.role,
+      period: {
+        preset: range.preset,
+        from: range.from,
+        to: range.to,
+      },
+      summary: {
+        totalRequests: tickets.length,
+        markedRequests: markedTickets.length,
+        unmarkedRequests: tickets.length - markedTickets.length,
+        avgResponseMs: this.average(tickets.map((ticket) => ticket.firstResponseTime)),
+        onTimeRate,
+        rating,
+      },
+      breakdown: {
+        byOperator,
+      },
+      insights: {
+        activeOperators: operators.filter((operator) => operator.managerStatus === 'online')
+          .length,
+        escalatedToSupplier: tickets.filter((ticket) => Boolean(ticket.supplierEscalatedAt))
+          .length,
+        unresolvedDialogs: tickets.filter(
+          (ticket) => ticket.status !== 'resolved' && ticket.status !== 'closed',
+        ).length,
+        topOperator: topOperator?.fullName ?? null,
+      },
     };
   }
 }

@@ -35,7 +35,7 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
   "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
 };
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
-const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 20_000;
+const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";

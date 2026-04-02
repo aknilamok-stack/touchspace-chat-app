@@ -244,6 +244,7 @@
     lastSignature: "",
     lastSentAt: 0,
   };
+  var PAGE_VIEW_HEARTBEAT_INTERVAL_MS = 15000;
 
   function sendPageView() {
     if (!pageTrackingState.apiBaseUrl || !fallbackTradePointId) {
@@ -322,6 +323,21 @@
     window.addEventListener("hashchange", function () {
       window.setTimeout(sendPageView, 0);
     });
+    window.addEventListener("focus", function () {
+      window.setTimeout(sendPageView, 0);
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") {
+        window.setTimeout(sendPageView, 0);
+      }
+    });
+    window.addEventListener("pageshow", function () {
+      window.setTimeout(sendPageView, 0);
+    });
+
+    window.setInterval(function () {
+      sendPageView();
+    }, PAGE_VIEW_HEARTBEAT_INTERVAL_MS);
   }
 
   var STORAGE_KEY = "touchspace-widget-layout-v2";

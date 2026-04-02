@@ -51,7 +51,7 @@ const QUICK_REPLIES = [
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
-const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 20_000;
+const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 
 type SupplierRequest = {
   id: string;

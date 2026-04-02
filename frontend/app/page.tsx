@@ -883,6 +883,7 @@ export default function Home() {
     useState<string>("all");
   const [supplierRequestPeriodFilter, setSupplierRequestPeriodFilter] =
     useState<SupplierRequestPeriodFilter>("all");
+  const [isSupplierRequestsFilterOpen, setIsSupplierRequestsFilterOpen] = useState(false);
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
@@ -947,6 +948,7 @@ export default function Home() {
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
+  const supplierRequestsFilterRef = useRef<HTMLDivElement | null>(null);
   const managerSuggestionsRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1635,6 +1637,11 @@ export default function Home() {
   const availableSupplierRequestStatuses = Array.from(
     new Set((activeChat?.supplierRequests ?? []).map((request) => request.status))
   );
+  const supplierRequestActiveFilterCount = [
+    supplierRequestSupplierFilter !== "all",
+    supplierRequestStatusFilter !== "all",
+    supplierRequestPeriodFilter !== "all",
+  ].filter(Boolean).length;
   const filteredSupplierRequests = (activeChat?.supplierRequests ?? []).filter((request) => {
     const matchesSupplier =
       supplierRequestSupplierFilter === "all" ||
@@ -2320,6 +2327,28 @@ export default function Home() {
       document.removeEventListener("mousedown", handlePointerDown);
     };
   }, [isManagerMenuOpen]);
+
+  useEffect(() => {
+    if (!isSupplierRequestsFilterOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!supplierRequestsFilterRef.current) {
+        return;
+      }
+
+      if (!supplierRequestsFilterRef.current.contains(event.target as Node)) {
+        setIsSupplierRequestsFilterOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isSupplierRequestsFilterOpen]);
 
   useEffect(() => {
     if (!composerTextareaRef.current) {
@@ -4763,128 +4792,170 @@ export default function Home() {
             )}
           </div>
 
-          <div className="rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-[#1E1E1E]">Запросы поставщикам</p>
-              <span className="text-xs text-[#8E8E93]">
-                {filteredSupplierRequests.length}
-              </span>
-            </div>
+          <div className="rounded-[24px] border border-[#E5E5EA] bg-white shadow-sm">
+            <div className="sticky top-0 z-10 rounded-t-[24px] border-b border-[#F0F0F2] bg-white/95 px-4 py-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[#1E1E1E]">Запросы поставщикам</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#8E8E93]">
+                    {filteredSupplierRequests.length}
+                  </span>
+                  <div ref={supplierRequestsFilterRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIsSupplierRequestsFilterOpen((current) => !current)
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-[#E5E5EA] bg-[#F7F8FB] px-3 py-2 text-xs font-medium text-[#4B5563] transition hover:bg-[#EEF4FF]"
+                    >
+                      <span>Фильтр</span>
+                      {supplierRequestActiveFilterCount > 0 ? (
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 text-[11px] font-semibold text-white">
+                          {supplierRequestActiveFilterCount}
+                        </span>
+                      ) : null}
+                    </button>
 
-            {(availableSupplierRequestSuppliers.length > 0 ||
-              availableSupplierRequestStatuses.length > 0) && (
-              <div className="mb-4 space-y-3">
-                {availableSupplierRequestSuppliers.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
-                      Поставщик
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSupplierRequestSupplierFilter("all")}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                          supplierRequestSupplierFilter === "all"
-                            ? "bg-[#0A84FF] text-white"
-                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
-                        }`}
-                      >
-                        Все
-                      </button>
-                      {availableSupplierRequestSuppliers.map((supplierName) => (
-                        <button
-                          key={supplierName}
-                          type="button"
-                          onClick={() => setSupplierRequestSupplierFilter(supplierName)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                            supplierRequestSupplierFilter === supplierName
-                              ? "bg-[#0A84FF] text-white"
-                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
-                          }`}
-                        >
-                          {supplierName}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                    {isSupplierRequestsFilterOpen ? (
+                      <div className="absolute right-0 top-[calc(100%+10px)] z-30 w-[280px] rounded-[20px] border border-[#E5E5EA] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-[#1E1E1E]">Фильтры</p>
+                          {supplierRequestActiveFilterCount > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierRequestSupplierFilter("all");
+                                setSupplierRequestStatusFilter("all");
+                                setSupplierRequestPeriodFilter("all");
+                              }}
+                              className="text-[11px] font-medium text-[#0A84FF]"
+                            >
+                              Сбросить
+                            </button>
+                          ) : null}
+                        </div>
 
-                {availableSupplierRequestStatuses.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
-                      Статус
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSupplierRequestStatusFilter("all")}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                          supplierRequestStatusFilter === "all"
-                            ? "bg-[#111827] text-white"
-                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
-                        }`}
-                      >
-                        Все
-                      </button>
-                      {availableSupplierRequestStatuses.map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={() => setSupplierRequestStatusFilter(status)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                            supplierRequestStatusFilter === status
-                              ? "bg-[#111827] text-white"
-                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
-                          }`}
-                        >
-                          {getStatusLabel(status)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                        {(availableSupplierRequestSuppliers.length > 0 ||
+                          availableSupplierRequestStatuses.length > 0) && (
+                          <div className="space-y-3">
+                            {availableSupplierRequestSuppliers.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                  Поставщик
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSupplierRequestSupplierFilter("all")}
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestSupplierFilter === "all"
+                                        ? "bg-[#0A84FF] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    Все
+                                  </button>
+                                  {availableSupplierRequestSuppliers.map((supplierName) => (
+                                    <button
+                                      key={supplierName}
+                                      type="button"
+                                      onClick={() => setSupplierRequestSupplierFilter(supplierName)}
+                                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                        supplierRequestSupplierFilter === supplierName
+                                          ? "bg-[#0A84FF] text-white"
+                                          : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                      }`}
+                                    >
+                                      {supplierName}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
-                <div>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
-                    Период
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      ["today", "Сегодня"],
-                      ["yesterday", "Вчера"],
-                      ["week", "За неделю"],
-                      ["month", "За месяц"],
-                      ["all", "Все"],
-                    ].map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() =>
-                          setSupplierRequestPeriodFilter(
-                            value as SupplierRequestPeriodFilter
-                          )
-                        }
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                          supplierRequestPeriodFilter === value
-                            ? "bg-[#34C759] text-white"
-                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                            {availableSupplierRequestStatuses.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                  Статус
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSupplierRequestStatusFilter("all")}
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestStatusFilter === "all"
+                                        ? "bg-[#111827] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    Все
+                                  </button>
+                                  {availableSupplierRequestStatuses.map((status) => (
+                                    <button
+                                      key={status}
+                                      type="button"
+                                      onClick={() => setSupplierRequestStatusFilter(status)}
+                                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                        supplierRequestStatusFilter === status
+                                          ? "bg-[#111827] text-white"
+                                          : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                      }`}
+                                    >
+                                      {getStatusLabel(status)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div>
+                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                Период
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  ["today", "Сегодня"],
+                                  ["yesterday", "Вчера"],
+                                  ["week", "За неделю"],
+                                  ["month", "За месяц"],
+                                  ["all", "Все"],
+                                ].map(([value, label]) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() =>
+                                      setSupplierRequestPeriodFilter(
+                                        value as SupplierRequestPeriodFilter
+                                      )
+                                    }
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestPeriodFilter === value
+                                        ? "bg-[#34C759] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
-            )}
+            </div>
 
             <div
-              className={`space-y-4 ${
+              className={`px-4 py-4 ${
                 filteredSupplierRequests.length > 3
-                  ? "max-h-[420px] overflow-y-auto pr-1"
+                  ? "max-h-[440px] overflow-y-auto pr-3"
                   : ""
               }`}
             >
+              <div className="space-y-4">
               {isLoadingSupplierRequests && (
                 <p className="text-sm text-gray-500">Загружаем запросы...</p>
               )}
@@ -4927,6 +4998,7 @@ export default function Home() {
                     : "Пока нет запросов поставщикам"}
                 </p>
               ) : null}
+              </div>
             </div>
           </div>
         </aside>

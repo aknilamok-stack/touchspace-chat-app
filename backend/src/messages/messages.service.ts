@@ -644,17 +644,20 @@ export class MessagesService {
         );
     } else if (senderType === 'manager' && ticketSnapshot.supplierId) {
       void this.pushService
-        .sendToProfiles(
-          [ticketSnapshot.supplierId],
-          {
-            title: 'Новое сообщение по вашему запросу',
-            body:
-              content.length > 120 ? `${content.slice(0, 120)}...` : content,
-            url: `/supplier?ticket=${ticketId}`,
-            tag: `supplier-ticket-${ticketId}`,
-          },
-          'supplier_chats',
-          actorId,
+        .getActiveSupplierProfileIds(ticketSnapshot.supplierId)
+        .then((supplierTargets) =>
+          this.pushService.sendToProfiles(
+            supplierTargets,
+            {
+              title: 'Новое сообщение по вашему запросу',
+              body:
+                content.length > 120 ? `${content.slice(0, 120)}...` : content,
+              url: `/supplier?ticket=${ticketId}`,
+              tag: `supplier-ticket-${ticketId}`,
+            },
+            'supplier_chats',
+            actorId,
+          ),
         )
         .catch((error) =>
           console.error('Ошибка push-уведомления поставщику:', error),

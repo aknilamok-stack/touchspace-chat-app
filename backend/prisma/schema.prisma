@@ -24,6 +24,8 @@ model Profile {
   supplierId              String?
   managerStatus           String?
   managerPresenceHeartbeatAt DateTime?
+  supplierStatus          String?
+  supplierPresenceHeartbeatAt DateTime?
   approvalComment         String?
   lastLoginAt             DateTime?
   createdByAdminId        String?

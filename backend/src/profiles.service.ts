@@ -18,6 +18,8 @@ type EnsureProfileInput = {
   supplierId?: string | null;
   managerStatus?: string | null;
   managerPresenceHeartbeatAt?: Date | null;
+  supplierStatus?: string | null;
+  supplierPresenceHeartbeatAt?: Date | null;
   approvalComment?: string | null;
   lastLoginAt?: Date | null;
   createdByAdminId?: string | null;
@@ -36,11 +38,11 @@ export class ProfilesService {
 
   private readonly managerPresenceTtlMs = 45_000;
 
-  private resolveManagerPresenceStatus(
-    managerStatus: string | null,
+  private resolvePresenceStatus(
+    presenceStatus: string | null,
     heartbeatAt: Date | null,
   ) {
-    if (!managerStatus || managerStatus === 'offline') {
+    if (!presenceStatus || presenceStatus === 'offline') {
       return 'offline';
     }
 
@@ -50,7 +52,7 @@ export class ProfilesService {
 
     const isFresh =
       Date.now() - heartbeatAt.getTime() <= this.managerPresenceTtlMs;
-    return isFresh ? managerStatus : 'offline';
+    return isFresh ? presenceStatus : 'offline';
   }
 
   async getManagerStatuses() {
@@ -77,7 +79,7 @@ export class ProfilesService {
     return managers.map((manager) => ({
       id: manager.id,
       fullName: manager.fullName,
-      managerStatus: this.resolveManagerPresenceStatus(
+      managerStatus: this.resolvePresenceStatus(
         manager.managerStatus,
         manager.managerPresenceHeartbeatAt,
       ),
@@ -125,6 +127,81 @@ export class ProfilesService {
     });
   }
 
+  async getSupplierStatuses() {
+    const suppliers = await this.prisma.profile.findMany({
+      where: {
+        role: 'supplier',
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+      },
+      orderBy: {
+        fullName: 'asc',
+      },
+      select: {
+        id: true,
+        fullName: true,
+        supplierId: true,
+        supplierStatus: true,
+        supplierPresenceHeartbeatAt: true,
+        lastLoginAt: true,
+      },
+    });
+
+    return suppliers.map((supplier) => ({
+      id: supplier.id,
+      fullName: supplier.fullName,
+      supplierId: supplier.supplierId,
+      supplierStatus: this.resolvePresenceStatus(
+        supplier.supplierStatus,
+        supplier.supplierPresenceHeartbeatAt,
+      ),
+      lastLoginAt: supplier.lastLoginAt,
+      supplierPresenceHeartbeatAt: supplier.supplierPresenceHeartbeatAt,
+    }));
+  }
+
+  async updateSupplierStatus(
+    id: string,
+    supplierStatus: string,
+    fullName?: string | null,
+  ) {
+    const normalizedId = id?.trim();
+    const normalizedStatus = supplierStatus?.trim();
+
+    if (!normalizedId || !normalizedStatus) {
+      return null;
+    }
+
+    await this.ensureProfile({
+      id: normalizedId,
+      role: 'supplier',
+      fullName,
+      supplierId: normalizedId,
+      supplierStatus: normalizedStatus,
+      supplierPresenceHeartbeatAt:
+        normalizedStatus === 'offline' ? null : new Date(),
+    });
+
+    return this.prisma.profile.update({
+      where: {
+        id: normalizedId,
+      },
+      data: {
+        supplierStatus: normalizedStatus,
+        supplierPresenceHeartbeatAt:
+          normalizedStatus === 'offline' ? null : new Date(),
+      },
+      select: {
+        id: true,
+        fullName: true,
+        supplierStatus: true,
+        supplierPresenceHeartbeatAt: true,
+      },
+    });
+  }
+
   async ensureProfile(input: EnsureProfileInput) {
     const id = input.id?.trim();
     const role = input.role?.trim();
@@ -160,6 +237,8 @@ export class ProfilesService {
         supplierId: input.supplierId?.trim() || null,
         managerStatus: input.managerStatus?.trim() || null,
         managerPresenceHeartbeatAt: input.managerPresenceHeartbeatAt ?? null,
+        supplierStatus: input.supplierStatus?.trim() || null,
+        supplierPresenceHeartbeatAt: input.supplierPresenceHeartbeatAt ?? null,
         approvalComment: input.approvalComment?.trim() || null,
         lastLoginAt: input.lastLoginAt ?? null,
         createdByAdminId: input.createdByAdminId?.trim() || null,
@@ -188,6 +267,9 @@ export class ProfilesService {
         managerStatus: input.managerStatus?.trim() || undefined,
         managerPresenceHeartbeatAt:
           input.managerPresenceHeartbeatAt ?? undefined,
+        supplierStatus: input.supplierStatus?.trim() || undefined,
+        supplierPresenceHeartbeatAt:
+          input.supplierPresenceHeartbeatAt ?? undefined,
         approvalComment: input.approvalComment?.trim() || undefined,
         lastLoginAt: input.lastLoginAt ?? undefined,
         createdByAdminId: input.createdByAdminId?.trim() || undefined,

@@ -23,7 +23,11 @@ import {
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
 import { formatDialogActivityLabel } from "@/lib/dialog-list";
-import { fetchManagerStatuses } from "@/lib/manager-presence";
+import {
+  fetchManagerStatuses,
+  fetchSupplierStatuses,
+  updateSupplierPresence,
+} from "@/lib/manager-presence";
 
 const defaultSupplierAccount = supplierAccounts[0] ?? {
   id: "supplier_karelia",
@@ -52,6 +56,7 @@ const QUICK_REPLIES = [
   "Благодарю, информацию передал",
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
+const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
 
 type SupplierRequest = {
   id: string;
@@ -111,6 +116,16 @@ type ToastTone = "success" | "error" | "info";
 type UiToast = {
   message: string;
   tone: ToastTone;
+};
+
+type SupplierNotificationCandidate = {
+  ticketId: string;
+  requestId?: string | null;
+  title: string;
+  messageId: string;
+  messageText: string;
+  createdAt: string;
+  kind: "message" | "request";
 };
 
 type Ticket = {
@@ -704,6 +719,9 @@ export default function SupplierPage() {
   const [deepLinkRequestId, setDeepLinkRequestId] = useState("");
   const [deepLinkTicketId, setDeepLinkTicketId] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [notificationCandidates, setNotificationCandidates] = useState<
+    SupplierNotificationCandidate[]
+  >([]);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
@@ -726,6 +744,10 @@ export default function SupplierPage() {
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
+  const lastNotificationAtRef = useRef<Record<string, number>>({});
+  const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
+  const defaultDocumentTitleRef = useRef("");
+  const titleFlashIntervalRef = useRef<number | null>(null);
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -844,6 +866,25 @@ export default function SupplierPage() {
       return;
     }
 
+    const loadSupplierStatuses = async () => {
+      try {
+        const statuses = await fetchSupplierStatuses();
+        const nextStatus = statuses[supplierId] ?? readSupplierStatus();
+        setSupplierStatus(nextStatus);
+      } catch (error) {
+        console.error("Ошибка загрузки статусов поставщиков:", error);
+        setSupplierStatus(readSupplierStatus());
+      }
+    };
+
+    void loadSupplierStatuses();
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
     const loadStatuses = async () => {
       try {
         const statuses = await fetchManagerStatuses();
@@ -861,6 +902,58 @@ export default function SupplierPage() {
     }, 5000);
 
     return () => window.clearInterval(intervalId);
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    const syncPresence = async (status: ManagerPresence) => {
+      try {
+        await updateSupplierPresence(supplierId, supplierName, status);
+      } catch (error) {
+        console.error("Ошибка синхронизации статуса поставщика:", error);
+      }
+    };
+
+    void syncPresence(supplierStatus);
+
+    if (supplierStatus === "offline") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void syncPresence(supplierStatus);
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, supplierStatus]);
+
+  useEffect(() => {
+    if (!authReady || typeof window === "undefined") {
+      return;
+    }
+
+    const markOffline = () => {
+      void fetch(apiUrl(`/profiles/${supplierId}/supplier-status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: supplierName,
+          supplierStatus: "offline",
+        }),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+
+    window.addEventListener("pagehide", markOffline);
+
+    return () => {
+      window.removeEventListener("pagehide", markOffline);
+    };
   }, [authReady]);
   const selectedRequestCard =
     selectedRequest
@@ -1153,6 +1246,113 @@ export default function SupplierPage() {
           new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
       );
   };
+
+  const showDesktopNotification = async (
+    title: string,
+    body: string,
+    options?: { tag?: string; ticketId?: string; requestId?: string | null }
+  ) => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      return;
+    }
+
+    const targetUrl = options?.requestId
+      ? `/supplier?request=${options.requestId}`
+      : options?.ticketId
+        ? `/supplier?ticket=${options.ticketId}`
+        : "/supplier";
+
+    if ("serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        await registration.showNotification(title, {
+          body,
+          icon: "/pwa/icon-192.svg",
+          badge: "/pwa/badge.svg",
+          tag: `supplier-ui-${options?.tag ?? title}`,
+          data: {
+            url: targetUrl,
+          },
+        });
+        return;
+      } catch (error) {
+        console.error("Не удалось показать service-worker уведомление:", error);
+      }
+    }
+
+    new Notification(title, { body });
+  };
+
+  const playNotificationSound = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return;
+    }
+
+    try {
+      const audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.28);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+
+      oscillator.addEventListener(
+        "ended",
+        () => {
+          void audioContext.close().catch(() => undefined);
+        },
+        { once: true }
+      );
+    } catch (error) {
+      console.error("Не удалось воспроизвести звук уведомления:", error);
+    }
+  };
+
+  const fetchSupplierNotificationCandidates = async (): Promise<
+    SupplierNotificationCandidate[]
+  > => {
+    const response = await fetch(
+      apiUrl(`/notifications/supplier-candidates?profileId=${encodeURIComponent(supplierId)}`)
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить кандидатов для уведомлений поставщика");
+    }
+
+    const payload = (await response.json()) as { items?: SupplierNotificationCandidate[] };
+    return Array.isArray(payload.items) ? payload.items : [];
+  };
+
+  const refreshNotificationCandidates = useCallback(async () => {
+    try {
+      const candidates = await fetchSupplierNotificationCandidates();
+      setNotificationCandidates(candidates);
+    } catch (error) {
+      console.error("Ошибка загрузки кандидатов для уведомлений поставщика:", error);
+    }
+  }, []);
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
@@ -1450,6 +1650,20 @@ export default function SupplierPage() {
   }, [authReady, pinnedRequestIds, selectedRequestId]);
 
   useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    void refreshNotificationCandidates();
+
+    const intervalId = window.setInterval(() => {
+      void refreshNotificationCandidates();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, refreshNotificationCandidates]);
+
+  useEffect(() => {
     if (!authReady || !selectedRequest?.ticketId) {
       return;
     }
@@ -1573,6 +1787,104 @@ export default function SupplierPage() {
 
     return () => window.clearInterval(intervalId);
   }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.error("Не удалось зарегистрировать service worker:", error);
+      });
+    }
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      return;
+    }
+
+    const activeCandidateIds = new Set(notificationCandidates.map((candidate) => candidate.messageId));
+
+    Object.keys(lastNotificationAtRef.current).forEach((candidateId) => {
+      if (!activeCandidateIds.has(candidateId)) {
+        delete lastNotificationAtRef.current[candidateId];
+        delete lastNotificationMessageIdRef.current[candidateId];
+      }
+    });
+
+    notificationCandidates.forEach((candidate) => {
+      const notificationTitle =
+        candidate.kind === "request"
+          ? `Новый запрос: ${candidate.title || "поставщик"}`
+          : `Менеджер: ${candidate.title || "диалог"}`;
+      const notificationBody =
+        candidate.messageText.length > 80
+          ? `${candidate.messageText.slice(0, 80)}...`
+          : candidate.messageText;
+      const lastNotificationAt = lastNotificationAtRef.current[candidate.messageId] ?? 0;
+      const lastMessageId = lastNotificationMessageIdRef.current[candidate.messageId];
+      const shouldNotify =
+        lastMessageId !== candidate.messageId ||
+        Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+
+      if (!shouldNotify) {
+        return;
+      }
+
+      lastNotificationAtRef.current[candidate.messageId] = Date.now();
+      lastNotificationMessageIdRef.current[candidate.messageId] = candidate.messageId;
+      playNotificationSound();
+
+      void showDesktopNotification(notificationTitle, notificationBody, {
+        tag: candidate.messageId,
+        ticketId: candidate.ticketId,
+        requestId: candidate.requestId,
+      });
+    });
+  }, [notificationCandidates, authReady]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (!defaultDocumentTitleRef.current) {
+      defaultDocumentTitleRef.current = document.title;
+    }
+
+    if (titleFlashIntervalRef.current) {
+      window.clearInterval(titleFlashIntervalRef.current);
+      titleFlashIntervalRef.current = null;
+    }
+
+    if (notificationCandidates.length === 0) {
+      document.title = defaultDocumentTitleRef.current;
+      return;
+    }
+
+    let showAlertTitle = true;
+    const alertTitle = `(${notificationCandidates.length}) Новый запрос • TouchSpace`;
+    document.title = alertTitle;
+
+    titleFlashIntervalRef.current = window.setInterval(() => {
+      document.title = showAlertTitle ? alertTitle : defaultDocumentTitleRef.current;
+      showAlertTitle = !showAlertTitle;
+    }, 1000);
+
+    return () => {
+      if (titleFlashIntervalRef.current) {
+        window.clearInterval(titleFlashIntervalRef.current);
+        titleFlashIntervalRef.current = null;
+      }
+      document.title = defaultDocumentTitleRef.current;
+    };
+  }, [notificationCandidates]);
 
   useEffect(() => {
     setEditTarget(null);

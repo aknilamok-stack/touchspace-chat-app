@@ -10,6 +10,13 @@ type ManagerStatusRecord = {
   lastLoginAt?: string | null;
 };
 
+type SupplierStatusRecord = {
+  id: string;
+  fullName: string;
+  supplierStatus: string | null;
+  lastLoginAt?: string | null;
+};
+
 export async function fetchManagerStatuses() {
   const response = await fetch(apiUrl("/profiles/manager-statuses"));
 
@@ -48,6 +55,49 @@ export async function updateManagerPresence(
 
   if (!response.ok) {
     throw new Error("Не удалось обновить статус менеджера");
+  }
+
+  return response.json();
+}
+
+export async function fetchSupplierStatuses() {
+  const response = await fetch(apiUrl("/profiles/supplier-statuses"));
+
+  if (!response.ok) {
+    throw new Error("Не удалось загрузить статусы поставщиков");
+  }
+
+  const payload = (await response.json()) as SupplierStatusRecord[];
+
+  return payload.reduce<Record<string, ManagerPresence>>((accumulator, supplier) => {
+    const status = supplier.supplierStatus;
+
+    if (status === "online" || status === "break" || status === "offline") {
+      accumulator[supplier.id] = status;
+    }
+
+    return accumulator;
+  }, {});
+}
+
+export async function updateSupplierPresence(
+  supplierId: string,
+  fullName: string,
+  supplierStatus: ManagerPresence,
+) {
+  const response = await fetch(apiUrl(`/profiles/${supplierId}/supplier-status`), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fullName,
+      supplierStatus,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Не удалось обновить статус поставщика");
   }
 
   return response.json();

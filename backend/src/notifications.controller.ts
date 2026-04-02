@@ -28,6 +28,13 @@ export class NotificationsController {
     );
   }
 
+  @Get('supplier-candidates')
+  getSupplierNotificationCandidates(@Query('profileId') profileId: string) {
+    return this.notificationsService.getSupplierNotificationCandidates(
+      profileId,
+    );
+  }
+
   @Patch('preferences')
   updatePreferences(
     @Body()

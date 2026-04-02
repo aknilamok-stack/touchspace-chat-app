@@ -97,19 +97,22 @@ export class SupplierRequestsService {
 
     if (supplierRequest.supplierId) {
       void this.pushService
-        .sendToProfiles(
-          [supplierRequest.supplierId],
-          {
-            title: 'Новый запрос поставщику',
-            body:
-              supplierRequest.requestText.length > 120
-                ? `${supplierRequest.requestText.slice(0, 120)}...`
-                : supplierRequest.requestText,
-            url: `/supplier?request=${supplierRequest.id}`,
-            tag: `supplier-request-${supplierRequest.id}`,
-          },
-          'supplier_requests',
-          supplierRequest.createdByManagerId ?? undefined,
+        .getActiveSupplierProfileIds(supplierRequest.supplierId)
+        .then((supplierTargets) =>
+          this.pushService.sendToProfiles(
+            supplierTargets,
+            {
+              title: 'Новый запрос поставщику',
+              body:
+                supplierRequest.requestText.length > 120
+                  ? `${supplierRequest.requestText.slice(0, 120)}...`
+                  : supplierRequest.requestText,
+              url: `/supplier?request=${supplierRequest.id}`,
+              tag: `supplier-request-${supplierRequest.id}`,
+            },
+            'supplier_requests',
+            supplierRequest.createdByManagerId ?? undefined,
+          ),
         )
         .catch((error) =>
           console.error('Ошибка push-уведомления поставщику:', error),

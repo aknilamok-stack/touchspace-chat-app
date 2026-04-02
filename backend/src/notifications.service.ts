@@ -22,6 +22,16 @@ type ManagerNotificationCandidate = {
   assignedManagerName: string | null;
 };
 
+type SupplierNotificationCandidate = {
+  ticketId: string;
+  requestId: string | null;
+  title: string;
+  messageId: string;
+  messageText: string;
+  createdAt: Date;
+  kind: 'message' | 'request';
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -55,6 +65,7 @@ export class NotificationsService {
         role: true,
         fullName: true,
         email: true,
+        supplierId: true,
         notificationPushEnabled: true,
         notifyClientChats: true,
         notifySupplierChats: true,
@@ -139,6 +150,28 @@ export class NotificationsService {
       .map((manager) => manager.id);
   }
 
+  private async getActiveSupplierIds(supplierId?: string | null) {
+    const statuses = await this.profilesService.getSupplierStatuses();
+    const normalizedSupplierId = supplierId?.trim();
+
+    return statuses
+      .filter((supplier) => {
+        if (supplier.supplierStatus !== 'online') {
+          return false;
+        }
+
+        if (!normalizedSupplierId) {
+          return true;
+        }
+
+        return (
+          supplier.id === normalizedSupplierId ||
+          supplier.supplierId === normalizedSupplierId
+        );
+      })
+      .map((supplier) => supplier.id);
+  }
+
   private shouldNotifyManagerAboutTicket(
     profileId: string,
     activeManagerIds: Set<string>,
@@ -152,11 +185,7 @@ export class NotificationsService {
       return true;
     }
 
-    if (candidate.assignedManagerId === profileId) {
-      return true;
-    }
-
-    return !activeManagerIds.has(candidate.assignedManagerId);
+    return candidate.assignedManagerId === profileId;
   }
 
   private async getSupplierCounters(profileId: string) {
@@ -403,6 +432,163 @@ export class NotificationsService {
       .filter((candidate): candidate is ManagerNotificationCandidate =>
         Boolean(candidate),
       );
+
+    return {
+      items,
+    };
+  }
+
+  async getSupplierNotificationCandidates(profileId: string) {
+    const profile = await this.ensureSettingsProfile(profileId, 'supplier');
+    const supplierScopeId = profile.id;
+
+    if (
+      !profile.notificationPushEnabled ||
+      (!profile.notifySupplierChats && !profile.notifySupplierRequests)
+    ) {
+      return {
+        items: [],
+      };
+    }
+
+    const activeSupplierIds = new Set(
+      await this.getActiveSupplierIds(profile.supplierId || profile.id),
+    );
+
+    if (!activeSupplierIds.has(profile.id)) {
+      return {
+        items: [],
+      };
+    }
+
+    const items: SupplierNotificationCandidate[] = [];
+
+    if (profile.notifySupplierChats) {
+      const tickets = await this.prisma.ticket.findMany({
+        where: {
+          status: {
+            notIn: ['resolved', 'closed'],
+          },
+          OR: [
+            { supplierId: supplierScopeId },
+            {
+              supplierRequests: {
+                some: {
+                  supplierId: supplierScopeId,
+                },
+              },
+            },
+          ],
+          messages: {
+            some: {
+              senderType: 'manager',
+              status: {
+                in: ['sent', 'delivered'],
+              },
+            },
+          },
+        },
+        orderBy: {
+          lastMessageAt: 'desc',
+        },
+        select: {
+          id: true,
+          title: true,
+          tradePointName: true,
+          clientName: true,
+          messages: {
+            where: {
+              senderType: 'manager',
+              status: {
+                in: ['sent', 'delivered'],
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 1,
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+            },
+          },
+          supplierRequests: {
+            where: {
+              supplierId: supplierScopeId,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 1,
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      tickets.forEach((ticket) => {
+        const latestUnreadMessage = ticket.messages[0];
+
+        if (!latestUnreadMessage) {
+          return;
+        }
+
+        items.push({
+          ticketId: ticket.id,
+          requestId: ticket.supplierRequests[0]?.id ?? null,
+          title:
+            ticket.tradePointName?.trim() ||
+            ticket.title?.trim() ||
+            ticket.clientName?.trim() ||
+            'Диалог с клиентом',
+          messageId: latestUnreadMessage.id,
+          messageText: latestUnreadMessage.content,
+          createdAt: latestUnreadMessage.createdAt,
+          kind: 'message',
+        });
+      });
+    }
+
+    if (profile.notifySupplierRequests) {
+      const requests = await this.prisma.supplierRequest.findMany({
+        where: {
+          supplierId: supplierScopeId,
+          firstResponseAt: null,
+          status: {
+            notIn: ['closed', 'cancelled'],
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: {
+          id: true,
+          ticketId: true,
+          supplierName: true,
+          requestText: true,
+          createdAt: true,
+        },
+      });
+
+      requests.forEach((request) => {
+        items.push({
+          ticketId: request.ticketId,
+          requestId: request.id,
+          title: request.supplierName?.trim() || 'Новый запрос поставщику',
+          messageId: `request:${request.id}`,
+          messageText: request.requestText,
+          createdAt: request.createdAt,
+          kind: 'request',
+        });
+      });
+    }
+
+    items.sort(
+      (left, right) =>
+        right.createdAt.getTime() - left.createdAt.getTime(),
+    );
 
     return {
       items,

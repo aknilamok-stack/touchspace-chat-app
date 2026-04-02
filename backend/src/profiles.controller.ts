@@ -10,6 +10,11 @@ export class ProfilesController {
     return this.profilesService.getManagerStatuses();
   }
 
+  @Get('supplier-statuses')
+  getSupplierStatuses() {
+    return this.profilesService.getSupplierStatuses();
+  }
+
   @Patch(':id/manager-status')
   updateManagerStatus(
     @Param('id') id: string,
@@ -18,6 +23,18 @@ export class ProfilesController {
     return this.profilesService.updateManagerStatus(
       id,
       body.managerStatus,
+      body.fullName,
+    );
+  }
+
+  @Patch(':id/supplier-status')
+  updateSupplierStatus(
+    @Param('id') id: string,
+    @Body() body: { fullName?: string; supplierStatus: string },
+  ) {
+    return this.profilesService.updateSupplierStatus(
+      id,
+      body.supplierStatus,
       body.fullName,
     );
   }

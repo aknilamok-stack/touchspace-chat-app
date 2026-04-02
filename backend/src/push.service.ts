@@ -148,7 +148,7 @@ export class PushService {
           notIn: ['blocked', 'inactive'],
         },
         managerStatus: {
-          in: ['online', 'break'],
+          in: ['online'],
         },
         managerPresenceHeartbeatAt: {
           gte: new Date(Date.now() - 45_000),
@@ -160,6 +160,36 @@ export class PushService {
     });
 
     return managers.map((manager) => manager.id);
+  }
+
+  async getActiveSupplierProfileIds(supplierId?: string | null) {
+    const normalizedSupplierId = supplierId?.trim();
+    const suppliers = await this.prisma.profile.findMany({
+      where: {
+        role: 'supplier',
+        isActive: true,
+        approvalStatus: 'approved',
+        status: {
+          notIn: ['blocked', 'inactive'],
+        },
+        supplierStatus: {
+          in: ['online'],
+        },
+        supplierPresenceHeartbeatAt: {
+          gte: new Date(Date.now() - 45_000),
+        },
+        ...(normalizedSupplierId
+          ? {
+              OR: [{ id: normalizedSupplierId }, { supplierId: normalizedSupplierId }],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return suppliers.map((supplier) => supplier.id);
   }
 
   async getManagerTargetsForTicket(ticketId: string) {

@@ -1237,11 +1237,14 @@ export default function ClientPage() {
           ];
         }
 
-        if (message.content.includes("переведён в статус: closed")) {
+        if (
+          message.content.includes("переведён в статус: closed") ||
+          message.content.includes('переведён в статус "Решён"')
+        ) {
           return [
             {
               ...message,
-              displayContent: "Поставщик завершил диалог. Менеджер TouchSpace подключен.",
+              displayContent: "Чат переведён менеджеру TouchSpace.",
               attachments: [],
             },
           ];

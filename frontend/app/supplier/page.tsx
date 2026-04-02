@@ -90,6 +90,20 @@ type TicketMessage = TicketMessageApi & {
   attachments?: ChatAttachmentPayload[];
 };
 
+type SupplierTimelineItem =
+  | {
+      kind: "request";
+      id: string;
+      createdAt: string;
+      request: SupplierRequest;
+    }
+  | {
+      kind: "message";
+      id: string;
+      createdAt: string;
+      message: TicketMessage;
+    };
+
 type ApiTicketContactsResponse = {
   items?: ChatContactItem[];
 };
@@ -321,13 +335,77 @@ const areMessageMapsEqual = (
   return leftKeys.every((key) => areMessagesEqual(left[key] ?? [], right[key] ?? []));
 };
 
-const getVisibleMessagesForTicket = (messages: TicketMessage[]) =>
-  messages.filter(
-    (message) =>
+const getVisibleMessagesForTicket = (
+  requests: SupplierRequest[],
+  messages: TicketMessage[]
+) => {
+  const earliestRequestCreatedAt = requests.reduce<number | null>((earliest, request) => {
+    const requestTimestamp = new Date(request.createdAt).getTime();
+
+    if (!Number.isFinite(requestTimestamp)) {
+      return earliest;
+    }
+
+    return earliest === null ? requestTimestamp : Math.min(earliest, requestTimestamp);
+  }, null);
+
+  return messages.filter((message) => {
+    const messageCreatedAt = new Date(message.createdAt).getTime();
+
+    if (
+      earliestRequestCreatedAt !== null &&
+      Number.isFinite(messageCreatedAt) &&
+      messageCreatedAt < earliestRequestCreatedAt
+    ) {
+      return false;
+    }
+
+    return (
       message.senderType === "client" ||
       message.senderType === "supplier" ||
+      message.senderType === "system" ||
       (message.senderType === "manager" && message.isInternal)
-  );
+    );
+  });
+};
+
+const buildSupplierTimelineItems = (
+  requests: SupplierRequest[],
+  messages: TicketMessage[]
+): SupplierTimelineItem[] =>
+  [
+    ...requests.map(
+      (request) =>
+        ({
+          kind: "request",
+          id: `request-${request.id}`,
+          createdAt: request.createdAt,
+          request,
+        }) satisfies SupplierTimelineItem
+    ),
+    ...messages.map(
+      (message) =>
+        ({
+          kind: "message",
+          id: `message-${message.id}`,
+          createdAt: message.createdAt,
+          message,
+        }) satisfies SupplierTimelineItem
+    ),
+  ].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime();
+    const rightTime = new Date(right.createdAt).getTime();
+
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    if (left.kind !== right.kind) {
+      return left.kind === "request" ? -1 : 1;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
 
 const getSupplierQueueTab = (
   request: SupplierRequest,
@@ -383,7 +461,7 @@ const buildSupplierRequestCards = (
       );
       const request = sortedRequests[0];
       const requestMessages = ticketMessagesByTicketId[request.ticketId] ?? [];
-      const visibleMessages = getVisibleMessagesForTicket(requestMessages);
+      const visibleMessages = getVisibleMessagesForTicket(sortedRequests, requestMessages);
       const lastVisibleMessage = visibleMessages[visibleMessages.length - 1] ?? null;
       const ticketStatus = ticketsById[request.ticketId]?.status;
       const activeRequest =
@@ -858,7 +936,17 @@ export default function SupplierPage() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
-  const visibleSupplierMessages = selectedRequest ? getVisibleMessagesForTicket(ticketMessages) : [];
+  const visibleSupplierMessages =
+    selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
+  const supplierTimelineItems = selectedRequest
+    ? buildSupplierTimelineItems(
+        [...selectedTicketRequests].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        ),
+        visibleSupplierMessages
+      )
+    : [];
   const lastClientMessageAtMs = visibleSupplierMessages.reduce<number | null>((latest, message) => {
     if (message.senderType !== "client") {
       return latest;
@@ -2729,28 +2817,6 @@ export default function SupplierPage() {
                   className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
                 >
                   <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
-                    <div className="flex justify-center py-1">
-                      <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
-                        {formatMessageDayLabel((selectedActiveRequest ?? selectedRequest).createdAt)}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-center py-2">
-                      <div className="w-full max-w-[620px] rounded-[24px] border border-[#D7E6FF] bg-[linear-gradient(135deg,#F5F9FF_0%,#EEF6FF_100%)] px-5 py-4 shadow-[0_18px_40px_rgba(10,132,255,0.10)]">
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0A84FF]">
-                            Запрос менеджера
-                          </p>
-                          <p className="shrink-0 text-[11px] font-medium text-[#7B8AA0]">
-                            {formatTimeLabel((selectedActiveRequest ?? selectedRequest).createdAt)}
-                          </p>
-                        </div>
-                        <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
-                          {(selectedActiveRequest ?? selectedRequest).requestText}
-                        </p>
-                      </div>
-                    </div>
-
                     {isLoadingMessages && (
                       <p className="text-sm text-gray-500">Загружаем сообщения...</p>
                     )}
@@ -2761,16 +2827,50 @@ export default function SupplierPage() {
 
                     {!isLoadingMessages &&
                       !messagesError &&
-                      visibleSupplierMessages.map((message, index) => {
-                        const previousMessage = visibleSupplierMessages[index - 1];
+                      supplierTimelineItems.map((item, index) => {
+                        const previousItem = supplierTimelineItems[index - 1];
                         const shouldShowDateSeparator =
-                          !previousMessage ||
-                          getMessageDayKey(previousMessage.createdAt) !==
-                            getMessageDayKey(message.createdAt);
+                          !previousItem ||
+                          getMessageDayKey(previousItem.createdAt) !==
+                            getMessageDayKey(item.createdAt);
+
+                        if (item.kind === "request") {
+                          const { request } = item;
+
+                          return (
+                            <div key={item.id} className="rounded-[26px] px-2 py-1">
+                              {shouldShowDateSeparator && (
+                                <div className="flex justify-center py-1">
+                                  <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
+                                    {formatMessageDayLabel(item.createdAt)}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex justify-center py-2">
+                                <div className="w-full max-w-[620px] rounded-[24px] border border-[#D7E6FF] bg-[linear-gradient(135deg,#F5F9FF_0%,#EEF6FF_100%)] px-5 py-4 shadow-[0_18px_40px_rgba(10,132,255,0.10)]">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0A84FF]">
+                                      Запрос менеджера
+                                    </p>
+                                    <p className="shrink-0 text-[11px] font-medium text-[#7B8AA0]">
+                                      {formatTimeLabel(request.createdAt)}
+                                    </p>
+                                  </div>
+                                  <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
+                                    {request.requestText}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const { message } = item;
 
                         return (
                           <div
-                            key={message.id}
+                            key={item.id}
                             ref={(element) => {
                               messageElementsRef.current[message.id] = element;
                             }}
@@ -2788,6 +2888,13 @@ export default function SupplierPage() {
                               </div>
                             )}
 
+                            {message.senderType === "system" ? (
+                              <div className="flex justify-center py-2">
+                                <div className="max-w-[620px] rounded-[18px] border border-[#E5E5EA] bg-[#F7F7FA] px-4 py-3 text-center text-sm leading-6 text-[#6C6C70] shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                                  {message.displayContent}
+                                </div>
+                              </div>
+                            ) : (
                             <div
                               className={`flex ${
                                 message.senderType === "supplier"
@@ -2987,6 +3094,7 @@ export default function SupplierPage() {
                                 </div>
                               </div>
                             </div>
+                            )}
                           </div>
                         );
                       })}

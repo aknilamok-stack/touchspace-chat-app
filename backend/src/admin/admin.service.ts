@@ -564,6 +564,10 @@ export class AdminService {
           assignedManagerName: true,
           supplierId: true,
           supplierName: true,
+          clientId: true,
+          clientEmail: true,
+          tradePointExternalId: true,
+          tradePointName: true,
           topicCategory: true,
           supplierEscalatedAt: true,
           slaBreached: true,
@@ -707,6 +711,19 @@ export class AdminService {
     const managerLoadMap = new Map<string, number>();
     const supplierLoadMap = new Map<string, number>();
     const managerRiskMap = new Map<string, number>();
+    const activeTradePointKeys = new Set<string>();
+
+    for (const ticket of tickets) {
+      const tradePointKey =
+        ticket.tradePointExternalId?.trim() ||
+        ticket.tradePointName?.trim() ||
+        ticket.clientEmail?.trim()?.toLowerCase() ||
+        ticket.clientId?.trim();
+
+      if (tradePointKey) {
+        activeTradePointKeys.add(tradePointKey);
+      }
+    }
 
     for (const ticket of tickets) {
       if (ticket.assignedManagerId) {
@@ -912,6 +929,19 @@ export class AdminService {
       },
     ];
 
+    const dialogsByDay = this.buildTimeSeries(
+      tickets.filter((ticket) => ticket.createdAt >= from),
+      from,
+      now,
+    );
+    const avgDialogsPerDay =
+      dialogsByDay.length > 0
+        ? Math.round(
+            dialogsByDay.reduce((total, item) => total + item.count, 0) /
+              dialogsByDay.length,
+          )
+        : 0;
+
     return {
       metrics: {
         totalDialogs: tickets.length,
@@ -945,6 +975,9 @@ export class AdminService {
         ).length,
         slaBreaches,
         pendingRegistrations: registrationsPending,
+        activeTradePoints: activeTradePointKeys.size,
+        totalSupplierRequests: supplierRequests.length,
+        avgDialogsPerDay,
       },
       attention: {
         dialogsWithoutAnswer: dialogsWithoutAnswer.length,
@@ -960,11 +993,7 @@ export class AdminService {
         systemStatus,
       },
       charts: {
-        dialogsByDay: this.buildTimeSeries(
-          tickets.filter((ticket) => ticket.createdAt >= from),
-          from,
-          now,
-        ),
+        dialogsByDay,
         managerLoad: [...managerLoadMap.entries()]
           .map(([entityId, dialogs]) => ({ entityId, dialogs }))
           .sort((left, right) => right.dialogs - left.dialogs)

@@ -140,6 +140,28 @@ export function AdminOverview() {
 
   const chartPoints = data?.charts?.dialogsByDay ?? [];
   const maxChartValue = Math.max(...chartPoints.map((item: any) => item.count), 1);
+  const activityMetrics = [
+    {
+      label: "Торговых точек пишут",
+      value: formatNumber(data?.metrics?.activeTradePoints),
+      hint: "хотя бы раз писали в чат",
+    },
+    {
+      label: "Всего диалогов",
+      value: formatNumber(data?.metrics?.totalDialogs),
+      hint: "общий объём системы",
+    },
+    {
+      label: "Запросов поставщикам",
+      value: formatNumber(data?.metrics?.totalSupplierRequests),
+      hint: "всего supplier requests",
+    },
+    {
+      label: "Среднее чатов в день",
+      value: formatNumber(data?.metrics?.avgDialogsPerDay),
+      hint: "по последним 7 дням",
+    },
+  ];
 
   return (
     <section className="grid gap-4">
@@ -197,6 +219,18 @@ export function AdminOverview() {
           </article>
         ))}
       </section>
+
+      <AdminPanel title="Охват и активность">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {activityMetrics.map((item) => (
+            <div key={item.label} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-sm font-medium text-slate-600">{item.label}</p>
+              <p className="mt-3 text-[30px] font-semibold tracking-tight text-slate-950">{item.value}</p>
+              <p className="mt-2 text-xs text-slate-500">{item.hint}</p>
+            </div>
+          ))}
+        </div>
+      </AdminPanel>
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
         <AdminPanel title="Проблемные диалоги">

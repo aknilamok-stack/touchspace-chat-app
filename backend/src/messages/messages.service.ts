@@ -381,6 +381,9 @@ export class MessagesService {
             where: { id: ticketId },
             data: {
               status: 'new',
+              requestCount: {
+                increment: 1,
+              },
               assignedManagerId: null,
               assignedManagerName: null,
               handedToManagerAt: null,

@@ -1367,6 +1367,9 @@ export class TicketsService {
             where: { id: existingTicket.id },
             data: {
               status: 'new',
+              requestCount: {
+                increment: 1,
+              },
               assignedManagerId: null,
               assignedManagerName: null,
               handedToManagerAt: null,

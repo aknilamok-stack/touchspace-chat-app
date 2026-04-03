@@ -142,9 +142,14 @@ export function AdminOverview() {
   const maxChartValue = Math.max(...chartPoints.map((item: any) => item.count), 1);
   const activityMetrics = [
     {
-      label: "Торговых точек пишут",
+      label: "Торговых точек писали",
       value: formatNumber(data?.metrics?.activeTradePoints),
       hint: "хотя бы раз писали в чат",
+    },
+    {
+      label: "Обращений в чат",
+      value: formatNumber(data?.metrics?.totalChatRequests),
+      hint: "от нового письма до статуса «решён»",
     },
     {
       label: "Всего диалогов",
@@ -221,7 +226,7 @@ export function AdminOverview() {
       </section>
 
       <AdminPanel title="Охват и активность">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {activityMetrics.map((item) => (
             <div key={item.label} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
               <p className="text-sm font-medium text-slate-600">{item.label}</p>

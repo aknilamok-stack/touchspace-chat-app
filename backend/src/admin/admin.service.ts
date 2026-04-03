@@ -568,6 +568,7 @@ export class AdminService {
           clientEmail: true,
           tradePointExternalId: true,
           tradePointName: true,
+          requestCount: true,
           topicCategory: true,
           supplierEscalatedAt: true,
           slaBreached: true,
@@ -934,6 +935,10 @@ export class AdminService {
       from,
       now,
     );
+    const totalChatRequests = tickets.reduce(
+      (total, ticket) => total + (ticket.requestCount ?? 1),
+      0,
+    );
     const avgDialogsPerDay =
       dialogsByDay.length > 0
         ? Math.round(
@@ -976,6 +981,7 @@ export class AdminService {
         slaBreaches,
         pendingRegistrations: registrationsPending,
         activeTradePoints: activeTradePointKeys.size,
+        totalChatRequests,
         totalSupplierRequests: supplierRequests.length,
         avgDialogsPerDay,
       },

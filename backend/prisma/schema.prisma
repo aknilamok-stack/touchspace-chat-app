@@ -105,6 +105,7 @@ model Ticket {
   priority                 String?
   orderId                  String?
   productId                String?
+  requestCount             Int       @default(1)
   firstResponseStartedAt DateTime?
   firstResponseAt          DateTime?
   firstResponseTime        Int?

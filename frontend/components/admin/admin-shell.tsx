@@ -11,7 +11,7 @@ import {
 } from "@/lib/auth";
 
 const navigation = [
-  { href: "/admin", label: "Обзор" },
+  { href: "/admin", label: "Главная" },
   { href: "/admin/registrations", label: "Регистрации" },
   { href: "/admin/users", label: "Пользователи" },
   { href: "/admin/dialogs", label: "Диалоги" },
@@ -61,16 +61,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#eef3fb_40%,#f8fafc_100%)] text-slate-900">
       <div className="mx-auto flex min-h-screen w-full max-w-[1600px] gap-6 px-4 py-4 sm:px-6 lg:px-8">
-        <aside className="hidden w-72 shrink-0 rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,#0f172a_0%,#16213e_100%)] p-6 text-slate-100 shadow-[0_30px_80px_rgba(15,23,42,0.22)] lg:flex lg:flex-col">
+        <aside className="hidden w-72 shrink-0 rounded-[26px] border border-slate-200/80 bg-[linear-gradient(180deg,#111827_0%,#172033_100%)] p-5 text-slate-100 shadow-[0_24px_64px_rgba(15,23,42,0.18)] lg:flex lg:flex-col">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-300">
-              TouchSpace Demo
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300/90">
+              TouchSpace Admin
             </p>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+            <h1 className="mt-3 text-[28px] font-semibold tracking-tight">
               Центр управления
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              Рабочая демо-админка с реальными данными, модерацией пользователей и серверной аналитикой.
+              Операционный контур TouchSpace для контроля диалогов, команды, доступа и системных сигналов.
             </p>
           </div>
 
@@ -84,8 +84,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
                     active
-                      ? "border-sky-300/60 bg-sky-400/12 text-white"
-                      : "border-white/8 text-slate-200 hover:border-sky-300/40 hover:bg-white/8"
+                      ? "border-sky-300/55 bg-sky-400/12 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.18)]"
+                      : "border-white/8 text-slate-200 hover:border-sky-300/30 hover:bg-white/6"
                   }`}
                 >
                   {item.label}
@@ -94,10 +94,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="rounded-2xl border border-white/10 bg-white/6 p-4 text-sm text-slate-300">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
             <p className="font-medium text-white">{session.adminName ?? "Администратор"}</p>
-            <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-400">
-              Демо-сессия администратора
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+              Рабочая сессия администратора
             </p>
             <button
               type="button"
@@ -115,20 +115,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col gap-4">
-          <header className="rounded-[28px] border border-slate-200/80 bg-white/88 px-5 py-4 shadow-[0_20px_60px_rgba(148,163,184,0.16)] backdrop-blur">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <header className="rounded-[24px] border border-slate-200/80 bg-white/88 px-5 py-3 shadow-[0_14px_36px_rgba(148,163,184,0.14)] backdrop-blur">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-700">
-                  Рабочая зона администратора
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Панель администратора
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
                   {session.adminName ?? "Администратор"} управляет доступом, качеством диалогов и аналитикой TouchSpace.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
-                <span className="rounded-full bg-slate-100 px-3 py-2">Защищено admin guard</span>
-                <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-800">Реальные backend-данные</span>
-                <span className="rounded-full bg-amber-100 px-3 py-2 text-amber-800">Пилотный режим</span>
+                <span className="rounded-full bg-slate-100 px-3 py-1.5">Роль: admin</span>
+                <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Backend подключен</span>
               </div>
             </div>
           </header>

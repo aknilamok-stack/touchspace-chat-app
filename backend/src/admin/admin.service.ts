@@ -546,32 +546,44 @@ export class AdminService {
       profiles,
       claimMessages,
       registrationsPending,
+      recentRegistrations,
+      recentSystemMessages,
+      emailMessagesCount,
+      pushSubscriptionsCount,
     ] = await Promise.all([
       this.prisma.ticket.findMany({
         select: {
           id: true,
+          title: true,
           status: true,
           firstResponseTime: true,
           firstResponseBreached: true,
           lastMessageAt: true,
           createdAt: true,
           assignedManagerId: true,
+          assignedManagerName: true,
           supplierId: true,
-          title: true,
+          supplierName: true,
           topicCategory: true,
           supplierEscalatedAt: true,
           slaBreached: true,
         },
-        orderBy: {
-          createdAt: 'asc',
-        },
+        orderBy: [{ createdAt: 'asc' }],
       }),
       this.prisma.supplierRequest.findMany({
         select: {
+          id: true,
+          ticketId: true,
+          supplierName: true,
+          status: true,
+          requestedAt: true,
+          firstResponseAt: true,
+          claimedAt: true,
           responseTime: true,
           responseBreached: true,
           supplierId: true,
           createdAt: true,
+          updatedAt: true,
         },
       }),
       this.prisma.profile.findMany({
@@ -590,6 +602,7 @@ export class AdminService {
           fullName: true,
           managerStatus: true,
           managerPresenceHeartbeatAt: true,
+          lastLoginAt: true,
         },
       }),
       this.prisma.message.findMany({
@@ -623,10 +636,56 @@ export class AdminService {
           status: 'pending',
         },
       }),
+      this.prisma.registrationRequest.findMany({
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 8,
+        select: {
+          id: true,
+          fullName: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          reviewedAt: true,
+        },
+      }),
+      this.prisma.message.findMany({
+        where: {
+          senderType: 'system',
+          messageType: 'system',
+        },
+        orderBy: [{ createdAt: 'desc' }],
+        take: 10,
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          ticketId: true,
+          ticket: {
+            select: {
+              title: true,
+            },
+          },
+        },
+      }),
+      this.prisma.message.count({
+        where: {
+          transport: 'email',
+          createdAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+      this.prisma.pushSubscription.count({
+        where: {
+          isActive: true,
+        },
+      }),
     ]);
 
     const now = new Date();
     const from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
     const newDialogs = tickets.filter(
       (ticket) => ticket.status === 'new',
     ).length;
@@ -647,6 +706,7 @@ export class AdminService {
 
     const managerLoadMap = new Map<string, number>();
     const supplierLoadMap = new Map<string, number>();
+    const managerRiskMap = new Map<string, number>();
 
     for (const ticket of tickets) {
       if (ticket.assignedManagerId) {
@@ -654,6 +714,13 @@ export class AdminService {
           ticket.assignedManagerId,
           (managerLoadMap.get(ticket.assignedManagerId) ?? 0) + 1,
         );
+
+        if (ticket.slaBreached || ticket.firstResponseBreached) {
+          managerRiskMap.set(
+            ticket.assignedManagerId,
+            (managerRiskMap.get(ticket.assignedManagerId) ?? 0) + 1,
+          );
+        }
       }
 
       if (ticket.supplierId) {
@@ -664,12 +731,199 @@ export class AdminService {
       }
     }
 
+    const dialogsWithoutAnswer = tickets.filter((ticket) => {
+      const baseline = ticket.lastMessageAt ?? ticket.createdAt;
+
+      return (
+        (ticket.status === 'new' || ticket.status === 'waiting_client') &&
+        now.getTime() - baseline.getTime() > 2 * 60 * 1000
+      );
+    });
+    const overdueSupplierRequests = supplierRequests.filter(
+      (request) => request.responseBreached,
+    );
+    const systemErrorsCount = 0;
+    const complaintDialogsCount = tickets.filter(
+      (ticket) => ticket.slaBreached || ticket.firstResponseBreached,
+    ).length;
+
+    const problematicDialogs = tickets
+      .map((ticket) => {
+        const baseline = ticket.lastMessageAt ?? ticket.createdAt;
+        const waitMs = Math.max(now.getTime() - baseline.getTime(), 0);
+        let priority = 0;
+        let issue = 'Требует проверки';
+
+        if (ticket.slaBreached) {
+          priority += 100;
+          issue = `SLA менеджера просрочен на ${Math.round(waitMs / 60000)} мин`;
+        } else if (ticket.firstResponseBreached) {
+          priority += 90;
+          issue = `Клиент ждёт первый ответ ${Math.round(waitMs / 60000)} мин`;
+        } else if (ticket.status === 'waiting_supplier') {
+          const request = supplierRequests
+            .filter((item) => item.ticketId === ticket.id)
+            .sort(
+              (left, right) =>
+                (right.updatedAt?.getTime() ?? 0) - (left.updatedAt?.getTime() ?? 0),
+            )[0];
+
+          if (request?.responseBreached) {
+            priority += 85;
+            issue = `Поставщик просрочил SLA по ${request.supplierName || 'запросу'}`;
+          } else {
+            priority += 60;
+            issue = 'Диалог завис у поставщика';
+          }
+        } else if (ticket.status === 'new' || ticket.status === 'waiting_client') {
+          priority += Math.min(Math.round(waitMs / 60000), 59);
+          issue = `Без ответа ${Math.round(waitMs / 60000)} мин`;
+        } else if (waitMs > 60 * 60 * 1000) {
+          priority += 35;
+          issue = 'Долгий диалог без решения';
+        }
+
+        return {
+          id: ticket.id,
+          title: ticket.title || `Диалог ${ticket.id}`,
+          managerName: ticket.assignedManagerName || 'Не назначен',
+          supplierName: ticket.supplierName || null,
+          status: ticket.status,
+          priority,
+          issue,
+          waitMs,
+        };
+      })
+      .filter((ticket) => ticket.priority > 0)
+      .sort(
+        (left, right) =>
+          right.priority - left.priority || right.waitMs - left.waitMs,
+      )
+      .slice(0, 7);
+
+    const team = profiles
+      .filter((profile) => profile.role === 'manager')
+      .map((profile) => {
+        const presenceStatus = this.resolveManagerPresenceStatus(
+          profile.managerStatus,
+          profile.managerPresenceHeartbeatAt,
+        );
+
+        return {
+          id: profile.id,
+          fullName: profile.fullName,
+          status: presenceStatus,
+          dialogs: managerLoadMap.get(profile.id) ?? 0,
+          slaRisk: managerRiskMap.get(profile.id) ?? 0,
+          overloaded: (managerLoadMap.get(profile.id) ?? 0) >= 8,
+          lastSeenAt:
+            profile.managerPresenceHeartbeatAt ?? profile.lastLoginAt ?? null,
+        };
+      })
+      .sort((left, right) => {
+        const statusRank = { online: 0, break: 1, offline: 2 } as const;
+        return (
+          statusRank[left.status as keyof typeof statusRank] -
+            statusRank[right.status as keyof typeof statusRank] ||
+          right.dialogs - left.dialogs ||
+          left.fullName.localeCompare(right.fullName, 'ru')
+        );
+      });
+
+    const recentEvents = [
+      ...claimMessages.map((message) => ({
+        id: `claim_${message.id}`,
+        type: 'dialog_claim',
+        title: message.ticket?.assignedManagerName
+          ? `${message.ticket.assignedManagerName} взял диалог в работу`
+          : 'Диалог взят в работу',
+        description: message.ticket?.title ?? 'Диалог TouchSpace',
+        createdAt: message.createdAt,
+      })),
+      ...recentRegistrations.map((item) => ({
+        id: `registration_${item.id}`,
+        type: 'registration',
+        title:
+          item.status === 'approved'
+            ? 'Регистрация одобрена'
+            : item.status === 'rejected'
+              ? 'Регистрация отклонена'
+              : 'Новая регистрация',
+        description: `${item.fullName} • ${this.buildStatusLabel(item.status)}`,
+        createdAt: item.reviewedAt ?? item.createdAt,
+      })),
+      ...recentSystemMessages.map((message) => ({
+        id: `system_${message.id}`,
+        type: 'system',
+        title: message.content,
+        description: message.ticket?.title ?? 'Системное событие',
+        createdAt: message.createdAt,
+      })),
+    ]
+      .sort(
+        (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+      )
+      .slice(0, 8);
+
+    const systemStatus = [
+      {
+        key: 'api',
+        label: 'API',
+        status: 'ok',
+        detail: 'Доступно',
+      },
+      {
+        key: 'db',
+        label: 'База данных',
+        status: 'ok',
+        detail: 'Запросы выполняются',
+      },
+      {
+        key: 'websocket',
+        label: 'WebSocket',
+        status: team.some((item) => item.status === 'online') ? 'ok' : 'warn',
+        detail: team.some((item) => item.status === 'online')
+          ? 'Есть активные операторы'
+          : 'Нет активных подключений',
+      },
+      {
+        key: 'email',
+        label: 'Email',
+        status: emailMessagesCount > 0 ? 'ok' : 'warn',
+        detail:
+          emailMessagesCount > 0
+            ? `Сообщения за 24 ч: ${emailMessagesCount}`
+            : 'Нет email-активности за 24 ч',
+      },
+      {
+        key: 'push',
+        label: 'Push',
+        status: pushSubscriptionsCount > 0 ? 'ok' : 'warn',
+        detail:
+          pushSubscriptionsCount > 0
+            ? `Активных подписок: ${pushSubscriptionsCount}`
+            : 'Нет активных push-подписок',
+      },
+      {
+        key: 'polling',
+        label: 'Очереди и polling',
+        status: 'ok',
+        detail: overdueSupplierRequests.length > 0 ? 'Есть очередь на разбор' : 'Без сбоев',
+      },
+    ];
+
     return {
       metrics: {
         totalDialogs: tickets.length,
         newDialogs,
         inProgressDialogs,
         resolvedDialogs,
+        dialogsToday: tickets.filter((ticket) => ticket.createdAt >= todayStart).length,
+        resolvedToday: tickets.filter(
+          (ticket) =>
+            (ticket.status === 'resolved' || ticket.status === 'closed') &&
+            (ticket.lastMessageAt ?? ticket.createdAt) >= todayStart,
+        ).length,
         avgFirstResponseMs: this.average(
           tickets.map((ticket) => ticket.firstResponseTime),
         ),
@@ -691,6 +945,19 @@ export class AdminService {
         ).length,
         slaBreaches,
         pendingRegistrations: registrationsPending,
+      },
+      attention: {
+        dialogsWithoutAnswer: dialogsWithoutAnswer.length,
+        supplierOverdue: overdueSupplierRequests.length,
+        pendingRegistrations: registrationsPending,
+        complaintDialogs: complaintDialogsCount,
+        systemErrors: systemErrorsCount,
+      },
+      lists: {
+        problematicDialogs,
+        team,
+        recentEvents,
+        systemStatus,
       },
       charts: {
         dialogsByDay: this.buildTimeSeries(

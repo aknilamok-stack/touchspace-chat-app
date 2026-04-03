@@ -10,6 +10,7 @@ import { ContactCard, type ChatContactItem } from "@/components/chat/contact-car
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
   clearAuthSession,
+  getHomePathForRole,
   logoutServerSession,
   managerAccounts,
   type ManagerPresence,
@@ -1688,7 +1689,7 @@ export default function SupplierPage() {
     }
 
     if (session.role !== "supplier") {
-      router.replace("/");
+      router.replace(getHomePathForRole(session.role));
       return;
     }
 

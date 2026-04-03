@@ -102,8 +102,10 @@ export class AdminController {
   createUser(
     @Body()
     body: {
-      fullName: string;
+      fullName?: string;
       email?: string;
+      authLogin?: string;
+      password?: string;
       role: string;
       companyName?: string;
       createdByAdminId?: string;
@@ -123,6 +125,9 @@ export class AdminController {
       isActive?: boolean;
       companyName?: string;
       fullName?: string;
+      email?: string | null;
+      authLogin?: string | null;
+      supervisorProfileId?: string | null;
       approvalStatus?: string;
       lastLoginAt?: string | null;
     },

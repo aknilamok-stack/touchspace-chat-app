@@ -23,6 +23,7 @@ type EnsureProfileInput = {
   companyName?: string | null;
   companyId?: string | null;
   supplierId?: string | null;
+  supervisorProfileId?: string | null;
   managerStatus?: string | null;
   managerPresenceHeartbeatAt?: Date | null;
   supplierStatus?: string | null;
@@ -269,6 +270,7 @@ export class ProfilesService {
         companyName: input.companyName?.trim() || null,
         companyId: input.companyId?.trim() || null,
         supplierId: input.supplierId?.trim() || null,
+        supervisorProfileId: input.supervisorProfileId?.trim() || null,
         managerStatus: input.managerStatus?.trim() || null,
         managerPresenceHeartbeatAt: input.managerPresenceHeartbeatAt ?? null,
         supplierStatus: input.supplierStatus?.trim() || null,
@@ -299,6 +301,7 @@ export class ProfilesService {
         companyName: input.companyName?.trim() || undefined,
         companyId: input.companyId?.trim() || undefined,
         supplierId: input.supplierId?.trim() || undefined,
+        supervisorProfileId: input.supervisorProfileId?.trim() || undefined,
         managerStatus: input.managerStatus?.trim() || undefined,
         managerPresenceHeartbeatAt:
           input.managerPresenceHeartbeatAt ?? undefined,

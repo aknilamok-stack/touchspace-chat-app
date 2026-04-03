@@ -23,7 +23,9 @@ const statusLabels: Record<string, string> = {
 const roleLabels: Record<string, string> = {
   admin: "Администратор",
   manager: "Менеджер",
+  manager_supervisor: "Управленец менеджеров",
   supplier: "Поставщик",
+  supplier_supervisor: "Управленец поставщиков",
   client: "Клиент",
   system: "Система",
 };

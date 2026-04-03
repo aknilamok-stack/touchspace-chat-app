@@ -24,6 +24,7 @@ model Profile {
   companyName             String?
   companyId               String?
   supplierId              String?
+  supervisorProfileId     String?
   managerStatus           String?
   managerPresenceHeartbeatAt DateTime?
   supplierStatus          String?
@@ -53,6 +54,10 @@ model Profile {
   registrationRequests    RegistrationRequest[] @relation("RegistrationLinkedProfile")
   pushSubscriptions       PushSubscription[]
   ticketContacts          TicketContact[]
+  supervisor              Profile?          @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: SetNull)
+  supervisedProfiles      Profile[]         @relation("ProfileSupervisor")
+
+  @@index([supervisorProfileId])
 }
 
 model Ticket {

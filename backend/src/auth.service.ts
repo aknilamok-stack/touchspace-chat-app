@@ -163,6 +163,14 @@ export class AuthService {
     return randomBytes(6).toString('base64url');
   }
 
+  private assertPasswordStrength(password: string) {
+    if (password.trim().length < 8) {
+      throw new BadRequestException(
+        'Пароль должен быть не короче 8 символов',
+      );
+    }
+  }
+
   private findDemoAccount(login: string) {
     return this.demoAccounts.find((account) => account.aliases.includes(login));
   }
@@ -231,6 +239,47 @@ export class AuthService {
       login,
       temporaryPassword,
       passwordChangeRequired: true,
+    };
+  }
+
+  async setCredentialsForProfile(
+    profileId: string,
+    password: string,
+    preferredLogin?: string | null,
+  ) {
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: profileId },
+    });
+
+    if (!profile) {
+      throw new BadRequestException(`Profile with id "${profileId}" not found`);
+    }
+
+    this.assertPasswordStrength(password);
+
+    const loginBase =
+      preferredLogin?.trim() ||
+      profile.email?.trim() ||
+      `${profile.role}.${profile.fullName}` ||
+      `user.${profile.id}`;
+
+    const login =
+      profile.authLogin?.trim() || (await this.buildUniqueLogin(loginBase));
+
+    await this.prisma.profile.update({
+      where: { id: profileId },
+      data: {
+        authLogin: login,
+        passwordHash: this.hashPassword(password),
+        passwordChangeRequired: false,
+        passwordIssuedAt: new Date(),
+      },
+    });
+
+    return {
+      login,
+      temporaryPassword: password,
+      passwordChangeRequired: false,
     };
   }
 
@@ -401,11 +450,7 @@ export class AuthService {
       throw new UnauthorizedException('Текущий пароль введён неверно');
     }
 
-    if (newPassword.trim().length < 8) {
-      throw new BadRequestException(
-        'Новый пароль должен быть не короче 8 символов',
-      );
-    }
+    this.assertPasswordStrength(newPassword);
 
     await this.prisma.profile.update({
       where: { id: userId },

@@ -64,6 +64,7 @@ export class SupervisorsService {
         id: true,
         role: true,
         supplierId: true,
+        companyName: true,
         fullName: true,
       },
     });
@@ -162,6 +163,26 @@ export class SupervisorsService {
     };
   }
 
+  private buildSupplierScopeWhere(supervisor: {
+    id: string;
+    supplierId: string | null;
+  }) {
+    return {
+      role: 'supplier',
+      OR: [
+        { supervisorProfileId: supervisor.id },
+        ...(supervisor.supplierId
+          ? [
+              {
+                supervisorProfileId: null,
+                supplierId: supervisor.supplierId,
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
   private async ensureOperatorInScope(
     supervisorId: string,
     operatorId: string,
@@ -177,8 +198,7 @@ export class SupervisorsService {
       supervisor.role === 'supplier_supervisor'
         ? {
             id: normalizedOperatorId,
-            role: 'supplier',
-            supplierId: supervisor.supplierId,
+            ...this.buildSupplierScopeWhere(supervisor),
           }
         : {
             id: normalizedOperatorId,
@@ -217,10 +237,7 @@ export class SupervisorsService {
     const operators = await this.prisma.profile.findMany({
       where:
         role === 'supplier_supervisor'
-          ? {
-              role: 'supplier',
-              supplierId: supervisor.supplierId,
-            }
+          ? this.buildSupplierScopeWhere(supervisor)
           : {
               role: 'manager',
             },
@@ -232,7 +249,8 @@ export class SupervisorsService {
         email: true,
         role: true,
         status: true,
-        supplierId: true,
+          supplierId: true,
+          supervisorProfileId: true,
         managerStatus: true,
         managerPresenceHeartbeatAt: true,
         supplierStatus: true,
@@ -258,6 +276,7 @@ export class SupervisorsService {
         email: operator.email,
         role: operator.role,
         supplierId: operator.supplierId,
+        supervisorProfileId: operator.supervisorProfileId,
         status:
           role === 'supplier_supervisor'
             ? operator.supplierStatus || 'offline'
@@ -387,10 +406,7 @@ export class SupervisorsService {
 
     if (supervisor.role === 'supplier_supervisor') {
       const operators = await this.prisma.profile.findMany({
-        where: {
-          role: 'supplier',
-          supplierId: supervisor.supplierId,
-        },
+        where: this.buildSupplierScopeWhere(supervisor),
         select: {
           id: true,
           fullName: true,

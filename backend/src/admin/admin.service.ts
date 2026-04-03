@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { ProfilesService } from '../profiles.service';
 import { PrismaService } from '../prisma.service';
 import { readJsonStringArray } from '../prisma-json.util';
+import { isManagerRole, isSupplierRole } from '../role.utils';
 
 type DateRangeInput = {
   preset?: string;
@@ -108,6 +113,166 @@ export class AdminService {
     }
 
     return undefined;
+  }
+
+  private readonly manageableRoles = [
+    'admin',
+    'manager',
+    'manager_supervisor',
+    'supplier',
+    'supplier_supervisor',
+    'client',
+  ] as const;
+
+  private sanitizeLoginCandidate(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9@._-]+/g, '.')
+      .replace(/\.+/g, '.')
+      .replace(/^\.|\.$/g, '');
+  }
+
+  private normalizeEmail(value?: string | null) {
+    const normalizedValue = value?.trim().toLowerCase() || '';
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(normalizedValue)) {
+      throw new BadRequestException('Некорректный email');
+    }
+
+    return normalizedValue;
+  }
+
+  private normalizeRole(value?: string | null) {
+    const role = value?.trim();
+
+    if (!role || !this.manageableRoles.includes(role as (typeof this.manageableRoles)[number])) {
+      throw new BadRequestException('Недопустимая роль пользователя');
+    }
+
+    return role;
+  }
+
+  private normalizeCompanyName(value?: string | null) {
+    const normalizedValue = value?.trim() || null;
+    return normalizedValue;
+  }
+
+  private buildSupplierScopeId(companyName: string) {
+    const normalizedCompany = companyName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9а-яё]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+
+    return `supplier_scope_${normalizedCompany || 'default'}`;
+  }
+
+  private async ensureUniqueProfileFields(input: {
+    email?: string | null;
+    authLogin?: string | null;
+    excludedProfileId?: string;
+  }) {
+    if (input.email) {
+      const emailOwner = await this.prisma.profile.findFirst({
+        where: {
+          email: input.email,
+          ...(input.excludedProfileId
+            ? {
+                id: {
+                  not: input.excludedProfileId,
+                },
+              }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      if (emailOwner) {
+        throw new BadRequestException('Этот email уже используется');
+      }
+    }
+
+    if (input.authLogin) {
+      const loginOwner = await this.prisma.profile.findFirst({
+        where: {
+          authLogin: input.authLogin,
+          ...(input.excludedProfileId
+            ? {
+                id: {
+                  not: input.excludedProfileId,
+                },
+              }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      if (loginOwner) {
+        throw new BadRequestException('Этот логин уже используется');
+      }
+    }
+  }
+
+  private async resolveSupplierSupervisorByCompany(
+    companyName: string,
+    excludedProfileId?: string,
+  ) {
+    const supervisors = await this.prisma.profile.findMany({
+      where: {
+        role: 'supplier_supervisor',
+        companyName,
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        ...(excludedProfileId
+          ? {
+              id: {
+                not: excludedProfileId,
+              },
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'asc' }],
+      select: {
+        id: true,
+        fullName: true,
+        supplierId: true,
+      },
+    });
+
+    if (supervisors.length > 1) {
+      throw new BadRequestException(
+        `Для компании "${companyName}" найдено несколько управленцев поставщика. Оставьте одного активного управленца.`,
+      );
+    }
+
+    return supervisors[0] ?? null;
+  }
+
+  private async backfillSuppliersForSupervisor(
+    supervisorProfileId: string,
+    companyName: string,
+    supplierScopeId: string,
+  ) {
+    await this.prisma.profile.updateMany({
+      where: {
+        role: 'supplier',
+        companyName,
+      },
+      data: {
+        supplierId: supplierScopeId,
+        supervisorProfileId,
+      },
+    });
   }
 
   private average(values: Array<number | null | undefined>) {
@@ -784,6 +949,13 @@ export class AdminService {
           },
           take: 1,
         },
+        supervisor: {
+          select: {
+            id: true,
+            fullName: true,
+            companyName: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -800,6 +972,9 @@ export class AdminService {
         status: user.status,
         approvalStatus: user.approvalStatus,
         companyName: user.companyName,
+        supplierId: user.supplierId,
+        supervisorProfileId: user.supervisorProfileId,
+        supervisorName: user.supervisor?.fullName ?? null,
         lastLoginAt: user.lastLoginAt,
         passwordChangeRequired: user.passwordChangeRequired,
         isActive: user.isActive,
@@ -832,6 +1007,26 @@ export class AdminService {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
+        supervisor: {
+          select: {
+            id: true,
+            fullName: true,
+            role: true,
+            companyName: true,
+          },
+        },
+        supervisedProfiles: {
+          select: {
+            id: true,
+            fullName: true,
+            role: true,
+            email: true,
+            companyName: true,
+          },
+          orderBy: {
+            fullName: 'asc',
+          },
+        },
       },
     });
 
@@ -843,33 +1038,117 @@ export class AdminService {
   }
 
   async createUser(body: {
-    fullName: string;
+    fullName?: string;
     email?: string;
+    authLogin?: string;
+    password?: string;
     role: string;
     companyName?: string;
     createdByAdminId?: string;
     status?: string;
   }) {
+    const role = this.normalizeRole(body.role);
+    const email = this.normalizeEmail(body.email);
+    const authLogin = body.authLogin
+      ? this.sanitizeLoginCandidate(body.authLogin)
+      : email;
+    const companyName = this.normalizeCompanyName(body.companyName);
+    const fullName =
+      body.fullName?.trim() ||
+      (role === 'admin'
+        ? 'Администратор'
+        : role === 'supplier_supervisor'
+          ? 'Управленец поставщика'
+          : role === 'manager_supervisor'
+            ? 'Управленец менеджеров'
+            : role === 'supplier'
+              ? 'Поставщик'
+              : 'Менеджер');
+    const password = body.password?.trim() || null;
+
+    if (role !== 'client' && !email) {
+      throw new BadRequestException('Email обязателен для внутренних ролей');
+    }
+
+    if ((role === 'supplier' || role === 'supplier_supervisor') && !companyName) {
+      throw new BadRequestException(
+        'Для поставщика и управленца поставщика нужно указать компанию',
+      );
+    }
+
+    await this.ensureUniqueProfileFields({
+      email,
+      authLogin,
+    });
+
+    let supplierScopeId: string | null = null;
+    let supervisorProfileId: string | null = null;
+
+    if (role === 'supplier_supervisor' && companyName) {
+      const existingSupervisor = await this.resolveSupplierSupervisorByCompany(
+        companyName,
+      );
+
+      if (existingSupervisor) {
+        throw new BadRequestException(
+          `Для компании "${companyName}" уже создан управленец поставщика`,
+        );
+      }
+
+      supplierScopeId = this.buildSupplierScopeId(companyName);
+    }
+
+    if (role === 'supplier' && companyName) {
+      const supervisor = await this.resolveSupplierSupervisorByCompany(companyName);
+
+      if (!supervisor) {
+        throw new BadRequestException(
+          `Сначала создайте управленца поставщика для компании "${companyName}"`,
+        );
+      }
+
+      supplierScopeId =
+        supervisor.supplierId?.trim() || this.buildSupplierScopeId(companyName);
+      supervisorProfileId = supervisor.id;
+    }
+
     const profileId = `manual_${Date.now()}`;
 
     const profile = await this.prisma.profile.create({
       data: {
         id: profileId,
-        fullName: body.fullName,
-        email: body.email?.trim() || null,
-        role: body.role,
+        fullName,
+        email,
+        authLogin: authLogin || null,
+        role,
         status: body.status ?? 'active',
         approvalStatus: 'approved',
-        companyName: body.companyName?.trim() || null,
+        companyName,
+        supplierId: supplierScopeId,
+        supervisorProfileId,
         createdByAdminId: body.createdByAdminId?.trim() || null,
         isActive: true,
       },
     });
 
-    const credentials = await this.authService.issueCredentialsForProfile(
-      profile.id,
-      body.email,
-    );
+    const credentials = password
+      ? await this.authService.setCredentialsForProfile(
+          profile.id,
+          password,
+          authLogin || email,
+        )
+      : await this.authService.issueCredentialsForProfile(
+          profile.id,
+          authLogin || email,
+        );
+
+    if (role === 'supplier_supervisor' && companyName && supplierScopeId) {
+      await this.backfillSuppliersForSupervisor(
+        profile.id,
+        companyName,
+        supplierScopeId,
+      );
+    }
 
     return {
       profile,
@@ -885,37 +1164,160 @@ export class AdminService {
       isActive?: boolean;
       companyName?: string;
       fullName?: string;
+      email?: string | null;
+      authLogin?: string | null;
+      supervisorProfileId?: string | null;
       approvalStatus?: string;
       lastLoginAt?: string | null;
     },
   ) {
     const existing = await this.prisma.profile.findUnique({
       where: { id },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        companyName: true,
+        supplierId: true,
+      },
     });
 
     if (!existing) {
       throw new NotFoundException(`User with id "${id}" not found`);
     }
 
-    return this.prisma.profile.update({
+    const nextRole = body.role ? this.normalizeRole(body.role) : existing.role;
+    const nextCompanyName =
+      body.companyName !== undefined
+        ? this.normalizeCompanyName(body.companyName)
+        : existing.companyName;
+    const nextEmail =
+      body.email !== undefined ? this.normalizeEmail(body.email) : undefined;
+    const nextAuthLogin =
+      body.authLogin !== undefined
+        ? body.authLogin
+          ? this.sanitizeLoginCandidate(body.authLogin)
+          : null
+        : undefined;
+
+    if (
+      (nextRole === 'supplier' || nextRole === 'supplier_supervisor') &&
+      !nextCompanyName
+    ) {
+      throw new BadRequestException(
+        'Для поставщика и управленца поставщика нужно указать компанию',
+      );
+    }
+
+    await this.ensureUniqueProfileFields({
+      email: nextEmail ?? undefined,
+      authLogin: nextAuthLogin ?? undefined,
+      excludedProfileId: id,
+    });
+
+    let supplierScopeId =
+      nextRole === 'supplier' || nextRole === 'supplier_supervisor'
+        ? existing.supplierId?.trim() || null
+        : null;
+    let supervisorProfileId =
+      body.supervisorProfileId !== undefined
+        ? body.supervisorProfileId?.trim() || null
+        : undefined;
+
+    if (nextRole === 'supplier_supervisor' && nextCompanyName) {
+      const otherSupervisor = await this.resolveSupplierSupervisorByCompany(
+        nextCompanyName,
+        id,
+      );
+
+      if (otherSupervisor) {
+        throw new BadRequestException(
+          `Для компании "${nextCompanyName}" уже создан другой управленец поставщика`,
+        );
+      }
+
+      supplierScopeId =
+        existing.supplierId?.trim() ||
+        this.buildSupplierScopeId(nextCompanyName);
+      supervisorProfileId = null;
+    }
+
+    if (nextRole === 'supplier' && nextCompanyName) {
+      if (supervisorProfileId === undefined) {
+        const supervisor = await this.resolveSupplierSupervisorByCompany(
+          nextCompanyName,
+        );
+
+        if (!supervisor) {
+          throw new BadRequestException(
+            `Не найден управленец поставщика для компании "${nextCompanyName}"`,
+          );
+        }
+
+        supplierScopeId =
+          supervisor.supplierId?.trim() ||
+          this.buildSupplierScopeId(nextCompanyName);
+        supervisorProfileId = supervisor.id;
+      } else if (supervisorProfileId) {
+        const linkedSupervisor = await this.prisma.profile.findFirst({
+          where: {
+            id: supervisorProfileId,
+            role: 'supplier_supervisor',
+          },
+          select: {
+            id: true,
+            companyName: true,
+            supplierId: true,
+          },
+        });
+
+        if (!linkedSupervisor) {
+          throw new BadRequestException('Указанный управленец поставщика не найден');
+        }
+
+        if (linkedSupervisor.companyName !== nextCompanyName) {
+          throw new BadRequestException(
+            'Компания поставщика должна совпадать с компанией управленца',
+          );
+        }
+
+        supplierScopeId =
+          linkedSupervisor.supplierId?.trim() ||
+          this.buildSupplierScopeId(nextCompanyName);
+      }
+    }
+
+    const updatedProfile = await this.prisma.profile.update({
       where: { id },
       data: {
-        ...(body.role ? { role: body.role } : {}),
+        ...(body.role ? { role: nextRole } : {}),
         ...(body.status ? { status: body.status } : {}),
         ...(typeof body.isActive === 'boolean'
           ? { isActive: body.isActive }
           : {}),
         ...(body.companyName !== undefined
-          ? { companyName: body.companyName }
+          ? { companyName: nextCompanyName }
           : {}),
         ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
+        ...(body.email !== undefined ? { email: nextEmail } : {}),
+        ...(body.authLogin !== undefined ? { authLogin: nextAuthLogin } : {}),
+        ...(nextRole === 'supplier' || nextRole === 'supplier_supervisor'
+          ? { supplierId: supplierScopeId }
+          : { supplierId: null, supervisorProfileId: null }),
+        ...(nextRole === 'supplier'
+          ? { supervisorProfileId: supervisorProfileId ?? null }
+          : {}),
         ...(body.approvalStatus ? { approvalStatus: body.approvalStatus } : {}),
         ...(body.lastLoginAt !== undefined
           ? { lastLoginAt: this.toDate(body.lastLoginAt, null) }
           : {}),
       },
     });
+
+    if (nextRole === 'supplier_supervisor' && nextCompanyName && supplierScopeId) {
+      await this.backfillSuppliersForSupervisor(id, nextCompanyName, supplierScopeId);
+    }
+
+    return updatedProfile;
   }
 
   async reissueUserPassword(id: string) {

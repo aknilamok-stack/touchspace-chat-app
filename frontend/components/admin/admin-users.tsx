@@ -2,18 +2,15 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
-import { formatDateTime } from "@/lib/admin-format";
+import { formatDateTime, formatNumber } from "@/lib/admin-format";
 import {
   AdminButton,
   AdminCards,
   AdminInput,
   AdminMessage,
   AdminPage,
-  AdminPanel,
   AdminSelect,
   AdminStatusBadge,
-  AdminTable,
-  AdminToolbar,
   getRoleLabel,
 } from "@/components/admin/admin-ui";
 
@@ -24,53 +21,88 @@ type InternalRole =
   | "supplier"
   | "supplier_supervisor";
 
+type UserStatus = "active" | "blocked" | "pending_approval" | "inactive";
+
+type DrawerMode = "create" | "edit";
+
 const roleOptions: Array<{ value: InternalRole; label: string }> = [
   { value: "manager", label: "Менеджер" },
-  { value: "manager_supervisor", label: "Управленец менеджеров" },
+  { value: "manager_supervisor", label: "Руководитель менеджеров" },
   { value: "supplier", label: "Поставщик" },
-  { value: "supplier_supervisor", label: "Управленец поставщиков" },
+  { value: "supplier_supervisor", label: "Руководитель поставщика" },
   { value: "admin", label: "Администратор" },
+];
+
+const statusOptions: Array<{ value: UserStatus; label: string }> = [
+  { value: "active", label: "Активен" },
+  { value: "blocked", label: "Заблокирован" },
+  { value: "pending_approval", label: "Приглашён" },
+  { value: "inactive", label: "Архив" },
+];
+
+const quickRoleFilters = [
+  { label: "Все", value: "" },
+  { label: "Менеджеры", value: "manager" },
+  { label: "Поставщики", value: "supplier" },
+  { label: "Админы", value: "admin" },
+  { label: "Заблокированные", value: "blocked", kind: "status" as const },
 ];
 
 const emptyCreateForm = {
   fullName: "",
   email: "",
   password: "",
+  confirmPassword: "",
   role: "manager" as InternalRole,
   companyName: "",
-  status: "active",
+  status: "active" as UserStatus,
+};
+
+const emptyEditForm = {
+  fullName: "",
+  email: "",
+  role: "manager" as InternalRole,
+  companyName: "",
+  status: "active" as UserStatus,
 };
 
 const buildGeneratedPassword = () =>
   Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
 
-const roleNeedsCompany = (role: string) =>
+const roleNeedsCompany = (role?: string | null) =>
   role === "supplier" || role === "supplier_supervisor";
 
-const roleNeedsFullName = (role: string) => role !== "admin";
+const roleNeedsName = (_role?: string | null) => true;
+
+const getInviteCount = (items: any[]) =>
+  items.filter((item) => item.status === "pending_approval" || !item.lastLoginAt).length;
+
+const getStatusActionLabel = (status: UserStatus) => {
+  if (status === "blocked") {
+    return "Разблокировать";
+  }
+
+  return "Заблокировать";
+};
 
 export function AdminUsers() {
   const [filters, setFilters] = useState({
+    query: "",
     role: "",
     status: "",
     company: "",
   });
   const [payload, setPayload] = useState<any>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
-  const [editForm, setEditForm] = useState({
-    fullName: "",
-    email: "",
-    authLogin: "",
-    role: "manager" as InternalRole,
-    status: "active",
-    companyName: "",
-    approvalStatus: "approved",
-  });
+  const [editForm, setEditForm] = useState(emptyEditForm);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [issuedCredentials, setIssuedCredentials] = useState<null | {
     login: string;
     temporaryPassword: string;
@@ -78,16 +110,48 @@ export function AdminUsers() {
 
   const loadUsers = async () => {
     try {
-      const result = await adminApi.getUsers(filters);
+      const result = await adminApi.getUsers({
+        role: filters.role,
+        status: filters.status,
+        company: filters.company,
+      });
       setPayload(result);
       setError(null);
-      const nextSelectedId =
-        selectedId && result.items.some((item: any) => item.id === selectedId)
-          ? selectedId
-          : result.items[0]?.id ?? null;
-      setSelectedId(nextSelectedId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить пользователей");
+    }
+  };
+
+  const openCreateDrawer = () => {
+    setDrawerMode("create");
+    setCreateForm(emptyCreateForm);
+    setEditingUserId(null);
+    setDetail(null);
+    setDrawerOpen(true);
+    setMessage(null);
+    setError(null);
+  };
+
+  const openEditDrawer = async (userId: string) => {
+    setDrawerMode("edit");
+    setDrawerOpen(true);
+    setEditingUserId(userId);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const result = await adminApi.getUser(userId);
+      setDetail(result);
+      setEditForm({
+        fullName: result.fullName ?? "",
+        email: result.email ?? result.authLogin ?? "",
+        role: result.role ?? "manager",
+        companyName: result.companyName ?? "",
+        status: result.status ?? "active",
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось открыть пользователя");
+      setDrawerOpen(false);
     }
   };
 
@@ -95,36 +159,53 @@ export function AdminUsers() {
     void loadUsers();
   }, [filters.role, filters.status, filters.company]);
 
-  useEffect(() => {
-    if (!selectedId) {
-      setDetail(null);
-      return;
+  const users = useMemo(() => {
+    const items = payload?.items ?? [];
+    const query = filters.query.trim().toLowerCase();
+
+    if (!query) {
+      return items;
     }
 
-    void adminApi
-      .getUser(selectedId)
-      .then((result) => {
-        setDetail(result);
-        setEditForm({
-          fullName: result.fullName ?? "",
-          email: result.email ?? "",
-          authLogin: result.authLogin ?? "",
-          role: result.role ?? "manager",
-          status: result.status ?? "active",
-          companyName: result.companyName ?? "",
-          approvalStatus: result.approvalStatus ?? "approved",
-        });
-      })
-      .catch((requestError) => {
-        setError(requestError instanceof Error ? requestError.message : "Не удалось открыть пользователя");
-      });
-  }, [selectedId]);
+    return items.filter((item: any) =>
+      [item.fullName, item.email, item.authLogin, item.companyName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    );
+  }, [payload, filters.query]);
+
+  const metrics = useMemo(
+    () => [
+      { label: "Всего пользователей", value: formatNumber(payload?.total ?? 0) },
+      {
+        label: "Активные",
+        value: formatNumber((payload?.items ?? []).filter((item: any) => item.status === "active").length),
+        tone: "good" as const,
+      },
+      {
+        label: "Заблокированные",
+        value: formatNumber((payload?.items ?? []).filter((item: any) => item.status === "blocked").length),
+        tone: "warn" as const,
+      },
+      {
+        label: "Приглашённые / без входа",
+        value: formatNumber(getInviteCount(payload?.items ?? [])),
+      },
+    ],
+    [payload],
+  );
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     setMessage(null);
     setError(null);
+
+    if (createForm.password !== createForm.confirmPassword) {
+      setError("Пароль и подтверждение не совпадают");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const result = await adminApi.createUser({
@@ -135,9 +216,11 @@ export function AdminUsers() {
         companyName: roleNeedsCompany(createForm.role) ? createForm.companyName : undefined,
         status: createForm.status,
       });
-      setCreateForm(emptyCreateForm);
+
       setIssuedCredentials(result.credentials ?? null);
-      setMessage("Пользователь создан. Доступ выдан.");
+      setMessage("Пользователь добавлен");
+      setDrawerOpen(false);
+      setCreateForm(emptyCreateForm);
       await loadUsers();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось создать пользователя");
@@ -146,8 +229,10 @@ export function AdminUsers() {
     }
   };
 
-  const handleUpdate = async () => {
-    if (!selectedId) {
+  const handleUpdate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!editingUserId) {
       return;
     }
 
@@ -156,14 +241,25 @@ export function AdminUsers() {
     setError(null);
 
     try {
-      await adminApi.updateUser(selectedId, {
-        ...editForm,
+      await adminApi.updateUser(editingUserId, {
+        fullName: editForm.fullName,
+        email: editForm.email,
+        role: editForm.role,
+        status: editForm.status,
         companyName: roleNeedsCompany(editForm.role) ? editForm.companyName : null,
       });
-      setMessage("Пользователь обновлён");
-      await loadUsers();
-      const updated = await adminApi.getUser(selectedId);
+
+      const updated = await adminApi.getUser(editingUserId);
       setDetail(updated);
+      setEditForm({
+        fullName: updated.fullName ?? "",
+        email: updated.email ?? updated.authLogin ?? "",
+        role: updated.role ?? "manager",
+        companyName: updated.companyName ?? "",
+        status: updated.status ?? "active",
+      });
+      setMessage("Изменения сохранены");
+      await loadUsers();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось обновить пользователя");
     } finally {
@@ -171,59 +267,68 @@ export function AdminUsers() {
     }
   };
 
-  const handleReissuePassword = async () => {
-    if (!selectedId) {
+  const handleResetPassword = async () => {
+    if (!editingUserId) {
       return;
     }
 
-    setSubmitting(true);
+    setResettingPassword(true);
     setMessage(null);
     setError(null);
 
     try {
-      const result = await adminApi.reissueUserPassword(selectedId);
+      const result = await adminApi.reissueUserPassword(editingUserId);
       setIssuedCredentials(result.credentials ?? null);
-      setMessage("Временный пароль перевыпущен");
-      const updated = await adminApi.getUser(selectedId);
+      setMessage("Пароль сброшен");
+      const updated = await adminApi.getUser(editingUserId);
       setDetail(updated);
+      await loadUsers();
     } catch (requestError) {
-      setError(
-        requestError instanceof Error ? requestError.message : "Не удалось перевыпустить пароль",
-      );
+      setError(requestError instanceof Error ? requestError.message : "Не удалось сбросить пароль");
     } finally {
-      setSubmitting(false);
+      setResettingPassword(false);
     }
   };
 
-  const metrics = useMemo(
-    () => [
-      { label: "Всего профилей", value: String(payload?.total ?? 0) },
-      {
-        label: "Менеджеры",
-        value: String(
-          (payload?.items ?? []).filter((item: any) => item.role === "manager").length,
-        ),
-      },
-      {
-        label: "Управленцы",
-        value: String(
-          (payload?.items ?? []).filter((item: any) =>
-            item.role === "manager_supervisor" || item.role === "supplier_supervisor",
-          ).length,
-        ),
-      },
-      {
-        label: "Поставщики",
-        value: String((payload?.items ?? []).filter((item: any) => item.role === "supplier").length),
-      },
-    ],
-    [payload],
-  );
+  const handleQuickStatusToggle = async (user: any) => {
+    const nextStatus: UserStatus = user.status === "blocked" ? "active" : "blocked";
+
+    try {
+      await adminApi.updateUser(user.id, { status: nextStatus });
+      setMessage(nextStatus === "blocked" ? "Пользователь заблокирован" : "Пользователь разблокирован");
+      await loadUsers();
+
+      if (editingUserId === user.id && drawerOpen) {
+        await openEditDrawer(user.id);
+      }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось изменить статус");
+    }
+  };
+
+  const handleArchive = async (user: any) => {
+    try {
+      await adminApi.updateUser(user.id, { status: "inactive" });
+      setMessage("Пользователь переведён в архив");
+      await loadUsers();
+
+      if (editingUserId === user.id && drawerOpen) {
+        await openEditDrawer(user.id);
+      }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось архивировать пользователя");
+    }
+  };
 
   return (
     <AdminPage
       title="Пользователи и доступы"
-      description="Админ может вручную создавать администраторов, менеджеров, управленцев менеджеров, поставщиков и управленцев поставщиков. Для supplier-ролей компания обязательна, а сотрудники поставщика автоматически привязываются к управленцу своей компании."
+      description="Добавление, редактирование, блокировка и управление ролями в системе TouchSpace."
+      actions={
+        <AdminButton onClick={openCreateDrawer}>
+          Добавить пользователя
+        </AdminButton>
+      }
     >
       {message ? <AdminMessage tone="success">{message}</AdminMessage> : null}
       {error ? <AdminMessage tone="error">{error}</AdminMessage> : null}
@@ -236,220 +341,422 @@ export function AdminUsers() {
 
       <AdminCards items={metrics} />
 
-      <AdminToolbar>
-        <AdminSelect value={filters.role} onChange={(event) => setFilters((current) => ({ ...current, role: event.target.value }))}>
-          <option value="">Все роли</option>
-          {roleOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-          <option value="client">Клиенты</option>
-        </AdminSelect>
-        <AdminSelect value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
-          <option value="">Все статусы</option>
-          <option value="active">Активные</option>
-          <option value="inactive">Неактивные</option>
-          <option value="blocked">Заблокированные</option>
-          <option value="pending_approval">Ожидают подтверждения</option>
-        </AdminSelect>
-        <AdminInput
-          value={filters.company}
-          onChange={(event) => setFilters((current) => ({ ...current, company: event.target.value }))}
-          placeholder="Фильтр по компании"
-        />
-        <AdminButton tone="secondary" onClick={() => void loadUsers()}>
-          Обновить
-        </AdminButton>
-      </AdminToolbar>
-
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)]">
-        <AdminPanel title="Список пользователей">
-          <AdminTable
-            columns={[
-              { key: "fullName", label: "Имя" },
-              { key: "email", label: "Email / логин" },
-              { key: "role", label: "Роль" },
-              { key: "status", label: "Статус" },
-              { key: "companyName", label: "Компания" },
-              { key: "supervisorName", label: "Управленец" },
-            ]}
-            rows={payload?.items ?? []}
-            rowKey={(row) => row.id}
-            selectedRowKey={selectedId}
-            onRowClick={(row) => setSelectedId(row.id)}
-            emptyTitle="Пользователей пока нет"
-            emptyDescription="Создайте первый профиль через правую панель."
-            renderCell={(row, key) => {
-              if (key === "status") {
-                return <AdminStatusBadge value={row.status} />;
-              }
-
-              if (key === "role") {
-                return getRoleLabel(row.role);
-              }
-
-              if (key === "email") {
-                return row.email ?? row.authLogin ?? "нет данных";
-              }
-
-              return row[key] ?? "нет данных";
-            }}
+      <section className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-[0_16px_44px_rgba(148,163,184,0.12)]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_180px_180px_180px_auto]">
+          <AdminInput
+            value={filters.query}
+            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+            placeholder="Поиск по имени, email или компании"
           />
-        </AdminPanel>
-
-        <div className="grid gap-4">
-          <AdminPanel title="Редактирование пользователя">
-            {detail ? (
-              <div className="grid gap-3">
-                {roleNeedsFullName(editForm.role) ? (
-                  <AdminInput
-                    value={editForm.fullName}
-                    onChange={(event) => setEditForm((current) => ({ ...current, fullName: event.target.value }))}
-                    placeholder="Имя"
-                  />
-                ) : null}
-                <AdminInput
-                  value={editForm.email}
-                  onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
-                  placeholder="Email / логин"
-                  type="email"
-                />
-                <AdminInput
-                  value={editForm.authLogin}
-                  onChange={(event) => setEditForm((current) => ({ ...current, authLogin: event.target.value }))}
-                  placeholder="Отдельный логин при необходимости"
-                />
-                <AdminSelect
-                  value={editForm.role}
-                  onChange={(event) =>
-                    setEditForm((current) => ({ ...current, role: event.target.value as InternalRole }))
-                  }
-                >
-                  {roleOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </AdminSelect>
-                <AdminSelect
-                  value={editForm.status}
-                  onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value }))}
-                >
-                  <option value="active">Активен</option>
-                  <option value="inactive">Неактивен</option>
-                  <option value="blocked">Заблокирован</option>
-                  <option value="pending_approval">Ожидает подтверждения</option>
-                </AdminSelect>
-                {roleNeedsCompany(editForm.role) ? (
-                  <AdminInput
-                    value={editForm.companyName}
-                    onChange={(event) => setEditForm((current) => ({ ...current, companyName: event.target.value }))}
-                    placeholder="Компания"
-                  />
-                ) : null}
-                <AdminSelect
-                  value={editForm.approvalStatus}
-                  onChange={(event) => setEditForm((current) => ({ ...current, approvalStatus: event.target.value }))}
-                >
-                  <option value="approved">Подтверждён</option>
-                  <option value="pending">На проверке</option>
-                  <option value="rejected">Отклонён</option>
-                </AdminSelect>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <p><span className="font-medium text-slate-950">Создан:</span> {formatDateTime(detail.createdAt)}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Email:</span> {detail.email ?? "нет данных"}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Логин:</span> {detail.authLogin ?? detail.email ?? "ещё не выдан"}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Компания:</span> {detail.companyName ?? "нет данных"}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Управленец:</span> {detail.supervisor?.fullName ?? "нет данных"}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Подчинённых:</span> {detail.supervisedProfiles?.length ?? 0}</p>
-                  <p className="mt-1"><span className="font-medium text-slate-950">Смена пароля:</span> {detail.passwordChangeRequired ? "требуется при входе" : "не требуется"}</p>
-                </div>
-                <AdminButton onClick={() => void handleUpdate()} disabled={submitting}>
-                  Сохранить изменения
-                </AdminButton>
-                <AdminButton tone="secondary" onClick={() => void handleReissuePassword()} disabled={submitting}>
-                  Перевыпустить пароль
-                </AdminButton>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">Выберите пользователя слева.</p>
-            )}
-          </AdminPanel>
-
-          <AdminPanel title="Создать пользователя">
-            <form className="grid gap-3" onSubmit={handleCreate}>
-              <AdminSelect
-                value={createForm.role}
-                onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, role: event.target.value as InternalRole }))
-                }
-              >
-                {roleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </AdminSelect>
-              {roleNeedsFullName(createForm.role) ? (
-                <AdminInput
-                  value={createForm.fullName}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, fullName: event.target.value }))}
-                  placeholder="Имя в интерфейсе"
-                  required
-                />
-              ) : null}
-              <AdminInput
-                value={createForm.email}
-                onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="Email / логин"
-                type="email"
-                required
-              />
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                <AdminInput
-                  value={createForm.password}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
-                  placeholder="Пароль или оставьте пустым для генерации"
-                  type="text"
-                />
-                <AdminButton
-                  type="button"
-                  tone="secondary"
-                  onClick={() =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      password: buildGeneratedPassword(),
-                    }))
-                  }
-                >
-                  Сгенерировать
-                </AdminButton>
-              </div>
-              <AdminSelect
-                value={createForm.status}
-                onChange={(event) => setCreateForm((current) => ({ ...current, status: event.target.value }))}
-              >
-                <option value="active">Активен</option>
-                <option value="inactive">Неактивен</option>
-                <option value="blocked">Заблокирован</option>
-                <option value="pending_approval">Ожидает подтверждения</option>
-              </AdminSelect>
-              {roleNeedsCompany(createForm.role) ? (
-                <AdminInput
-                  value={createForm.companyName}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, companyName: event.target.value }))}
-                  placeholder="Компания"
-                  required
-                />
-              ) : null}
-              <AdminButton type="submit" disabled={submitting}>
-                Создать пользователя
-              </AdminButton>
-            </form>
-          </AdminPanel>
+          <AdminSelect
+            value={filters.role}
+            onChange={(event) => setFilters((current) => ({ ...current, role: event.target.value }))}
+          >
+            <option value="">Все роли</option>
+            {roleOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </AdminSelect>
+          <AdminSelect
+            value={filters.status}
+            onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+          >
+            <option value="">Все статусы</option>
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </AdminSelect>
+          <AdminInput
+            value={filters.company}
+            onChange={(event) => setFilters((current) => ({ ...current, company: event.target.value }))}
+            placeholder="Компания"
+          />
+          <AdminButton
+            tone="secondary"
+            onClick={() => {
+              setFilters({
+                query: "",
+                role: "",
+                status: "",
+                company: "",
+              });
+            }}
+          >
+            Сбросить фильтры
+          </AdminButton>
         </div>
-      </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {quickRoleFilters.map((chip) => {
+            const active =
+              chip.kind === "status"
+                ? filters.status === chip.value
+                : filters.role === chip.value && filters.status === "";
+
+            return (
+              <button
+                key={`${chip.kind ?? "role"}_${chip.label}`}
+                type="button"
+                onClick={() =>
+                  chip.kind === "status"
+                    ? setFilters((current) => ({ ...current, status: chip.value, role: "" }))
+                    : setFilters((current) => ({ ...current, role: chip.value, status: "" }))
+                }
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  active
+                    ? "border-sky-200 bg-sky-50 text-sky-800"
+                    : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-[0_16px_44px_rgba(148,163,184,0.12)]">
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-separate border-spacing-y-2">
+            <thead>
+              <tr>
+                {["Имя", "Email", "Роль", "Компания", "Статус", "Последний вход", "Действия"].map((label) => (
+                  <th
+                    key={label}
+                    className="px-4 pb-2 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.length > 0 ? (
+                users.map((user: any) => (
+                  <tr key={user.id} className="bg-slate-50">
+                    <td className="rounded-l-2xl px-4 py-4">
+                      <button
+                        type="button"
+                        onClick={() => void openEditDrawer(user.id)}
+                        className="text-left"
+                      >
+                        <p className="font-medium text-slate-950">{user.fullName}</p>
+                        <p className="mt-1 text-xs text-slate-500">ID: {user.id}</p>
+                      </button>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-700">{user.email ?? user.authLogin ?? "нет данных"}</td>
+                    <td className="px-4 py-4 text-sm text-slate-700">{getRoleLabel(user.role)}</td>
+                    <td className="px-4 py-4 text-sm text-slate-700">{user.companyName ?? "—"}</td>
+                    <td className="px-4 py-4 text-sm text-slate-700">
+                      <AdminStatusBadge value={user.status} />
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-700">
+                      {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "ещё не входил"}
+                    </td>
+                    <td className="rounded-r-2xl px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <AdminButton tone="secondary" onClick={() => void openEditDrawer(user.id)}>
+                          Открыть
+                        </AdminButton>
+                        <AdminButton tone="secondary" onClick={() => void handleQuickStatusToggle(user)}>
+                          {getStatusActionLabel(user.status)}
+                        </AdminButton>
+                        <AdminButton tone="secondary" onClick={() => void handleArchive(user)}>
+                          Архивировать
+                        </AdminButton>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <p className="text-lg font-semibold text-slate-900">Пользователи не найдены</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Попробуй изменить фильтры или добавь нового пользователя.
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {drawerOpen ? (
+        <div className="fixed inset-0 z-40 bg-slate-950/18 backdrop-blur-[1px]">
+          <div className="absolute inset-y-0 right-0 w-full max-w-[560px] overflow-y-auto border-l border-slate-200 bg-white shadow-[0_30px_70px_rgba(15,23,42,0.18)]">
+            <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-6 py-5 backdrop-blur">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                    {drawerMode === "create" ? "Добавить пользователя" : "Карточка пользователя"}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {drawerMode === "create"
+                      ? "Создание аккаунта и выдача доступа в систему."
+                      : "Редактирование ролей, статуса и данных доступа."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              {drawerMode === "create" ? (
+                <form className="grid gap-5" onSubmit={handleCreate}>
+                  <section className="grid gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Основное</p>
+                    {roleNeedsName(createForm.role) ? (
+                      <AdminInput
+                        value={createForm.fullName}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({ ...current, fullName: event.target.value }))
+                        }
+                        placeholder="Имя"
+                        required
+                      />
+                    ) : null}
+                    <AdminInput
+                      value={createForm.email}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({ ...current, email: event.target.value }))
+                      }
+                      placeholder="Email"
+                      type="email"
+                      required
+                    />
+                    <AdminSelect
+                      value={createForm.role}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          role: event.target.value as InternalRole,
+                          companyName:
+                            roleNeedsCompany(event.target.value) ? current.companyName : "",
+                        }))
+                      }
+                    >
+                      {roleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </AdminSelect>
+                  </section>
+
+                  <section className="grid gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">Доступ</p>
+                      <AdminButton
+                        type="button"
+                        tone="secondary"
+                        onClick={() =>
+                          setCreateForm((current) => {
+                            const password = buildGeneratedPassword();
+                            return { ...current, password, confirmPassword: password };
+                          })
+                        }
+                      >
+                        Сгенерировать пароль
+                      </AdminButton>
+                    </div>
+                    <AdminInput
+                      value={createForm.password}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({ ...current, password: event.target.value }))
+                      }
+                      placeholder="Пароль"
+                      type="text"
+                      required
+                    />
+                    <AdminInput
+                      value={createForm.confirmPassword}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          confirmPassword: event.target.value,
+                        }))
+                      }
+                      placeholder="Подтверждение пароля"
+                      type="text"
+                      required
+                    />
+                  </section>
+
+                  {roleNeedsCompany(createForm.role) ? (
+                    <section className="grid gap-3">
+                      <p className="text-sm font-semibold text-slate-900">Компания</p>
+                      <AdminInput
+                        value={createForm.companyName}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({ ...current, companyName: event.target.value }))
+                        }
+                        placeholder="Компания"
+                        required
+                      />
+                    </section>
+                  ) : null}
+
+                  <section className="grid gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Статус</p>
+                    <AdminSelect
+                      value={createForm.status}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          status: event.target.value as UserStatus,
+                        }))
+                      }
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </AdminSelect>
+                  </section>
+
+                  <div className="flex gap-3 pt-2">
+                    <AdminButton type="submit" disabled={submitting}>
+                      Сохранить
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" onClick={() => setDrawerOpen(false)}>
+                      Отмена
+                    </AdminButton>
+                  </div>
+                </form>
+              ) : detail ? (
+                <form className="grid gap-5" onSubmit={handleUpdate}>
+                  <section className="grid gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Основное</p>
+                    <AdminInput
+                      value={editForm.fullName}
+                      onChange={(event) =>
+                        setEditForm((current) => ({ ...current, fullName: event.target.value }))
+                      }
+                      placeholder="Имя"
+                      required
+                    />
+                    <AdminInput
+                      value={editForm.email}
+                      onChange={(event) =>
+                        setEditForm((current) => ({ ...current, email: event.target.value }))
+                      }
+                      placeholder="Email"
+                      type="email"
+                      required
+                    />
+                    <AdminSelect
+                      value={editForm.role}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          role: event.target.value as InternalRole,
+                          companyName:
+                            roleNeedsCompany(event.target.value) ? current.companyName : "",
+                        }))
+                      }
+                    >
+                      {roleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </AdminSelect>
+                  </section>
+
+                  {roleNeedsCompany(editForm.role) ? (
+                    <section className="grid gap-3">
+                      <p className="text-sm font-semibold text-slate-900">Компания</p>
+                      <AdminInput
+                        value={editForm.companyName}
+                        onChange={(event) =>
+                          setEditForm((current) => ({ ...current, companyName: event.target.value }))
+                        }
+                        placeholder="Компания"
+                        required
+                      />
+                    </section>
+                  ) : null}
+
+                  <section className="grid gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Статус</p>
+                    <AdminSelect
+                      value={editForm.status}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          status: event.target.value as UserStatus,
+                        }))
+                      }
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </AdminSelect>
+                  </section>
+
+                  <section className="grid gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">Доступ</p>
+                      <AdminButton
+                        type="button"
+                        tone="secondary"
+                        onClick={() => void handleResetPassword()}
+                        disabled={resettingPassword}
+                      >
+                        Сбросить пароль
+                      </AdminButton>
+                    </div>
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                      <p>
+                        <span className="font-medium text-slate-950">Дата создания:</span>{" "}
+                        {formatDateTime(detail.createdAt)}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-slate-950">Последний вход:</span>{" "}
+                        {detail.lastLoginAt ? formatDateTime(detail.lastLoginAt) : "ещё не входил"}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-slate-950">Кем создан:</span>{" "}
+                        {detail.createdByAdminId ?? "нет данных"}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-slate-950">Логин:</span>{" "}
+                        {detail.authLogin ?? detail.email ?? "нет данных"}
+                      </p>
+                    </div>
+                  </section>
+
+                  <div className="flex gap-3 pt-2">
+                    <AdminButton type="submit" disabled={submitting}>
+                      Сохранить
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" onClick={() => setDrawerOpen(false)}>
+                      Отмена
+                    </AdminButton>
+                  </div>
+                </form>
+              ) : (
+                <p className="text-sm text-slate-500">Карточка пользователя загружается.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AdminPage>
   );
 }

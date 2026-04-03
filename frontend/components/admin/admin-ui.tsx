@@ -5,9 +5,9 @@ const statusLabels: Record<string, string> = {
   approved: "Подтверждён",
   rejected: "Отклонён",
   active: "Активен",
-  inactive: "Неактивен",
+  inactive: "Архив",
   blocked: "Заблокирован",
-  pending_approval: "Ожидает подтверждения",
+  pending_approval: "Приглашён",
   new: "Новый",
   in_progress: "В работе",
   waiting_supplier: "Ожидает поставщика",
@@ -23,9 +23,9 @@ const statusLabels: Record<string, string> = {
 const roleLabels: Record<string, string> = {
   admin: "Администратор",
   manager: "Менеджер",
-  manager_supervisor: "Управленец менеджеров",
+  manager_supervisor: "Руководитель менеджеров",
   supplier: "Поставщик",
-  supplier_supervisor: "Управленец поставщиков",
+  supplier_supervisor: "Руководитель поставщика",
   client: "Клиент",
   system: "Система",
 };

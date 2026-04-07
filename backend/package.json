@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "prisma generate && nest build",
+    "reset:local-workspace": "ts-node src/scripts/reset-local-workspace.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "postinstall": "prisma generate",
     "start": "nest start",

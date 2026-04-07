@@ -7,9 +7,7 @@ import {
   getHomePathForRole,
   isManagerRole,
   isSupplierRole,
-  managerSupervisorAccounts,
   readAuthSession,
-  supplierSupervisorAccounts,
   writeAuthSession,
 } from "@/lib/auth";
 
@@ -136,7 +134,7 @@ export default function LoginPage() {
           Вход в систему
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Войдите как администратор, менеджер, управленец менеджеров, поставщик или управленец поставщика для тестирования ролей.
+          Войдите под логином и паролем, которые были выданы администратором.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -148,7 +146,7 @@ export default function LoginPage() {
               value={login}
               onChange={(event) => setLogin(event.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
-              placeholder="admin, anna, managerlead, supplier или supplierlead"
+              placeholder="Введите логин"
             />
           </div>
 
@@ -175,19 +173,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 rounded-2xl bg-[#F8FAFD] p-4 text-sm text-gray-600">
-          <p>anna / manager123</p>
-          <p className="mt-1">ekaterina / manager123</p>
-          <p className="mt-1">mikhail / manager123</p>
-          <p className="mt-1">
-            {managerSupervisorAccounts[0].login} / {managerSupervisorAccounts[0].password}
-          </p>
-          <p className="mt-1">admin / admin123</p>
-          <p className="mt-1">supplier / supplier123</p>
-          <p className="mt-1">
-            {supplierSupervisorAccounts[0].login} / {supplierSupervisorAccounts[0].password}
-          </p>
-        </div>
       </div>
     </main>
   );

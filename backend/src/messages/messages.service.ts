@@ -87,11 +87,16 @@ export class MessagesService {
     senderProfile?: {
       fullName?: string | null;
       companyName?: string | null;
+      supplierId?: string | null;
+    } | null;
+    ticket?: {
+      supplierName?: string | null;
     } | null;
   }) {
     if (message.senderType === 'supplier') {
       return (
         message.senderProfile?.companyName?.trim() ||
+        message.ticket?.supplierName?.trim() ||
         message.senderProfile?.fullName?.trim() ||
         null
       );
@@ -1119,6 +1124,12 @@ export class MessagesService {
             select: {
               fullName: true,
               companyName: true,
+              supplierId: true,
+            },
+          },
+          ticket: {
+            select: {
+              supplierName: true,
             },
           },
         },
@@ -1155,6 +1166,12 @@ export class MessagesService {
           select: {
             fullName: true,
             companyName: true,
+            supplierId: true,
+          },
+        },
+        ticket: {
+          select: {
+            supplierName: true,
           },
         },
       },
@@ -1202,6 +1219,12 @@ export class MessagesService {
           select: {
             fullName: true,
             companyName: true,
+            supplierId: true,
+          },
+        },
+        ticket: {
+          select: {
+            supplierName: true,
           },
         },
       },

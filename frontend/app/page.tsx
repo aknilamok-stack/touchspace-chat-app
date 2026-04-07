@@ -859,6 +859,33 @@ const getDialogDurationLabel = (chat: ChatItem) => {
   return formatDuration(Math.max(endTime - startTime, 0));
 };
 
+const escapeSearchRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const renderHighlightedText = (text: string, query: string) => {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return text;
+  }
+
+  const pattern = new RegExp(`(${escapeSearchRegExp(normalizedQuery)})`, "ig");
+  const parts = text.split(pattern);
+
+  return parts.map((part, index) =>
+    part.toLowerCase() === normalizedQuery.toLowerCase() ? (
+      <mark
+        key={`${part}-${index}`}
+        className="rounded bg-[#FFE08A] px-0.5 text-inherit"
+      >
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}-${index}`}>{part}</span>
+    )
+  );
+};
+
 export default function Home() {
   const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
@@ -887,6 +914,8 @@ export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [sendMode, setSendMode] = useState<"chat" | "email">("chat");
   const [emailRecipient, setEmailRecipient] = useState("");
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [activeChatSearchMatchIndex, setActiveChatSearchMatchIndex] = useState(0);
   const [supplierRequestSupplierFilter, setSupplierRequestSupplierFilter] =
     useState<string>("all");
   const [supplierRequestStatusFilter, setSupplierRequestStatusFilter] =
@@ -979,6 +1008,38 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
+  const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
+  const chatSearchMatchIds =
+    activeChat && normalizedChatSearchQuery
+      ? activeChat.messages
+          .filter((message) => {
+            const searchableText = [
+              message.text,
+              message.replyToContent,
+              message.senderName,
+              message.subject,
+              message.toEmail,
+              message.fromEmail,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
+
+            return searchableText.includes(normalizedChatSearchQuery);
+          })
+          .map((message) => message.id)
+      : [];
+  const normalizedActiveChatSearchMatchIndex =
+    chatSearchMatchIds.length > 0
+      ? ((activeChatSearchMatchIndex % chatSearchMatchIds.length) +
+          chatSearchMatchIds.length) %
+        chatSearchMatchIds.length
+      : -1;
+  const currentChatSearchMatchId =
+    normalizedActiveChatSearchMatchIndex >= 0
+      ? chatSearchMatchIds[normalizedActiveChatSearchMatchIndex]
+      : null;
+  const chatSearchMatchIdSet = new Set(chatSearchMatchIds);
   const activeSupplierRequest =
     activeChat?.supplierRequests.find(
       (request) => !["closed", "cancelled", "resolved"].includes(request.status)
@@ -2511,14 +2572,46 @@ export default function Home() {
     if (!activeChatId) {
       setReplyMap({});
       setReplyTarget(null);
+      setChatSearchQuery("");
+      setActiveChatSearchMatchIndex(0);
       return;
     }
 
     setReplyMap(readReplyMap(activeChatId));
     setReplyTarget(null);
+    setChatSearchQuery("");
+    setActiveChatSearchMatchIndex(0);
     setHoveredMessageId("");
     setHighlightedReplyMessageId("");
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (chatSearchMatchIds.length === 0) {
+      setActiveChatSearchMatchIndex(0);
+      return;
+    }
+
+    if (activeChatSearchMatchIndex >= chatSearchMatchIds.length) {
+      setActiveChatSearchMatchIndex(0);
+    }
+  }, [activeChatSearchMatchIndex, chatSearchMatchIds.length]);
+
+  useEffect(() => {
+    if (sendMode !== "chat" || !currentChatSearchMatchId) {
+      return;
+    }
+
+    const element = messageElementsRef.current[currentChatSearchMatchId];
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [currentChatSearchMatchId, sendMode]);
 
   useEffect(() => {
     return () => {
@@ -2835,6 +2928,17 @@ export default function Home() {
     } finally {
       setIsClaimingIncoming(false);
     }
+  };
+
+  const moveChatSearchMatch = (direction: 1 | -1) => {
+    if (chatSearchMatchIds.length === 0) {
+      return;
+    }
+
+    setActiveChatSearchMatchIndex((current) =>
+      (current + direction + chatSearchMatchIds.length) %
+      chatSearchMatchIds.length
+    );
   };
 
   const handleAddQuickReply = () => {
@@ -3973,6 +4077,8 @@ export default function Home() {
                 !previousMessage ||
                 getMessageDayKey(previousMessage.createdAt) !==
                   getMessageDayKey(message.createdAt);
+              const isSearchMatched = chatSearchMatchIdSet.has(message.id);
+              const isCurrentSearchMatch = currentChatSearchMatchId === message.id;
 
               return (
                 <div
@@ -3983,6 +4089,10 @@ export default function Home() {
                   className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
                     highlightedReplyMessageId === message.id
                       ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                      : isCurrentSearchMatch
+                        ? "bg-[#FFF4D6] shadow-[0_10px_24px_rgba(255,193,7,0.18)]"
+                        : isSearchMatched
+                          ? "bg-[#FFF9EA]"
                       : "bg-transparent shadow-none"
                   }`}
                 >
@@ -4008,7 +4118,7 @@ export default function Home() {
                           ) : null}
                         </div>
                         <p className="mt-2 text-sm leading-5 text-[#6C6C70]">
-                          {message.text}
+                          {renderHighlightedText(message.text, chatSearchQuery)}
                         </p>
                       </div>
                     </div>
@@ -4187,9 +4297,9 @@ export default function Home() {
                                 tone={message.from === "manager" ? "outgoing" : "incoming"}
                               />
                             ) : (
-                              <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
-                                {message.text}
-                              </p>
+                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
+                                        {renderHighlightedText(message.text, chatSearchQuery)}
+                                      </p>
                             )}
                               <div
                                 className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
@@ -4409,6 +4519,98 @@ export default function Home() {
                 >
                   Email
                 </button>
+                {sendMode === "chat" ? (
+                  <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
+                    <div className="relative min-w-[220px] flex-1">
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8E8E93]"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          cx="9"
+                          cy="9"
+                          r="5.75"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                        />
+                        <path
+                          d="M13.5 13.5L16.5 16.5"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <input
+                        value={chatSearchQuery}
+                        onChange={(event) => {
+                          setChatSearchQuery(event.target.value);
+                          setActiveChatSearchMatchIndex(0);
+                        }}
+                        placeholder="Поиск по чату"
+                        className="w-full rounded-full border border-[#E3E5EA] bg-white py-2 pl-10 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                      />
+                    </div>
+                    {chatSearchQuery.trim() ? (
+                      <>
+                        <span className="shrink-0 text-xs font-medium text-[#8E8E93]">
+                          {chatSearchMatchIds.length
+                            ? `${normalizedActiveChatSearchMatchIndex + 1}/${chatSearchMatchIds.length}`
+                            : "0"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => moveChatSearchMatch(-1)}
+                          disabled={chatSearchMatchIds.length === 0}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                          aria-label="Предыдущее совпадение"
+                        >
+                          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                            <path
+                              d="M10 6L6 10L10 14"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M14 6L10 10L14 14"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveChatSearchMatch(1)}
+                          disabled={chatSearchMatchIds.length === 0}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                          aria-label="Следующее совпадение"
+                        >
+                          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                            <path
+                              d="M10 6L14 10L10 14"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M6 6L10 10L6 14"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
                 {sendMode === "email" ? (
                   <>
                     <span className="ml-1 text-sm font-medium text-[#9A6B2E]">

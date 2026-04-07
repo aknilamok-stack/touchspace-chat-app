@@ -216,6 +216,33 @@ const formatMessageDayLabel = (createdAt: string) =>
     year: "numeric",
   });
 
+const escapeSearchRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const renderHighlightedText = (text: string, query: string) => {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return text;
+  }
+
+  const pattern = new RegExp(`(${escapeSearchRegExp(normalizedQuery)})`, "ig");
+  const parts = text.split(pattern);
+
+  return parts.map((part, index) =>
+    part.toLowerCase() === normalizedQuery.toLowerCase() ? (
+      <mark
+        key={`${part}-${index}`}
+        className="rounded bg-[#FFE08A] px-0.5 text-inherit"
+      >
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}-${index}`}>{part}</span>
+    )
+  );
+};
+
 const getMessageStatusLabel = (status?: string) => {
   if (status === "read") {
     return "Прочитано";
@@ -859,6 +886,8 @@ export default function SupplierPage() {
     managerAccounts[0]?.id ?? ""
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [activeChatSearchMatchIndex, setActiveChatSearchMatchIndex] = useState(0);
   const [replyText, setReplyText] = useState("");
   const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -1044,6 +1073,39 @@ export default function SupplierPage() {
         visibleSupplierMessages
       )
     : [];
+  const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
+  const supplierChatSearchMatchIds =
+    normalizedChatSearchQuery && selectedRequest
+      ? supplierTimelineItems
+          .filter((item) => {
+            const searchableText =
+              item.kind === "request"
+                ? item.request.requestText
+                : [
+                    item.message.displayContent,
+                    item.message.replyToContent,
+                    item.message.senderName,
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+
+            return searchableText.toLowerCase().includes(normalizedChatSearchQuery);
+          })
+          .map((item) =>
+            item.kind === "request" ? `request:${item.request.id}` : item.message.id
+          )
+      : [];
+  const normalizedActiveChatSearchMatchIndex =
+    supplierChatSearchMatchIds.length > 0
+      ? ((activeChatSearchMatchIndex % supplierChatSearchMatchIds.length) +
+          supplierChatSearchMatchIds.length) %
+        supplierChatSearchMatchIds.length
+      : -1;
+  const currentSupplierChatSearchMatchId =
+    normalizedActiveChatSearchMatchIndex >= 0
+      ? supplierChatSearchMatchIds[normalizedActiveChatSearchMatchIndex]
+      : null;
+  const supplierChatSearchMatchIdSet = new Set(supplierChatSearchMatchIds);
   const filteredHistoryRequests = selectedTicketRequests.filter((request) => {
     if (requestHistoryFilter === "all") {
       return true;
@@ -1897,20 +1959,54 @@ export default function SupplierPage() {
   useEffect(() => {
     setAttachmentName("");
     setSelectedFiles([]);
+    setChatSearchQuery("");
+    setActiveChatSearchMatchIndex(0);
   }, [selectedRequestId]);
 
   useEffect(() => {
     if (!selectedRequest?.ticketId) {
       setReplyMap({});
       setReplyTarget(null);
+      setChatSearchQuery("");
+      setActiveChatSearchMatchIndex(0);
       return;
     }
 
     setReplyMap(readReplyMap(selectedRequest.ticketId));
     setReplyTarget(null);
+    setChatSearchQuery("");
+    setActiveChatSearchMatchIndex(0);
     setHoveredMessageId("");
     setHighlightedReplyMessageId("");
   }, [selectedRequest?.ticketId]);
+
+  useEffect(() => {
+    if (supplierChatSearchMatchIds.length === 0) {
+      setActiveChatSearchMatchIndex(0);
+      return;
+    }
+
+    if (activeChatSearchMatchIndex >= supplierChatSearchMatchIds.length) {
+      setActiveChatSearchMatchIndex(0);
+    }
+  }, [activeChatSearchMatchIndex, supplierChatSearchMatchIds.length]);
+
+  useEffect(() => {
+    if (!currentSupplierChatSearchMatchId) {
+      return;
+    }
+
+    const element = messageElementsRef.current[currentSupplierChatSearchMatchId];
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [currentSupplierChatSearchMatchId]);
 
   useEffect(() => {
     return () => {
@@ -2692,6 +2788,17 @@ export default function SupplierPage() {
     }
   };
 
+  const moveChatSearchMatch = (direction: 1 | -1) => {
+    if (supplierChatSearchMatchIds.length === 0) {
+      return;
+    }
+
+    setActiveChatSearchMatchIndex((current) =>
+      (current + direction + supplierChatSearchMatchIds.length) %
+      supplierChatSearchMatchIds.length
+    );
+  };
+
   const handleAddQuickReply = () => {
     setShowQuickReplies(false);
     setShowEmojiPicker(false);
@@ -3154,9 +3261,26 @@ export default function SupplierPage() {
 
                         if (item.kind === "request") {
                           const { request } = item;
+                          const searchMatchId = `request:${request.id}`;
+                          const isSearchMatched =
+                            supplierChatSearchMatchIdSet.has(searchMatchId);
+                          const isCurrentSearchMatch =
+                            currentSupplierChatSearchMatchId === searchMatchId;
 
                           return (
-                            <div key={item.id} className="rounded-[26px] px-2 py-1">
+                            <div
+                              key={item.id}
+                              ref={(element) => {
+                                messageElementsRef.current[searchMatchId] = element;
+                              }}
+                              className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
+                                isCurrentSearchMatch
+                                  ? "bg-[#FFF4D6] shadow-[0_10px_24px_rgba(255,193,7,0.18)]"
+                                  : isSearchMatched
+                                    ? "bg-[#FFF9EA]"
+                                    : "bg-transparent"
+                              }`}
+                            >
                               {shouldShowDateSeparator && (
                                 <div className="flex justify-center py-1">
                                   <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
@@ -3176,7 +3300,10 @@ export default function SupplierPage() {
                                     </p>
                                   </div>
                                   <p className="mt-3 text-[15px] leading-6 text-[#1E1E1E]">
-                                    {request.requestText}
+                                    {renderHighlightedText(
+                                      request.requestText,
+                                      chatSearchQuery
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -3185,6 +3312,9 @@ export default function SupplierPage() {
                         }
 
                         const { message } = item;
+                        const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
+                        const isCurrentSearchMatch =
+                          currentSupplierChatSearchMatchId === message.id;
 
                         return (
                           <div
@@ -3195,6 +3325,10 @@ export default function SupplierPage() {
                             className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
                               highlightedReplyMessageId === message.id
                                 ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                                : isCurrentSearchMatch
+                                  ? "bg-[#FFF4D6] shadow-[0_10px_24px_rgba(255,193,7,0.18)]"
+                                  : isSearchMatched
+                                    ? "bg-[#FFF9EA]"
                                 : "bg-transparent shadow-none"
                             }`}
                           >
@@ -3209,7 +3343,10 @@ export default function SupplierPage() {
                             {message.senderType === "system" ? (
                               <div className="flex justify-center py-2">
                                 <div className="max-w-[620px] rounded-[18px] border border-[#E5E5EA] bg-[#F7F7FA] px-4 py-3 text-center text-sm leading-6 text-[#6C6C70] shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                                  {message.displayContent}
+                                  {renderHighlightedText(
+                                    message.displayContent,
+                                    chatSearchQuery
+                                  )}
                                 </div>
                               </div>
                             ) : (
@@ -3392,7 +3529,10 @@ export default function SupplierPage() {
                                       />
                                     ) : (
                                       <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
-                                        {message.displayContent}
+                                        {renderHighlightedText(
+                                          message.displayContent,
+                                          chatSearchQuery
+                                        )}
                                       </p>
                                     )}
                                     <div
@@ -3538,6 +3678,99 @@ export default function SupplierPage() {
                             ×
                           </button>
                         </div>
+                      </div>
+                    ) : null}
+
+                    {selectedRequest ? (
+                      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#E3E5EA] bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="relative min-w-[220px] flex-1">
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8E8E93]"
+                            aria-hidden="true"
+                          >
+                            <circle
+                              cx="9"
+                              cy="9"
+                              r="5.75"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                            />
+                            <path
+                              d="M13.5 13.5L16.5 16.5"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <input
+                            value={chatSearchQuery}
+                            onChange={(event) => {
+                              setChatSearchQuery(event.target.value);
+                              setActiveChatSearchMatchIndex(0);
+                            }}
+                            placeholder="Поиск по чату"
+                            className="w-full rounded-full border border-[#E3E5EA] bg-[#FBFBFD] py-2 pl-10 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                          />
+                        </div>
+                        {chatSearchQuery.trim() ? (
+                          <>
+                            <span className="shrink-0 text-xs font-medium text-[#8E8E93]">
+                              {supplierChatSearchMatchIds.length
+                                ? `${normalizedActiveChatSearchMatchIndex + 1}/${supplierChatSearchMatchIds.length}`
+                                : "0"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => moveChatSearchMatch(-1)}
+                              disabled={supplierChatSearchMatchIds.length === 0}
+                              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                              aria-label="Предыдущее совпадение"
+                            >
+                              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                                <path
+                                  d="M10 6L6 10L10 14"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M14 6L10 10L14 14"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveChatSearchMatch(1)}
+                              disabled={supplierChatSearchMatchIds.length === 0}
+                              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                              aria-label="Следующее совпадение"
+                            >
+                              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                                <path
+                                  d="M10 6L14 10L10 14"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M6 6L10 10L6 14"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
 

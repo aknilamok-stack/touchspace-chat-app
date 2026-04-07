@@ -82,6 +82,24 @@ export class MessagesService {
     return value.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
+  private resolveMessageSenderName(message: {
+    senderType?: string | null;
+    senderProfile?: {
+      fullName?: string | null;
+      companyName?: string | null;
+    } | null;
+  }) {
+    if (message.senderType === 'supplier') {
+      return (
+        message.senderProfile?.companyName?.trim() ||
+        message.senderProfile?.fullName?.trim() ||
+        null
+      );
+    }
+
+    return message.senderProfile?.fullName?.trim() || null;
+  }
+
   private isSuggestionCandidate(value: string) {
     const collapsed = value.replace(/\s+/g, ' ').trim();
 
@@ -1100,6 +1118,7 @@ export class MessagesService {
           senderProfile: {
             select: {
               fullName: true,
+              companyName: true,
             },
           },
         },
@@ -1107,7 +1126,7 @@ export class MessagesService {
 
       return messages.map((message) => ({
         ...message,
-        senderName: message.senderProfile?.fullName ?? null,
+        senderName: this.resolveMessageSenderName(message),
       }));
     });
   }
@@ -1135,6 +1154,7 @@ export class MessagesService {
         senderProfile: {
           select: {
             fullName: true,
+            companyName: true,
           },
         },
       },
@@ -1181,6 +1201,7 @@ export class MessagesService {
         senderProfile: {
           select: {
             fullName: true,
+            companyName: true,
           },
         },
       },
@@ -1188,7 +1209,7 @@ export class MessagesService {
 
     return {
       ...updatedMessage,
-      senderName: updatedMessage.senderProfile?.fullName ?? null,
+      senderName: this.resolveMessageSenderName(updatedMessage),
     };
   }
 }

@@ -1348,7 +1348,7 @@ export default function ClientPage() {
                                 {message.senderType === "manager"
                                   ? message.senderName || "Оператор"
                                   : message.senderType === "supplier"
-                                      ? message.senderName || "Поставщик"
+                                      ? `Поставщик: ${message.senderName || "Поставщик"}`
                                       : "Поддержка"}
                               </p>
                             ) : null}

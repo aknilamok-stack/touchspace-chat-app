@@ -16,6 +16,7 @@ type OperatorItem = {
   role: string;
   supplierId?: string | null;
   status: OperatorStatus;
+  isActive?: boolean;
   lastSeenAt?: string | null;
   lastLoginAt?: string | null;
   passwordChangeRequired?: boolean;
@@ -65,6 +66,13 @@ type ResetPasswordResponse = {
     login: string;
     temporaryPassword: string;
   };
+};
+
+const emptyCreateOperatorForm = {
+  fullName: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
 };
 
 const operatorStatusLabel: Record<OperatorStatus, string> = {
@@ -156,8 +164,11 @@ export function OperatorsSettingsPage({
   const [resettingOperatorId, setResettingOperatorId] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [credentialsMessage, setCredentialsMessage] = useState("");
+  const [creatingOperator, setCreatingOperator] = useState(false);
+  const [activatingOperatorId, setActivatingOperatorId] = useState("");
   const [draftAuthLogins, setDraftAuthLogins] = useState<Record<string, string>>({});
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
+  const [createOperatorForm, setCreateOperatorForm] = useState(emptyCreateOperatorForm);
   const [analytics, setAnalytics] = useState<SupervisorAnalytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState("");
@@ -400,6 +411,126 @@ export function OperatorsSettingsPage({
     }
   };
 
+  const handleCreateOperator = async () => {
+    if (!session?.userId || scope !== "supplier_supervisor") {
+      return;
+    }
+
+    setCreatingOperator(true);
+    setError("");
+    setInfoMessage("");
+    setCredentialsMessage("");
+
+    if (createOperatorForm.password !== createOperatorForm.confirmPassword) {
+      setError("Пароль и подтверждение не совпадают");
+      setCreatingOperator(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(apiUrl("/supervisors/operators"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          supervisorId: session.userId,
+          fullName: createOperatorForm.fullName.trim(),
+          email: createOperatorForm.email.trim(),
+          password: createOperatorForm.password,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | (ResetPasswordResponse & { message?: string })
+        | null;
+
+      if (!response.ok || !payload?.credentials) {
+        throw new Error(
+          (typeof payload?.message === "string" && payload.message) ||
+            "Не удалось создать оператора"
+        );
+      }
+
+      setCreateOperatorForm(emptyCreateOperatorForm);
+      setCredentialsMessage(
+        `Пользователь создан. Логин: ${payload.credentials.login} / пароль: ${payload.credentials.temporaryPassword}. При первом входе пароль нужно сменить.`
+      );
+      setInfoMessage("Оператор поставщика добавлен.");
+      await loadOperators(session);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Не удалось создать оператора"
+      );
+    } finally {
+      setCreatingOperator(false);
+    }
+  };
+
+  const handleToggleActivation = async (operator: OperatorItem) => {
+    if (!session?.userId || scope !== "supplier_supervisor") {
+      return;
+    }
+
+    setActivatingOperatorId(operator.id);
+    setError("");
+    setInfoMessage("");
+    setCredentialsMessage("");
+
+    try {
+      const response = await fetch(
+        apiUrl(`/supervisors/operators/${operator.id}/activation`),
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            supervisorId: session.userId,
+            enabled: !operator.isActive,
+          }),
+        }
+      );
+
+      const payload = (await response.json().catch(() => null)) as
+        | { operator?: { id: string; isActive: boolean }; message?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          (typeof payload?.message === "string" && payload.message) ||
+            "Не удалось изменить активность пользователя"
+        );
+      }
+
+      setOperators((current) =>
+        current.map((item) =>
+          item.id === operator.id
+            ? {
+                ...item,
+                isActive: payload?.operator?.isActive ?? !operator.isActive,
+              }
+            : item
+        )
+      );
+      setInfoMessage(
+        operator.isActive
+          ? "Пользователь деактивирован."
+          : "Пользователь снова активен."
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Не удалось изменить активность пользователя"
+      );
+    } finally {
+      setActivatingOperatorId("");
+    }
+  };
+
   const handleApplyAnalyticsFilter = async (nextPreset = analyticsPreset) => {
     if (!session) {
       return;
@@ -508,6 +639,108 @@ export function OperatorsSettingsPage({
 
         {activeTab === "operators" ? (
         <section className="mt-6 space-y-4">
+          {scope === "supplier_supervisor" ? (
+            <article className="rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#1E1E1E]">
+                    Подключить оператора поставщика
+                  </h2>
+                  <p className="mt-1 text-sm text-[#6C6C70]">
+                    Можно создавать только операторов своей компании. При первом входе пользователь
+                    сразу попадёт на смену пароля.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Имя поставщика
+                  </span>
+                  <input
+                    value={createOperatorForm.fullName}
+                    onChange={(event) =>
+                      setCreateOperatorForm((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                    placeholder="Анна"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    value={createOperatorForm.email}
+                    onChange={(event) =>
+                      setCreateOperatorForm((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                    placeholder="anna@company.ru"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Пароль
+                  </span>
+                  <input
+                    type="text"
+                    value={createOperatorForm.password}
+                    onChange={(event) =>
+                      setCreateOperatorForm((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                    placeholder="Минимум 8 символов"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Повторите пароль
+                  </span>
+                  <input
+                    type="text"
+                    value={createOperatorForm.confirmPassword}
+                    onChange={(event) =>
+                      setCreateOperatorForm((current) => ({
+                        ...current,
+                        confirmPassword: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
+                    placeholder="Повторите пароль"
+                  />
+                </label>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    disabled={creatingOperator}
+                    onClick={() => void handleCreateOperator()}
+                    className={`rounded-full px-5 py-3 text-sm font-semibold text-white transition disabled:opacity-60 ${buttonAccent}`}
+                  >
+                    {creatingOperator ? "Создаём..." : "Добавить пользователя"}
+                  </button>
+                </div>
+              </div>
+            </article>
+          ) : null}
+
           {operators.map((operator) => {
             const showLastSeen = operator.status !== "online";
 
@@ -528,6 +761,9 @@ export function OperatorsSettingsPage({
                     </div>
                     <p className="mt-2 text-sm text-[#6C6C70]">
                       Статус: {operatorStatusLabel[operator.status]}
+                    </p>
+                    <p className="mt-1 text-xs text-[#8E8E93]">
+                      Аккаунт: {operator.isActive === false ? "деактивирован" : "активен"}
                     </p>
                     {showLastSeen ? (
                       <p className="mt-1 text-xs text-[#8E8E93]">
@@ -629,6 +865,20 @@ export function OperatorsSettingsPage({
                   >
                     {resettingOperatorId === operator.id ? "Сбрасываем..." : "Сбросить пароль"}
                   </button>
+                  {scope === "supplier_supervisor" ? (
+                    <button
+                      type="button"
+                      disabled={activatingOperatorId === operator.id}
+                      onClick={() => void handleToggleActivation(operator)}
+                      className="rounded-full border border-[#D6DCE7] bg-white px-4 py-2 text-sm font-semibold text-[#1E1E1E] transition hover:bg-[#F7F9FC] disabled:opacity-60"
+                    >
+                      {activatingOperatorId === operator.id
+                        ? "Сохраняем..."
+                        : operator.isActive === false
+                          ? "Активировать"
+                          : "Деактивировать"}
+                    </button>
+                  ) : null}
                 </div>
               </article>
             );

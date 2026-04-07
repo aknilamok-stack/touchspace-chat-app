@@ -246,6 +246,9 @@ export class AuthService {
     profileId: string,
     password: string,
     preferredLogin?: string | null,
+    options?: {
+      passwordChangeRequired?: boolean;
+    },
   ) {
     const profile = await this.prisma.profile.findUnique({
       where: { id: profileId },
@@ -266,12 +269,14 @@ export class AuthService {
     const login =
       profile.authLogin?.trim() || (await this.buildUniqueLogin(loginBase));
 
+    const passwordChangeRequired = options?.passwordChangeRequired ?? true;
+
     await this.prisma.profile.update({
       where: { id: profileId },
       data: {
         authLogin: login,
         passwordHash: this.hashPassword(password),
-        passwordChangeRequired: false,
+        passwordChangeRequired,
         passwordIssuedAt: new Date(),
       },
     });
@@ -279,7 +284,7 @@ export class AuthService {
     return {
       login,
       temporaryPassword: password,
-      passwordChangeRequired: false,
+      passwordChangeRequired,
     };
   }
 

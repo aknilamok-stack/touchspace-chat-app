@@ -60,6 +60,39 @@ export class SupervisorsController {
     );
   }
 
+  @Post('operators')
+  createOperator(
+    @Body()
+    body: {
+      supervisorId: string;
+      fullName?: string;
+      email?: string | null;
+      password?: string;
+    },
+  ) {
+    return this.supervisorsService.createOperator(body.supervisorId, {
+      fullName: body.fullName,
+      email: body.email,
+      password: body.password,
+    });
+  }
+
+  @Patch('operators/:id/activation')
+  updateOperatorActivation(
+    @Param('id') operatorId: string,
+    @Body()
+    body: {
+      supervisorId: string;
+      enabled: boolean;
+    },
+  ) {
+    return this.supervisorsService.updateOperatorActivation(
+      body.supervisorId,
+      operatorId,
+      body.enabled,
+    );
+  }
+
   @Post('operators/:id/reissue-password')
   reissueOperatorPassword(
     @Param('id') operatorId: string,

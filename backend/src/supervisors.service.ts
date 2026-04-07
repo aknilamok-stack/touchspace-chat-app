@@ -13,6 +13,12 @@ type UpdateOperatorAccountInput = {
   email?: string | null;
 };
 
+type CreateOperatorInput = {
+  fullName?: string;
+  email?: string | null;
+  password?: string;
+};
+
 type AnalyticsRangeInput = {
   preset?: string;
   dateFrom?: string;
@@ -49,6 +55,10 @@ export class SupervisorsService {
     }
 
     return normalizedValue;
+  }
+
+  private buildProfileId(prefix: string) {
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private async getSupervisor(supervisorId: string) {
@@ -214,6 +224,9 @@ export class SupervisorsService {
         authLogin: true,
         email: true,
         supplierId: true,
+        isActive: true,
+        approvalStatus: true,
+        status: true,
         chatAccessEnabled: true,
       },
     });
@@ -249,8 +262,8 @@ export class SupervisorsService {
         email: true,
         role: true,
         status: true,
-          supplierId: true,
-          supervisorProfileId: true,
+        supplierId: true,
+        supervisorProfileId: true,
         managerStatus: true,
         managerPresenceHeartbeatAt: true,
         supplierStatus: true,
@@ -258,6 +271,7 @@ export class SupervisorsService {
         lastLoginAt: true,
         passwordChangeRequired: true,
         chatAccessEnabled: true,
+        isActive: true,
       },
     });
 
@@ -288,7 +302,80 @@ export class SupervisorsService {
         lastLoginAt: operator.lastLoginAt,
         passwordChangeRequired: operator.passwordChangeRequired,
         chatAccessEnabled: operator.chatAccessEnabled,
+        isActive: operator.isActive,
       })),
+    };
+  }
+
+  async createOperator(supervisorId: string, input: CreateOperatorInput) {
+    const supervisor = await this.getSupervisor(supervisorId);
+
+    if (supervisor.role !== 'supplier_supervisor') {
+      throw new BadRequestException(
+        'Создавать операторов поставщика может только управленец поставщика',
+      );
+    }
+
+    const fullName = input.fullName?.trim();
+    const email = this.normalizeEmail(input.email);
+    const password = input.password?.trim() || '';
+
+    if (!fullName) {
+      throw new BadRequestException('Имя оператора обязательно');
+    }
+
+    if (!email) {
+      throw new BadRequestException('Email обязателен');
+    }
+
+    if (!password) {
+      throw new BadRequestException('Пароль обязателен');
+    }
+
+    const existingEmailOwner = await this.prisma.profile.findFirst({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (existingEmailOwner) {
+      throw new BadRequestException('Этот email уже используется');
+    }
+
+    const profile = await this.prisma.profile.create({
+      data: {
+        id: this.buildProfileId('supplier_operator'),
+        fullName,
+        email,
+        role: 'supplier',
+        status: 'active',
+        approvalStatus: 'approved',
+        companyName: supervisor.companyName?.trim() || null,
+        supplierId: supervisor.supplierId?.trim() || null,
+        supervisorProfileId: supervisor.id,
+        isActive: true,
+        chatAccessEnabled: true,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        authLogin: true,
+      },
+    });
+
+    const credentials = await this.authService.setCredentialsForProfile(
+      profile.id,
+      password,
+      email,
+      {
+        passwordChangeRequired: true,
+      },
+    );
+
+    return {
+      ok: true,
+      operator: profile,
+      credentials,
     };
   }
 
@@ -376,6 +463,41 @@ export class SupervisorsService {
         fullName: true,
         authLogin: true,
         email: true,
+      },
+    });
+
+    return {
+      ok: true,
+      operator: updatedOperator,
+    };
+  }
+
+  async updateOperatorActivation(
+    supervisorId: string,
+    operatorId: string,
+    enabled: boolean,
+  ) {
+    const { operator, supervisor } = await this.ensureOperatorInScope(
+      supervisorId,
+      operatorId,
+    );
+
+    if (supervisor.role !== 'supplier_supervisor') {
+      throw new BadRequestException(
+        'Менять активность операторов поставщика может только управленец поставщика',
+      );
+    }
+
+    const updatedOperator = await this.prisma.profile.update({
+      where: { id: operator.id },
+      data: {
+        isActive: enabled,
+        status: enabled ? 'active' : 'blocked',
+      },
+      select: {
+        id: true,
+        isActive: true,
+        status: true,
       },
     });
 

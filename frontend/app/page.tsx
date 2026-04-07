@@ -27,7 +27,12 @@ import {
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
 import { formatDialogActivityLabel } from "@/lib/dialog-list";
-import { fetchManagerStatuses, updateManagerPresence } from "@/lib/manager-presence";
+import {
+  fetchManagerStatuses,
+  fetchSupplierStatusRecords,
+  updateManagerPresence,
+  type SupplierPresenceRecord,
+} from "@/lib/manager-presence";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
 const supplierDirectory: Record<string, { id: string; name: string }> = {
@@ -75,6 +80,12 @@ type ApiSupplierRequest = {
   supplierId: string | null;
   supplierName: string;
   status: string;
+  assignedSupplierProfileId?: string | null;
+  assignedSupplierProfileName?: string | null;
+  claimedAt?: string | null;
+  claimRequiredAt?: string | null;
+  claimMissedAt?: string | null;
+  returnedToQueueAt?: string | null;
   requestText: string;
   slaMinutes: number | null;
   createdByManagerId: string | null;
@@ -128,6 +139,11 @@ type ApiTicket = {
   aiActivatedAt?: string | null;
   aiDeactivatedAt?: string | null;
   handedToManagerAt?: string | null;
+  claimRequiredAt?: string | null;
+  claimedAt?: string | null;
+  claimMissedAt?: string | null;
+  returnedToQueueAt?: string | null;
+  rescueQueuedAt?: string | null;
   lastMessageAt?: string | null;
   resolvedAt?: string | null;
   messages?: ApiMessage[];
@@ -159,6 +175,7 @@ type ChatMessage = {
 
 type ChatSupplierRequest = {
   id: string;
+  supplierId: string | null;
   supplierName: string;
   status: string;
   requestText: string;
@@ -169,6 +186,12 @@ type ChatSupplierRequest = {
   firstResponseAt: string | null;
   responseTime: number | null;
   responseBreached: boolean;
+  claimRequiredAt: string | null;
+  claimMissedAt: string | null;
+  returnedToQueueAt: string | null;
+  claimedAt: string | null;
+  assignedSupplierProfileId: string | null;
+  assignedSupplierProfileName: string | null;
 };
 
 type SupplierRequestPeriodFilter = "today" | "yesterday" | "week" | "month" | "all";
@@ -195,6 +218,11 @@ type ChatItem = {
   aiActivatedAt: string | null;
   aiDeactivatedAt: string | null;
   handedToManagerAt: string | null;
+  claimRequiredAt: string | null;
+  claimedAt: string | null;
+  claimMissedAt: string | null;
+  returnedToQueueAt: string | null;
+  rescueQueuedAt: string | null;
   lastMessageAt: string | null;
   resolvedAt: string | null;
   clientId: string | null;
@@ -374,6 +402,22 @@ const getLastNonSystemMessage = (chat: ChatItem) => {
 };
 
 const getChatTone = (chat: ChatItem) => {
+  if (!chat.assignedManagerId && chat.rescueQueuedAt) {
+    return {
+      label: "Спасение чата",
+      dot: "bg-[#FF7A00]",
+      pill: "bg-[#FFF1E8] text-[#C35A00]",
+    };
+  }
+
+  if (!chat.assignedManagerId && chat.claimMissedAt) {
+    return {
+      label: "Пропущен",
+      dot: "bg-[#FD6868]",
+      pill: "bg-[#FFE7E7] text-[#D64545]",
+    };
+  }
+
   if (chat.rawStatus === "resolved") {
     return {
       label: "Решён",
@@ -629,6 +673,7 @@ const formatSupplierRequest = (
   request: ApiSupplierRequest
 ): ChatSupplierRequest => ({
   id: request.id,
+  supplierId: request.supplierId ?? null,
   supplierName: request.supplierName,
   status: request.status,
   requestText: request.requestText,
@@ -639,6 +684,12 @@ const formatSupplierRequest = (
   firstResponseAt: request.firstResponseAt,
   responseTime: request.responseTime,
   responseBreached: request.responseBreached,
+  claimRequiredAt: request.claimRequiredAt ?? null,
+  claimMissedAt: request.claimMissedAt ?? null,
+  returnedToQueueAt: request.returnedToQueueAt ?? null,
+  claimedAt: request.claimedAt ?? null,
+  assignedSupplierProfileId: request.assignedSupplierProfileId ?? null,
+  assignedSupplierProfileName: request.assignedSupplierProfileName ?? null,
 });
 
 const extractApiErrorMessage = async (
@@ -761,6 +812,11 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   aiActivatedAt: ticket.aiActivatedAt ?? null,
   aiDeactivatedAt: ticket.aiDeactivatedAt ?? null,
   handedToManagerAt: ticket.handedToManagerAt ?? null,
+  claimRequiredAt: ticket.claimRequiredAt ?? null,
+  claimedAt: ticket.claimedAt ?? null,
+  claimMissedAt: ticket.claimMissedAt ?? null,
+  returnedToQueueAt: ticket.returnedToQueueAt ?? null,
+  rescueQueuedAt: ticket.rescueQueuedAt ?? null,
   lastMessageAt: ticket.lastMessageAt ?? null,
   resolvedAt: ticket.resolvedAt ?? null,
   clientId: ticket.clientId?.trim() || null,
@@ -968,6 +1024,9 @@ export default function Home() {
   const [transferDialogError, setTransferDialogError] = useState("");
   const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
   const [toast, setToast] = useState<UiToast | null>(null);
+  const [supplierPresenceRecords, setSupplierPresenceRecords] = useState<
+    SupplierPresenceRecord[]
+  >([]);
   const [resolvedHighlight, setResolvedHighlight] = useState<{
     ticketId: string;
     until: number;
@@ -1019,6 +1078,7 @@ export default function Home() {
   const managerIsNearBottomRef = useRef(true);
   const previousActiveChatIdRef = useRef("");
   const previousActiveChatMessageCountRef = useRef(0);
+  const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
@@ -1756,6 +1816,23 @@ export default function Home() {
   const onlineManagers = dedupeManagers(
     availableManagers.filter((manager) => manager.status === "online")
   );
+  const isSupplierScopeOnline = useCallback(
+    (supplierScopeId?: string | null) =>
+      supplierPresenceRecords.some(
+        (supplier) =>
+          supplier.supplierId === (supplierScopeId?.trim() || null) &&
+          supplier.status === "online"
+      ),
+    [supplierPresenceRecords]
+  );
+  const activeChatSupplierScopeIds = Array.from(
+    new Set(
+      (activeChat?.supplierRequests ?? [])
+        .filter((request) => !["closed", "cancelled", "resolved"].includes(request.status))
+        .map((request) => request.supplierId?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
   const availableSupplierRequestSuppliers = Array.from(
     new Set((activeChat?.supplierRequests ?? []).map((request) => request.supplierName))
   );
@@ -1815,17 +1892,19 @@ export default function Home() {
 
     const loadInitialTickets = async () => {
       try {
-        const [data, remoteStatuses, candidates] = await Promise.all([
+        const [data, remoteStatuses, supplierStatuses, candidates] = await Promise.all([
           fetchTickets(),
           fetchManagerStatuses().catch(
             (): Record<string, ManagerPresence> => ({})
           ),
+          fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
           fetchManagerNotificationCandidates().catch(
             (): NotificationCandidate[] => []
           ),
         ]);
 
         setManagerStatuses(remoteStatuses);
+        setSupplierPresenceRecords(supplierStatuses);
         setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
         setNotificationCandidates(candidates);
         syncTickets(data);
@@ -1857,17 +1936,19 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
-          const [tickets, remoteStatuses, candidates] = await Promise.all([
+          const [tickets, remoteStatuses, supplierStatuses, candidates] = await Promise.all([
             fetchTickets(),
             fetchManagerStatuses().catch(
               (): Record<string, ManagerPresence> => ({})
             ),
+            fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
             fetchManagerNotificationCandidates().catch(
               (): NotificationCandidate[] => []
             ),
           ]);
 
           setManagerStatuses(remoteStatuses);
+          setSupplierPresenceRecords(supplierStatuses);
           setNotificationCandidates(candidates);
           if (currentManagerId) {
             setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
@@ -1909,6 +1990,43 @@ export default function Home() {
         console.error("Ошибка синхронизации статуса менеджера:", error);
       });
   }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
+
+  useEffect(() => {
+    if (!authReady || activeChatSupplierScopeIds.length === 0) {
+      supplierAvailabilityByScopeRef.current = {};
+      return;
+    }
+
+    const nextAvailabilityMap = Object.fromEntries(
+      activeChatSupplierScopeIds.map((scopeId) => [scopeId, isSupplierScopeOnline(scopeId)])
+    );
+    const previousAvailabilityMap = supplierAvailabilityByScopeRef.current;
+
+    for (const scopeId of activeChatSupplierScopeIds) {
+      const previousValue = previousAvailabilityMap[scopeId];
+      const nextValue = nextAvailabilityMap[scopeId];
+      const relatedRequest = (activeChat?.supplierRequests ?? []).find(
+        (request) =>
+          request.supplierId === scopeId &&
+          !["closed", "cancelled", "resolved"].includes(request.status)
+      );
+      const supplierLabel = relatedRequest?.supplierName?.trim() || "Поставщик";
+
+      if (previousValue === false && nextValue === true) {
+        setToast({
+          message: `${supplierLabel} снова в сети`,
+          tone: "info",
+        });
+      }
+    }
+
+    supplierAvailabilityByScopeRef.current = nextAvailabilityMap;
+  }, [
+    activeChat?.supplierRequests,
+    activeChatSupplierScopeIds,
+    authReady,
+    isSupplierScopeOnline,
+  ]);
 
   useEffect(() => {
     if (
@@ -2343,14 +2461,6 @@ export default function Home() {
     setActiveChatId(candidate.ticketId);
     setFilter(candidate.scopeStatus === "owned_active" ? "in_progress" : "incoming");
     dismissFloatingNotification(notificationKey);
-
-    if (
-      candidate.scopeStatus === "new_unclaimed" ||
-      candidate.scopeStatus === "missed_unclaimed" ||
-      candidate.scopeStatus === "rescue_queue"
-    ) {
-      await handleClaimIncoming(candidate.ticketId);
-    }
   };
 
   useEffect(() => {
@@ -3153,6 +3263,12 @@ export default function Home() {
       setSupplierFollowUpError("");
       setSelectedSupplier(suppliers[0]);
       setIsSupplierFormOpen(false);
+      setToast({
+        message: isSupplierScopeOnline(supplier.id)
+          ? `Запрос отправлен поставщику ${supplier.name}`
+          : `Сейчас поставщик ${supplier.name} не в сети. Как только кто-то появится, запрос сразу уйдёт в работу.`,
+        tone: "info",
+      });
     } catch (error) {
       console.error("Ошибка создания запроса поставщику:", error);
       setCreateSupplierRequestError("Не удалось создать запрос поставщику");
@@ -3750,7 +3866,11 @@ export default function Home() {
                     <DialogListCard
                       key={chat.id}
                       active={isActive}
-                      emphasized={unreadCount > 0}
+                      emphasized={
+                        unreadCount > 0 ||
+                        (!chat.assignedManagerId &&
+                          Boolean(chat.claimMissedAt || chat.rescueQueuedAt))
+                      }
                       onClick={() => {
                         setIsChatPaneDismissed(false);
                         setActiveChatId(chat.id);
@@ -3766,7 +3886,7 @@ export default function Home() {
                       timeLabel={formatDialogActivityLabel(
                         chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
                       )}
-                      statusLabel={isIncomingQueueChat ? "Ожидает принятия" : chatTone.label}
+                      statusLabel={chatTone.label}
                       statusBadgeClassName={chatTone.pill}
                       unreadCount={unreadCount}
                       pinned={chat.pinned}

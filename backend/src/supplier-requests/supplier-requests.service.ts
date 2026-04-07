@@ -46,6 +46,10 @@ export class SupplierRequestsService {
       : `Поставщик ${supplierName} взял запрос в работу`;
   }
 
+  private buildReturnedToQueueMessage(supplierName: string) {
+    return `Запрос поставщику ${supplierName} возвращён в общую очередь`;
+  }
+
   async create(createSupplierRequestDto: CreateSupplierRequestDto) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: createSupplierRequestDto.ticketId },
@@ -215,9 +219,19 @@ export class SupplierRequestsService {
 
       const now = new Date();
       const nextStatus = input.status;
+      const clearAssignedSupplier = Boolean(input.clearAssignedSupplier);
       const assignedSupplierProfileId =
         input.assignedSupplierProfileId?.trim() || null;
       const assignedSupplierProfileName = resolvedAssignedSupplierProfileName;
+      const nextAssignedSupplierProfileId =
+        clearAssignedSupplier && nextStatus === 'pending'
+          ? null
+          : assignedSupplierProfileId ?? supplierRequest.assignedSupplierProfileId;
+      const nextAssignedSupplierProfileName =
+        clearAssignedSupplier && nextStatus === 'pending'
+          ? null
+          : assignedSupplierProfileName ??
+            supplierRequest.assignedSupplierProfileName;
 
       if (
         nextStatus === 'in_progress' &&
@@ -234,15 +248,14 @@ export class SupplierRequestsService {
         where: { id },
         data: {
           status: nextStatus,
-          assignedSupplierProfileId:
-            assignedSupplierProfileId ?? supplierRequest.assignedSupplierProfileId,
-          assignedSupplierProfileName:
-            assignedSupplierProfileName ??
-            supplierRequest.assignedSupplierProfileName,
+          assignedSupplierProfileId: nextAssignedSupplierProfileId,
+          assignedSupplierProfileName: nextAssignedSupplierProfileName,
           claimedAt:
             nextStatus === 'in_progress'
               ? supplierRequest.claimedAt ?? now
-              : supplierRequest.claimedAt,
+              : nextStatus === 'pending' && clearAssignedSupplier
+                ? null
+                : supplierRequest.claimedAt,
           claimMissedAt:
             nextStatus === 'in_progress' ? null : supplierRequest.claimMissedAt,
           returnedToQueueAt:
@@ -266,15 +279,18 @@ export class SupplierRequestsService {
       await tx.message.create({
         data: {
           ticketId: supplierRequest.ticketId,
-          content: shouldCreateClaimMessage
-            ? this.buildClaimedMessage(
-                supplierRequest.supplierName,
-                assignedSupplierProfileName,
-              )
-            : this.buildStatusChangedMessage(
-                supplierRequest.supplierName,
-                nextStatus,
-              ),
+          content:
+            nextStatus === 'pending' && clearAssignedSupplier
+              ? this.buildReturnedToQueueMessage(supplierRequest.supplierName)
+              : shouldCreateClaimMessage
+                ? this.buildClaimedMessage(
+                    supplierRequest.supplierName,
+                    assignedSupplierProfileName,
+                  )
+                : this.buildStatusChangedMessage(
+                    supplierRequest.supplierName,
+                    nextStatus,
+                  ),
           senderType: 'system',
           senderRole: 'system',
           status: 'sent',

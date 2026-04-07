@@ -91,6 +91,11 @@ const CLIENT_AVATAR_EMOJIS = [
 
 @Injectable()
 export class TicketsService {
+  private static readonly OFFLINE_MANAGER_AUTO_REPLY =
+    'Спасибо, что написали. Сейчас менеджеры не в сети, но как только кто-то появится, мы сразу вернёмся с ответом.';
+  private static readonly OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS =
+    15 * 60 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly typingService: TypingService,
@@ -114,6 +119,51 @@ export class TicketsService {
         messageType: 'system',
       },
     });
+  }
+
+  private async maybeCreateOfflineManagerAutoReply(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    triggerCreatedAt: Date,
+  ) {
+    const hasOnlineManagers = await this.profilesService.hasOnlineManagers();
+
+    if (hasOnlineManagers) {
+      return false;
+    }
+
+    const recentOfflineReply = await tx.message.findFirst({
+      where: {
+        ticketId,
+        senderType: 'system',
+        messageType: 'system',
+        content: TicketsService.OFFLINE_MANAGER_AUTO_REPLY,
+        createdAt: {
+          gte: new Date(
+            triggerCreatedAt.getTime() -
+              TicketsService.OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS,
+          ),
+        },
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (recentOfflineReply) {
+      return false;
+    }
+
+    await this.createSystemMessage(
+      tx,
+      ticketId,
+      TicketsService.OFFLINE_MANAGER_AUTO_REPLY,
+    );
+
+    return true;
   }
 
   private buildTicketWhere(viewer?: TicketViewer) {
@@ -1478,6 +1528,12 @@ export class TicketsService {
           },
         });
 
+        await this.maybeCreateOfflineManagerAutoReply(
+          tx,
+          existingTicket.id,
+          message.createdAt,
+        );
+
         return {
           id: existingTicket.id,
         };
@@ -1546,6 +1602,10 @@ export class TicketsService {
           ticket.id,
           'AI-помощник подключён к диалогу',
         );
+      }
+
+      if (isClientStart) {
+        await this.maybeCreateOfflineManagerAutoReply(tx, ticket.id, message.createdAt);
       }
 
       return {

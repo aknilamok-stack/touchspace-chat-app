@@ -148,6 +148,23 @@ export class ProfilesService {
     }));
   }
 
+  async hasOnlineManagers() {
+    const onlineManagers = await this.prisma.profile.count({
+      where: {
+        role: {
+          in: [...MANAGER_ROLES],
+        },
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        managerStatus: 'online',
+      },
+    });
+
+    return onlineManagers > 0;
+  }
+
   async updateManagerStatus(
     id: string,
     managerStatus: string,
@@ -227,6 +244,30 @@ export class ProfilesService {
       lastLoginAt: supplier.lastLoginAt,
       supplierPresenceHeartbeatAt: supplier.supplierPresenceHeartbeatAt,
     }));
+  }
+
+  async hasOnlineSuppliersForScope(supplierId: string) {
+    const normalizedSupplierId = supplierId?.trim();
+
+    if (!normalizedSupplierId) {
+      return false;
+    }
+
+    const onlineSuppliers = await this.prisma.profile.count({
+      where: {
+        role: {
+          in: [...SUPPLIER_ROLES],
+        },
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        supplierId: normalizedSupplierId,
+        supplierStatus: 'online',
+      },
+    });
+
+    return onlineSuppliers > 0;
   }
 
   async updateSupplierStatus(

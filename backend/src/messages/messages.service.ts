@@ -68,6 +68,10 @@ type ChatAccessActor = {
 @Injectable()
 export class MessagesService {
   private static readonly EDIT_WINDOW_MS = 20 * 60 * 1000;
+  private static readonly OFFLINE_MANAGER_AUTO_REPLY =
+    'Спасибо, что написали. Сейчас менеджеры не в сети, но как только кто-то появится, мы сразу вернёмся с ответом.';
+  private static readonly OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS =
+    15 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -225,6 +229,51 @@ export class MessagesService {
         messageType: 'system',
       },
     });
+  }
+
+  private async maybeCreateOfflineManagerAutoReply(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    triggerCreatedAt: Date,
+  ) {
+    const hasOnlineManagers = await this.profilesService.hasOnlineManagers();
+
+    if (hasOnlineManagers) {
+      return false;
+    }
+
+    const recentOfflineReply = await tx.message.findFirst({
+      where: {
+        ticketId,
+        senderType: 'system',
+        messageType: 'system',
+        content: MessagesService.OFFLINE_MANAGER_AUTO_REPLY,
+        createdAt: {
+          gte: new Date(
+            triggerCreatedAt.getTime() -
+              MessagesService.OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS,
+          ),
+        },
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (recentOfflineReply) {
+      return false;
+    }
+
+    await this.createSystemMessage(
+      tx,
+      ticketId,
+      MessagesService.OFFLINE_MANAGER_AUTO_REPLY,
+    );
+
+    return true;
   }
 
   private async markClientMessagesAsRead(
@@ -695,6 +744,11 @@ export class MessagesService {
 
         if (senderType === 'client') {
           this.typingService.clearTyping(ticketId, 'client');
+          await this.maybeCreateOfflineManagerAutoReply(
+            tx,
+            ticketId,
+            message.createdAt,
+          );
         }
 
         if (senderType === 'manager') {
@@ -1175,6 +1229,11 @@ export class MessagesService {
 
       if (senderType === 'client') {
         this.typingService.clearTyping(ticketId, 'client');
+        await this.maybeCreateOfflineManagerAutoReply(
+          tx,
+          ticketId,
+          message.createdAt,
+        );
       }
 
       return message;

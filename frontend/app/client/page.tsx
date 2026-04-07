@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
+import { fetchManagerStatuses } from "@/lib/manager-presence";
 import {
   CHAT_ATTACHMENT_ACCEPT,
   type ChatAttachmentPayload,
@@ -110,6 +111,7 @@ export default function ClientPage() {
   const [hostWidgetOpen, setHostWidgetOpen] = useState(false);
   const [isManagerTyping, setIsManagerTyping] = useState(false);
   const [isRatingPromptDismissed, setIsRatingPromptDismissed] = useState(false);
+  const [hasOnlineManagers, setHasOnlineManagers] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
@@ -121,7 +123,9 @@ export default function ClientPage() {
 
   const isResolved = activeTicket?.status === "resolved";
   const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
-  const widgetStatusText = "Операторы онлайн";
+  const widgetStatusText = hasOnlineManagers
+    ? "Менеджеры в сети"
+    : "Менеджеры не в сети";
   const hasMessages = messages.length > 0;
   const showQuickActions = !hasMessages && !activeTicket;
   const widgetVisible = isEmbeddedWidget || isWidgetOpen;
@@ -415,6 +419,27 @@ export default function ClientPage() {
       setIsLoadingContext(false);
     }
   };
+
+  useEffect(() => {
+    const refreshManagerAvailability = async () => {
+      try {
+        const statuses = await fetchManagerStatuses();
+        setHasOnlineManagers(
+          Object.values(statuses).some((status) => status === "online")
+        );
+      } catch (error) {
+        console.error("Ошибка загрузки статусов менеджеров:", error);
+      }
+    };
+
+    void refreshManagerAvailability();
+
+    const intervalId = window.setInterval(() => {
+      void refreshManagerAvailability();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1240,6 +1265,12 @@ export default function ClientPage() {
 
           <div className="flex min-h-0 flex-1 flex-col bg-[#F7F8FB]">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {!hasOnlineManagers ? (
+                <div className="rounded-[18px] border border-[#CFE3FF] bg-[#F3F8FF] px-4 py-3 text-sm leading-5 text-[#0A63CE] shadow-[0_10px_24px_rgba(10,132,255,0.08)]">
+                  Менеджеры сейчас не в сети. Как только кто-то появится, мы сразу ответим.
+                </div>
+              ) : null}
+
               {!hasMessages ? (
                 <>
                   <div className="flex justify-start">

@@ -64,6 +64,9 @@ type SupplierRequest = {
   assignedSupplierProfileName?: string | null;
   requestText: string;
   status: string;
+  claimRequiredAt?: string | null;
+  claimMissedAt?: string | null;
+  returnedToQueueAt?: string | null;
   slaMinutes?: number | null;
   createdByManagerId?: string | null;
   claimedAt?: string | null;
@@ -639,7 +642,26 @@ const getSupplierCardPreview = (card: SupplierRequestCard) => {
   return "Диалог создан";
 };
 
-const getSupplierCardTone = (queueTab: SupplierQueueTab) => {
+const getSupplierCardTone = (
+  request: SupplierRequest,
+  queueTab: SupplierQueueTab
+) => {
+  if (queueTab === "new" && request.returnedToQueueAt) {
+    return {
+      dot: "bg-[#FF7A00]",
+      pill: "bg-[#FFF1E8] text-[#C35A00]",
+      label: "Возвращён в очередь",
+    };
+  }
+
+  if (queueTab === "new" && request.claimMissedAt) {
+    return {
+      dot: "bg-[#FD6868]",
+      pill: "bg-[#FFE7E7] text-[#D64545]",
+      label: "Пропущен",
+    };
+  }
+
   if (queueTab === "new") {
     return {
       dot: "bg-[#0A84FF]",
@@ -742,6 +764,24 @@ const buildSupplierPanelStatus = ({
   }
 
   if (queueTab === "new") {
+    if (request.returnedToQueueAt) {
+      return {
+        label: "Возвращён в очередь",
+        badgeClassName: "bg-[#FFF1E8] text-[#C35A00]",
+        cardClassName: "border-[#FFD8BE] bg-[#FFF8F2]",
+        accentClassName: "bg-[#FF7A00]",
+      };
+    }
+
+    if (request.claimMissedAt) {
+      return {
+        label: "Пропущенный запрос",
+        badgeClassName: "bg-[#FFE7E7] text-[#D64545]",
+        cardClassName: "border-[#FFD3D3] bg-[#FFF8F8]",
+        accentClassName: "bg-[#FF3B30]",
+      };
+    }
+
     return {
       label: "Новый запрос",
       badgeClassName: "bg-[#FFE7E7] text-[#D64545]",
@@ -1332,6 +1372,11 @@ export default function SupplierPage() {
     !isSupplierDialogResolved &&
     !canSupplierTakeRequestInWork &&
     !isSelectedRequestClaimedByAnotherSupplier;
+  const canReturnSupplierRequestToQueue =
+    Boolean(selectedActiveRequest) &&
+    !isSupplierDialogResolved &&
+    selectedRequestCard?.queueTab === "in_progress" &&
+    selectedActiveRequest?.assignedSupplierProfileId === supplierProfileId;
   const canSupplierMarkResolved =
     !isResolvingTicket &&
     selectedTicket?.status !== "resolved" &&
@@ -2637,6 +2682,60 @@ export default function SupplierPage() {
     }
   };
 
+  const handleReturnRequestToQueue = async () => {
+    if (!selectedActiveRequest || !canReturnSupplierRequestToQueue) {
+      return;
+    }
+
+    setIsSendingReply(true);
+    setReplyError("");
+
+    try {
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "pending",
+          clearAssignedSupplier: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось вернуть запрос в общую очередь");
+      }
+
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(supplierId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
+      ]);
+
+      syncSupplierRequests(updatedRequests);
+      setTicketsById(updatedTicketsMap);
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((currentMap) => ({
+        ...currentMap,
+        [selectedActiveRequest.ticketId]: refreshedMessages,
+      }));
+      setActiveQueueTab("new");
+      setToast({
+        message: "Запрос возвращён в общую очередь поставщика",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка возврата запроса в очередь:", error);
+      setReplyError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось вернуть запрос в общую очередь"
+      );
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
   const handleSendReply = async () => {
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
@@ -2981,7 +3080,7 @@ export default function SupplierPage() {
               !requestsError &&
               activeTabRequests.map((card) => (
                 (() => {
-                  const tone = getSupplierCardTone(card.queueTab);
+                  const tone = getSupplierCardTone(card.request, card.queueTab);
                   const managerLabel =
                     card.ticket?.assignedManagerName?.trim() ||
                     card.ticket?.lastResolvedByManagerName?.trim() ||
@@ -2991,7 +3090,10 @@ export default function SupplierPage() {
                   <DialogListCard
                   key={card.request.id}
                     active={selectedRequestId === card.request.id}
-                    emphasized={card.queueTab === "new"}
+                    emphasized={
+                      card.queueTab === "new" ||
+                      Boolean(card.request.claimMissedAt || card.request.returnedToQueueAt)
+                    }
                     onClick={() => {
                       setIsChatPaneDismissed(false);
                       setSelectedRequestId(card.request.id);
@@ -3665,6 +3767,20 @@ export default function SupplierPage() {
                             ? `Сейчас этот запрос ведёт ${selectedActiveRequest.assignedSupplierProfileName}.`
                             : "Сейчас этот запрос ведёт другой сотрудник поставщика."}
                         </p>
+                      </div>
+                    ) : canReturnSupplierRequestToQueue ? (
+                      <div className="rounded-[24px] border border-[#FFE1C7] bg-[#FFF8F1] px-5 py-5 shadow-[0_14px_32px_rgba(255,122,0,0.08)]">
+                        <p className="text-center text-sm font-semibold text-[#1E1E1E]">
+                          Запрос сейчас закреплён за вами
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleReturnRequestToQueue}
+                          disabled={isSendingReply}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[#FF7A00] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(255,122,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#E56E00] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                        >
+                          {isSendingReply ? "Возвращаем..." : "Вернуть в очередь"}
+                        </button>
                       </div>
                     ) : attachmentName ? (
                       <div className="mb-3 flex">

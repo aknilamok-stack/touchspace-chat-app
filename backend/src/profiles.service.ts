@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import {
   getDefaultFullNameForRole,
@@ -71,6 +71,46 @@ export class ProfilesService {
     }
 
     return presenceStatus;
+  }
+
+  async updateBasicProfile(id: string, fullName: string) {
+    const normalizedId = id?.trim();
+    const normalizedFullName = fullName?.trim();
+
+    if (!normalizedId) {
+      throw new BadRequestException('userId обязателен');
+    }
+
+    if (!normalizedFullName) {
+      throw new BadRequestException('Имя обязательно');
+    }
+
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id: normalizedId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        fullName: true,
+      },
+    });
+
+    if (!existingProfile) {
+      throw new NotFoundException(`Profile with id "${normalizedId}" not found`);
+    }
+
+    return this.prisma.profile.update({
+      where: { id: normalizedId },
+      data: {
+        fullName: normalizedFullName,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+      },
+    });
   }
 
   async getManagerStatuses() {

@@ -11,6 +11,7 @@ import {
   isSupplierRole,
   logoutServerSession,
   readAuthSession,
+  writeAuthSession,
   type AuthSession,
 } from "@/lib/auth";
 import {
@@ -147,9 +148,17 @@ export default function NotificationSettingsPage() {
   const [data, setData] = useState<NotificationSettingsResponse | null>(null);
   const [desktopMode, setDesktopMode] = useState(false);
   const [desktopPlatform, setDesktopPlatform] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   const profileId = getInternalProfileId(session);
   const homeHref = getHomePathForRole(session?.role);
+  const useCompactProfileSettings = session?.role === "manager" || session?.role === "supplier";
 
   const counters = useMemo(
     () => buildCounters(session?.role ?? "manager", data?.counters ?? {}),
@@ -227,6 +236,15 @@ export default function NotificationSettingsPage() {
       window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    setFullName((data?.profile.fullName || session.fullName || "").trim());
+    setEmail((data?.profile.email || session.email || "").trim());
+  }, [data?.profile.email, data?.profile.fullName, session]);
 
   const handleInstall = async () => {
     if (desktopMode) {
@@ -379,6 +397,129 @@ export default function NotificationSettingsPage() {
     }
   };
 
+  const handleSaveBasicProfile = async () => {
+    if (!session || !profileId) {
+      return;
+    }
+
+    const normalizedFullName = fullName.trim();
+
+    if (!normalizedFullName) {
+      setError("Имя обязательно.");
+      setInfo("");
+      return;
+    }
+
+    setProfileSaving(true);
+    setError("");
+    setInfo("");
+
+    try {
+      const response = await fetch(apiUrl(`/profiles/${encodeURIComponent(profileId)}/basic`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: normalizedFullName,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Не удалось сохранить имя.");
+      }
+
+      const payload = (await response.json()) as {
+        id: string;
+        fullName: string;
+        email?: string | null;
+        role: string;
+      };
+
+      const nextSession = {
+        ...session,
+        fullName: payload.fullName,
+        email: payload.email ?? session.email,
+      };
+
+      setSession(nextSession);
+      writeAuthSession(nextSession);
+      setFullName(payload.fullName);
+      setEmail(payload.email ?? session.email ?? "");
+      setInfo("Имя обновлено.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось сохранить имя.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    if (!session?.userId) {
+      setError("Сессия пользователя не найдена.");
+      setInfo("");
+      return;
+    }
+
+    if (!currentPassword.trim()) {
+      setError("Укажи текущий пароль.");
+      setInfo("");
+      return;
+    }
+
+    if (newPassword.trim().length < 8) {
+      setError("Новый пароль должен быть не короче 8 символов.");
+      setInfo("");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Новые пароли не совпадают.");
+      setInfo("");
+      return;
+    }
+
+    setPasswordSaving(true);
+    setError("");
+    setInfo("");
+
+    try {
+      const response = await fetch(apiUrl("/auth/change-password"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: session.userId,
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Не удалось сменить пароль.");
+      }
+
+      const nextSession = {
+        ...session,
+        passwordChangeRequired: false,
+      };
+
+      setSession(nextSession);
+      writeAuthSession(nextSession);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setInfo("Пароль обновлён.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось сменить пароль.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   if (loading || !session) {
     return (
       <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#eef3fb_40%,#f8fafc_100%)] px-4 py-6">
@@ -405,8 +546,14 @@ export default function NotificationSettingsPage() {
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">Настройки</h1>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Управление системными push-уведомлениями, устройствами и рабочими счётчиками для роли{" "}
-                <span className="font-semibold text-slate-700">{roleLabels[session.role] ?? session.role}</span>.
+                {useCompactProfileSettings
+                  ? "Здесь можно обновить имя и пароль учётной записи. Email показывается только для справки."
+                  : (
+                    <>
+                      Управление системными push-уведомлениями, устройствами и рабочими счётчиками для роли{" "}
+                      <span className="font-semibold text-slate-700">{roleLabels[session.role] ?? session.role}</span>.
+                    </>
+                  )}
               </p>
             </div>
 
@@ -445,6 +592,117 @@ export default function NotificationSettingsPage() {
           </div>
         ) : null}
 
+        {useCompactProfileSettings ? (
+          <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+            <article className="rounded-[28px] border border-slate-200/80 bg-white/92 p-6 shadow-[0_20px_60px_rgba(148,163,184,0.16)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Профиль</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">Основные данные</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Имя можно обновить в любой момент. Email закреплён за учётной записью и недоступен для редактирования.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                  {roleLabels[session.role] ?? session.role}
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-slate-700">Имя</span>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    placeholder="Введите имя"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-slate-700">Email</span>
+                  <input
+                    type="email"
+                    value={email}
+                    readOnly
+                    className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 outline-none"
+                    placeholder="Email не указан"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                <p className="text-sm text-slate-500">Из настроек профиля здесь доступно только имя.</p>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveBasicProfile()}
+                  disabled={profileSaving}
+                  className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {profileSaving ? "Сохраняем..." : "Сохранить имя"}
+                </button>
+              </div>
+            </article>
+
+            <article className="rounded-[28px] border border-slate-200/80 bg-white/92 p-6 shadow-[0_20px_60px_rgba(148,163,184,0.16)]">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Пароль</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Смена пароля</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Других настроек для менеджера и поставщика здесь больше нет. При необходимости можно только обновить пароль.
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-slate-700">Текущий пароль</span>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    placeholder="Введите текущий пароль"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-slate-700">Новый пароль</span>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    placeholder="Минимум 8 символов"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-slate-700">Повторите новый пароль</span>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    placeholder="Повторите новый пароль"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleSavePassword()}
+                disabled={passwordSaving}
+                className="mt-6 w-full rounded-full bg-sky-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-60"
+              >
+                {passwordSaving ? "Сохраняем..." : "Обновить пароль"}
+              </button>
+            </article>
+          </section>
+        ) : null}
+
+        {useCompactProfileSettings ? null : (
+          <>
         <section className="grid gap-4 md:grid-cols-3">
           <article className="rounded-[28px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_20px_60px_rgba(148,163,184,0.16)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Режим приложения</p>
@@ -654,6 +912,8 @@ export default function NotificationSettingsPage() {
             )}
           </div>
         </section>
+          </>
+        )}
       </div>
     </div>
   );

@@ -38,4 +38,12 @@ export class ProfilesController {
       body.fullName,
     );
   }
+
+  @Patch(':id/basic')
+  updateBasicProfile(
+    @Param('id') id: string,
+    @Body() body: { fullName: string },
+  ) {
+    return this.profilesService.updateBasicProfile(id, body.fullName);
+  }
 }

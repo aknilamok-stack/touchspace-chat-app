@@ -54,10 +54,31 @@ model Profile {
   registrationRequests    RegistrationRequest[] @relation("RegistrationLinkedProfile")
   pushSubscriptions       PushSubscription[]
   ticketContacts          TicketContact[]
+  adminActorEvents        AdminEvent[]      @relation("AdminEventActor")
+  adminTargetEvents       AdminEvent[]      @relation("AdminEventTarget")
   supervisor              Profile?          @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: SetNull)
   supervisedProfiles      Profile[]         @relation("ProfileSupervisor")
 
   @@index([supervisorProfileId])
+}
+
+model AdminEvent {
+  id              String   @id @default(cuid())
+  type            String
+  title           String
+  description     String?
+  actorProfileId  String?
+  targetProfileId String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  actorProfile    Profile? @relation("AdminEventActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+  targetProfile   Profile? @relation("AdminEventTarget", fields: [targetProfileId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([actorProfileId, createdAt])
+  @@index([targetProfileId, createdAt])
 }
 
 model Ticket {
@@ -70,6 +91,13 @@ model Ticket {
   aiActivatedAt            DateTime?
   aiDeactivatedAt          DateTime?
   handedToManagerAt        DateTime?
+  claimRequiredAt         DateTime?
+  claimedAt               DateTime?
+  claimMissedAt           DateTime?
+  returnedToQueueAt       DateTime?
+  lastClientMessageAt     DateTime?
+  lastManagerReplyAt      DateTime?
+  rescueQueuedAt          DateTime?
   aiResolved               Boolean   @default(false)
   pinned                   Boolean   @default(false)
   invitedManagerIds        Json
@@ -238,7 +266,12 @@ model SupplierRequest {
   slaMinutes         Int?
   createdByManagerId String?
   claimedAt          DateTime?
+  claimRequiredAt    DateTime?
+  claimMissedAt      DateTime?
+  returnedToQueueAt  DateTime?
   requestedAt        DateTime?
+  lastManagerMessageAt DateTime?
+  lastSupplierReplyAt  DateTime?
   responseStartedAt  DateTime?
   firstResponseAt    DateTime?
   respondedAt        DateTime?

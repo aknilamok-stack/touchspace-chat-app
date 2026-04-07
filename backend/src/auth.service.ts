@@ -4,13 +4,21 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
+import {
+  randomBytes,
+  randomInt,
+  randomUUID,
+  scryptSync,
+  timingSafeEqual,
+} from 'crypto';
 import { PrismaService } from './prisma.service';
 import { isManagerRole, isSupplierRole } from './role.utils';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
+  private readonly temporaryPasswordAlphabet =
+    'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
   private hashPassword(password: string) {
     const salt = randomBytes(16).toString('hex');
@@ -68,7 +76,9 @@ export class AuthService {
   }
 
   private generateTemporaryPassword() {
-    return randomBytes(6).toString('base64url');
+    return Array.from({ length: 14 }, () =>
+      this.temporaryPasswordAlphabet[randomInt(0, this.temporaryPasswordAlphabet.length)],
+    ).join('');
   }
 
   private assertPasswordStrength(password: string) {

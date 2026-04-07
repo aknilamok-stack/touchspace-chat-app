@@ -51,8 +51,6 @@ const quickRoleFilters = [
 const emptyCreateForm = {
   fullName: "",
   email: "",
-  password: "",
-  confirmPassword: "",
   role: "manager" as InternalRole,
   companyName: "",
   status: "active" as UserStatus,
@@ -65,9 +63,6 @@ const emptyEditForm = {
   companyName: "",
   status: "active" as UserStatus,
 };
-
-const buildGeneratedPassword = () =>
-  Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
 
 const roleNeedsCompany = (role?: string | null) =>
   role === "supplier" || role === "supplier_supervisor";
@@ -106,6 +101,7 @@ export function AdminUsers() {
   const [issuedCredentials, setIssuedCredentials] = useState<null | {
     login: string;
     temporaryPassword: string;
+    passwordChangeRequired?: boolean;
   }>(null);
 
   const loadUsers = async () => {
@@ -130,6 +126,7 @@ export function AdminUsers() {
     setDrawerOpen(true);
     setMessage(null);
     setError(null);
+    setIssuedCredentials(null);
   };
 
   const openEditDrawer = async (userId: string) => {
@@ -138,6 +135,7 @@ export function AdminUsers() {
     setEditingUserId(userId);
     setMessage(null);
     setError(null);
+    setIssuedCredentials(null);
 
     try {
       const result = await adminApi.getUser(userId);
@@ -201,17 +199,10 @@ export function AdminUsers() {
     setMessage(null);
     setError(null);
 
-    if (createForm.password !== createForm.confirmPassword) {
-      setError("Пароль и подтверждение не совпадают");
-      setSubmitting(false);
-      return;
-    }
-
     try {
       const result = await adminApi.createUser({
         fullName: createForm.fullName,
         email: createForm.email,
-        password: createForm.password || undefined,
         role: createForm.role,
         companyName: roleNeedsCompany(createForm.role) ? createForm.companyName : undefined,
         status: createForm.status,
@@ -334,8 +325,8 @@ export function AdminUsers() {
       {error ? <AdminMessage tone="error">{error}</AdminMessage> : null}
       {issuedCredentials ? (
         <AdminMessage tone="success">
-          Логин: <span className="font-semibold">{issuedCredentials.login}</span> · пароль:{" "}
-          <span className="font-semibold">{issuedCredentials.temporaryPassword}</span>
+          Логин: <span className="font-semibold">{issuedCredentials.login}</span> · временный пароль:{" "}
+          <span className="font-semibold">{issuedCredentials.temporaryPassword}</span>. Показывается один раз, сохраните и передайте пользователю.
         </AdminMessage>
       ) : null}
 
@@ -556,42 +547,10 @@ export function AdminUsers() {
                   </section>
 
                   <section className="grid gap-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-900">Доступ</p>
-                      <AdminButton
-                        type="button"
-                        tone="secondary"
-                        onClick={() =>
-                          setCreateForm((current) => {
-                            const password = buildGeneratedPassword();
-                            return { ...current, password, confirmPassword: password };
-                          })
-                        }
-                      >
-                        Сгенерировать пароль
-                      </AdminButton>
+                    <p className="text-sm font-semibold text-slate-900">Доступ</p>
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                      Временный пароль сгенерируется автоматически на сервере. Администратор увидит его один раз после создания пользователя.
                     </div>
-                    <AdminInput
-                      value={createForm.password}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, password: event.target.value }))
-                      }
-                      placeholder="Пароль"
-                      type="text"
-                      required
-                    />
-                    <AdminInput
-                      value={createForm.confirmPassword}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          confirmPassword: event.target.value,
-                        }))
-                      }
-                      placeholder="Подтверждение пароля"
-                      type="text"
-                      required
-                    />
                   </section>
 
                   {roleNeedsCompany(createForm.role) ? (
@@ -737,6 +696,13 @@ export function AdminUsers() {
                       <p className="mt-2">
                         <span className="font-medium text-slate-950">Логин:</span>{" "}
                         {detail.authLogin ?? detail.email ?? "нет данных"}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-slate-950">Требуется смена пароля:</span>{" "}
+                        {detail.passwordChangeRequired ? "да" : "нет"}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        После сброса пароля пользователь будет принудительно выведен из всех активных сессий.
                       </p>
                     </div>
                   </section>

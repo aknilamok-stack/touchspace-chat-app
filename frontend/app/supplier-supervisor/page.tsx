@@ -8,6 +8,7 @@ import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
+import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
 import {
   clearAuthSession,
   getHomePathForRole,
@@ -52,7 +53,7 @@ const QUICK_REPLIES = [
   "Благодарю, информацию передал",
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
-const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
+const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 
 type SupplierRequest = {
@@ -135,12 +136,24 @@ type UiToast = {
 };
 
 type SupplierNotificationCandidate = {
+  notificationKey: string;
   ticketId: string;
   requestId?: string | null;
   title: string;
   messageId: string;
   messageText: string;
   createdAt: string;
+  tradePointName?: string | null;
+  avatarColor?: string | null;
+  avatarEmoji?: string | null;
+  scopeStatus:
+    | "new_unclaimed"
+    | "missed_unclaimed"
+    | "owned_active"
+    | "claimed_by_other_recently";
+  waitSeconds: number;
+  assignedSupplierProfileId?: string | null;
+  assignedSupplierProfileName?: string | null;
   kind: "message" | "request";
 };
 
@@ -927,6 +940,8 @@ export default function SupplierPage() {
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
+  const [notificationNow, setNotificationNow] = useState(() => Date.now());
+  const [dismissedNotificationUntil, setDismissedNotificationUntil] = useState<Record<string, number>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
@@ -2227,6 +2242,45 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNotificationNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const visibleFloatingNotifications = notificationCandidates
+    .filter((candidate) => {
+      const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
+      return hiddenUntil <= notificationNow;
+    })
+    .slice(0, 3);
+
+  const dismissFloatingNotification = (notificationKey: string) => {
+    setDismissedNotificationUntil((current) => ({
+      ...current,
+      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+    }));
+  };
+
+  const handlePrimaryFloatingNotification = (notificationKey: string) => {
+    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
+
+    if (!candidate) {
+      return;
+    }
+
+    if (candidate.requestId) {
+      setSelectedRequestId(candidate.requestId);
+      setActiveQueueTab(
+        candidate.scopeStatus === "owned_active" ? "in_progress" : "new"
+      );
+    }
+
+    dismissFloatingNotification(notificationKey);
+  };
+
+  useEffect(() => {
     if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
@@ -2247,7 +2301,7 @@ export default function SupplierPage() {
       return;
     }
 
-    const activeCandidateIds = new Set(notificationCandidates.map((candidate) => candidate.messageId));
+    const activeCandidateIds = new Set(notificationCandidates.map((candidate) => candidate.notificationKey));
 
     Object.keys(lastNotificationAtRef.current).forEach((candidateId) => {
       if (!activeCandidateIds.has(candidateId)) {
@@ -2262,15 +2316,17 @@ export default function SupplierPage() {
 
     notificationCandidates.forEach((candidate) => {
       const notificationTitle =
-        candidate.kind === "request"
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Запрос уже взят в работу"
+          : candidate.kind === "request"
           ? `Новый запрос: ${candidate.title || "поставщик"}`
           : `Менеджер: ${candidate.title || "диалог"}`;
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
-      const lastNotificationAt = lastNotificationAtRef.current[candidate.messageId] ?? 0;
-      const lastMessageId = lastNotificationMessageIdRef.current[candidate.messageId];
+      const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
+      const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
         Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
@@ -2279,12 +2335,12 @@ export default function SupplierPage() {
         return;
       }
 
-      lastNotificationAtRef.current[candidate.messageId] = Date.now();
-      lastNotificationMessageIdRef.current[candidate.messageId] = candidate.messageId;
+      lastNotificationAtRef.current[candidate.notificationKey] = Date.now();
+      lastNotificationMessageIdRef.current[candidate.notificationKey] = candidate.messageId;
       playNotificationSound();
 
       void showDesktopNotification(notificationTitle, notificationBody, {
-        tag: candidate.messageId,
+        tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
         requestId: candidate.requestId,
       });
@@ -2305,13 +2361,17 @@ export default function SupplierPage() {
       titleFlashIntervalRef.current = null;
     }
 
-    if (!supplierSupervisorPowerEnabled || notificationCandidates.length === 0) {
+    const actionableNotifications = notificationCandidates.filter(
+      (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+    );
+
+    if (!supplierSupervisorPowerEnabled || actionableNotifications.length === 0) {
       document.title = defaultDocumentTitleRef.current;
       return;
     }
 
     let showAlertTitle = true;
-    const alertTitle = `(${notificationCandidates.length}) Новый запрос • TouchSpace`;
+    const alertTitle = `(${actionableNotifications.length}) Новый запрос • TouchSpace`;
     document.title = alertTitle;
 
     titleFlashIntervalRef.current = window.setInterval(() => {
@@ -3085,6 +3145,51 @@ export default function SupplierPage() {
           {selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
+                <IncomingAlertStack
+                  items={visibleFloatingNotifications.map((candidate) => ({
+                    id: candidate.notificationKey,
+                    title:
+                      candidate.tradePointName?.trim() ||
+                      candidate.title ||
+                      "Запрос поставщику",
+                    subtitle:
+                      candidate.scopeStatus === "claimed_by_other_recently"
+                        ? candidate.assignedSupplierProfileName
+                          ? `Уже ведёт ${candidate.assignedSupplierProfileName}`
+                          : "Запрос уже забрал коллега"
+                        : candidate.kind === "request"
+                          ? "Новый запрос поставщику"
+                          : "Новое сообщение от менеджера",
+                    preview:
+                      candidate.scopeStatus === "claimed_by_other_recently"
+                        ? candidate.assignedSupplierProfileName
+                          ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
+                          : "Сейчас этот запрос ведёт другой сотрудник поставщика"
+                        : candidate.messageText,
+                    tone:
+                      candidate.scopeStatus === "missed_unclaimed"
+                        ? "amber"
+                        : candidate.scopeStatus === "claimed_by_other_recently"
+                          ? "blue"
+                          : "green",
+                    avatarEmoji: candidate.avatarEmoji,
+                    avatarColor: candidate.avatarColor,
+                    metaLabel:
+                      candidate.scopeStatus === "missed_unclaimed"
+                        ? "Пропущенный запрос более 10 минут"
+                        : candidate.scopeStatus === "owned_active"
+                          ? "Новое сообщение в вашем запросе"
+                          : candidate.waitSeconds > 0
+                            ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+                            : null,
+                    primaryLabel:
+                      candidate.scopeStatus === "claimed_by_other_recently" ? "Открыть" : "Ответить",
+                    secondaryLabel: "Позже",
+                  }))}
+                  onClose={dismissFloatingNotification}
+                  onSecondary={dismissFloatingNotification}
+                  onPrimary={handlePrimaryFloatingNotification}
+                />
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="min-w-0">
                     <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">

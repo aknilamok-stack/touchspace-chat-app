@@ -6,11 +6,20 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AdminGuard } from './admin.guard';
 import { AdminAiService } from './admin-ai.service';
 import { AdminService } from './admin.service';
+
+type AdminRequest = Request & {
+  adminContext?: {
+    adminId: string;
+    adminName?: string;
+  };
+};
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -100,6 +109,7 @@ export class AdminController {
 
   @Post('users')
   createUser(
+    @Req() request: AdminRequest,
     @Body()
     body: {
       fullName?: string;
@@ -112,7 +122,7 @@ export class AdminController {
       status?: string;
     },
   ) {
-    return this.adminService.createUser(body);
+    return this.adminService.createUser(body, request.adminContext);
   }
 
   @Patch('users/:id')
@@ -136,8 +146,8 @@ export class AdminController {
   }
 
   @Post('users/:id/reissue-password')
-  reissueUserPassword(@Param('id') id: string) {
-    return this.adminService.reissueUserPassword(id);
+  reissueUserPassword(@Req() request: AdminRequest, @Param('id') id: string) {
+    return this.adminService.reissueUserPassword(id, request.adminContext);
   }
 
   @Get('dialogs')

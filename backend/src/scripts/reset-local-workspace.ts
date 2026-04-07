@@ -77,6 +77,7 @@ async function main() {
       }));
 
     await prisma.$transaction(async (tx) => {
+      await tx.adminEvent.deleteMany({});
       await tx.pushSubscription.deleteMany({});
       await tx.managerMessageSuggestion.deleteMany({});
       await tx.registrationRequest.deleteMany({});

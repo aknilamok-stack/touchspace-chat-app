@@ -9,6 +9,7 @@ import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
+import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
 import {
   clearAuthSession,
   getHomePathForRole,
@@ -35,7 +36,7 @@ const supplierDirectory: Record<string, { id: string; name: string }> = {
   LabArte: { id: "supplier_labarte", name: "LabArte" },
   "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
 };
-const REPEATED_NOTIFICATION_INTERVAL_MS = 20_000;
+const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 
@@ -214,6 +215,7 @@ type ChatItem = {
 };
 
 type NotificationCandidate = {
+  notificationKey: string;
   ticketId: string;
   title: string;
   clientName: string | null;
@@ -221,6 +223,15 @@ type NotificationCandidate = {
   messageId: string;
   messageText: string;
   createdAt: string;
+  avatarColor?: string | null;
+  avatarEmoji?: string | null;
+  scopeStatus:
+    | "new_unclaimed"
+    | "missed_unclaimed"
+    | "rescue_queue"
+    | "owned_active"
+    | "claimed_by_other_recently";
+  waitSeconds: number;
   assignedManagerId: string | null;
   assignedManagerName: string | null;
 };
@@ -975,6 +986,8 @@ export default function Home() {
   const [createClientPhone, setCreateClientPhone] = useState("");
   const [createClientError, setCreateClientError] = useState("");
   const [notificationCandidates, setNotificationCandidates] = useState<NotificationCandidate[]>([]);
+  const [notificationNow, setNotificationNow] = useState(() => Date.now());
+  const [dismissedNotificationUntil, setDismissedNotificationUntil] = useState<Record<string, number>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
@@ -2298,6 +2311,49 @@ export default function Home() {
   }, [messageText, activeChatId]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNotificationNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const visibleFloatingNotifications = notificationCandidates
+    .filter((candidate) => {
+      const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
+      return hiddenUntil <= notificationNow;
+    })
+    .slice(0, 3);
+
+  const dismissFloatingNotification = (notificationKey: string) => {
+    setDismissedNotificationUntil((current) => ({
+      ...current,
+      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+    }));
+  };
+
+  const handlePrimaryFloatingNotification = async (notificationKey: string) => {
+    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
+
+    if (!candidate) {
+      return;
+    }
+
+    setIsChatPaneDismissed(false);
+    setActiveChatId(candidate.ticketId);
+    setFilter(candidate.scopeStatus === "owned_active" ? "in_progress" : "incoming");
+    dismissFloatingNotification(notificationKey);
+
+    if (
+      candidate.scopeStatus === "new_unclaimed" ||
+      candidate.scopeStatus === "missed_unclaimed" ||
+      candidate.scopeStatus === "rescue_queue"
+    ) {
+      await handleClaimIncoming(candidate.ticketId);
+    }
+  };
+
+  useEffect(() => {
     if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
@@ -2318,27 +2374,26 @@ export default function Home() {
       return;
     }
 
-    const activeCandidateIds = new Set(
-      notificationCandidates.map((candidate) => candidate.ticketId)
-    );
+    const activeCandidateIds = new Set(notificationCandidates.map((candidate) => candidate.notificationKey));
 
-    Object.keys(lastNotificationAtRef.current).forEach((ticketId) => {
-      if (!activeCandidateIds.has(ticketId)) {
-        delete lastNotificationAtRef.current[ticketId];
-        delete lastNotificationMessageIdRef.current[ticketId];
+    Object.keys(lastNotificationAtRef.current).forEach((notificationKey) => {
+      if (!activeCandidateIds.has(notificationKey)) {
+        delete lastNotificationAtRef.current[notificationKey];
+        delete lastNotificationMessageIdRef.current[notificationKey];
       }
     });
 
     notificationCandidates.forEach((candidate) => {
-      const notificationTitle = `Клиент: ${
-        candidate.title || candidate.clientName || "неизвестный клиент"
-      }`;
+      const notificationTitle =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Чат уже взят в работу"
+          : `Клиент: ${candidate.title || candidate.clientName || "неизвестный клиент"}`;
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
-      const lastNotificationAt = lastNotificationAtRef.current[candidate.ticketId] ?? 0;
-      const lastMessageId = lastNotificationMessageIdRef.current[candidate.ticketId];
+      const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
+      const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
         Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
@@ -2347,12 +2402,12 @@ export default function Home() {
         return;
       }
 
-      lastNotificationAtRef.current[candidate.ticketId] = Date.now();
-      lastNotificationMessageIdRef.current[candidate.ticketId] = candidate.messageId;
+      lastNotificationAtRef.current[candidate.notificationKey] = Date.now();
+      lastNotificationMessageIdRef.current[candidate.notificationKey] = candidate.messageId;
       playNotificationSound();
 
       void showDesktopNotification(notificationTitle, notificationBody, {
-        tag: candidate.ticketId,
+        tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
       });
     });
@@ -2372,13 +2427,17 @@ export default function Home() {
       titleFlashIntervalRef.current = null;
     }
 
-    if (notificationCandidates.length === 0) {
+    const actionableNotifications = notificationCandidates.filter(
+      (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+    );
+
+    if (actionableNotifications.length === 0) {
       document.title = defaultDocumentTitleRef.current;
       return;
     }
 
     let showAlertTitle = true;
-    const alertTitle = `(${notificationCandidates.length}) Новый чат • TouchSpace`;
+    const alertTitle = `(${actionableNotifications.length}) Новый чат • TouchSpace`;
     document.title = alertTitle;
 
     titleFlashIntervalRef.current = window.setInterval(() => {
@@ -3739,6 +3798,55 @@ export default function Home() {
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
+          <IncomingAlertStack
+            items={visibleFloatingNotifications.map((candidate) => ({
+              id: candidate.notificationKey,
+              title:
+                candidate.tradePointName?.trim() ||
+                candidate.title ||
+                candidate.clientName ||
+                "Клиентский чат",
+              subtitle:
+                candidate.scopeStatus === "claimed_by_other_recently"
+                  ? candidate.assignedManagerName
+                    ? `Уже ведёт ${candidate.assignedManagerName}`
+                    : "Чат уже забрал другой менеджер"
+                  : null,
+              preview:
+                candidate.scopeStatus === "claimed_by_other_recently"
+                  ? candidate.assignedManagerName
+                    ? `Чат уже взят в работу менеджером ${candidate.assignedManagerName}`
+                    : "Чат уже взят в работу другим менеджером"
+                  : candidate.messageText,
+              tone:
+                candidate.scopeStatus === "missed_unclaimed" ||
+                candidate.scopeStatus === "rescue_queue"
+                  ? "amber"
+                  : candidate.scopeStatus === "claimed_by_other_recently"
+                    ? "blue"
+                    : "green",
+              avatarEmoji: candidate.avatarEmoji,
+              avatarColor: candidate.avatarColor,
+              metaLabel:
+                candidate.scopeStatus === "missed_unclaimed"
+                  ? "Пропущенное сообщение более 10 минут"
+                  : candidate.scopeStatus === "rescue_queue"
+                    ? "Чат возвращён в общую очередь"
+                    : candidate.scopeStatus === "owned_active"
+                      ? "Новое сообщение в вашем диалоге"
+                      : candidate.waitSeconds > 0
+                        ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+                        : null,
+              primaryLabel:
+                candidate.scopeStatus === "claimed_by_other_recently" ? "Открыть" : "Ответить",
+              secondaryLabel: "Позже",
+            }))}
+            onClose={dismissFloatingNotification}
+            onSecondary={dismissFloatingNotification}
+            onPrimary={(notificationKey) => {
+              void handlePrimaryFloatingNotification(notificationKey);
+            }}
+          />
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
             <div className="min-w-0">
               <div className="flex items-center gap-2">

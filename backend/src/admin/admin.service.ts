@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuthService } from '../auth.service';
 import { ProfilesService } from '../profiles.service';
 import { PrismaService } from '../prisma.service';
@@ -53,6 +54,11 @@ type InsightTicketWithMessages = {
   handedToManagerAt?: Date | null;
   aiResolved?: boolean;
   messages?: Array<{ content: string; senderType?: string }>;
+};
+
+type AdminActorContext = {
+  adminId: string;
+  adminName?: string;
 };
 
 @Injectable()
@@ -287,6 +293,26 @@ export class AdminService {
     return Math.round(
       normalized.reduce((total, value) => total + value, 0) / normalized.length,
     );
+  }
+
+  private async logAdminEvent(input: {
+    type: string;
+    title: string;
+    description?: string | null;
+    actor?: AdminActorContext;
+    targetProfileId?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    await this.prisma.adminEvent.create({
+      data: {
+        type: input.type,
+        title: input.title,
+        description: input.description ?? null,
+        actorProfileId: input.actor?.adminId?.trim() || null,
+        targetProfileId: input.targetProfileId?.trim() || null,
+        metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined,
+      },
+    });
   }
 
   private resolveManagerPresenceStatus(
@@ -548,6 +574,7 @@ export class AdminService {
       registrationsPending,
       recentRegistrations,
       recentSystemMessages,
+      recentAdminEvents,
       emailMessagesCount,
       pushSubscriptionsCount,
     ] = await Promise.all([
@@ -668,6 +695,27 @@ export class AdminService {
           ticket: {
             select: {
               title: true,
+            },
+          },
+        },
+      }),
+      this.prisma.adminEvent.findMany({
+        orderBy: [{ createdAt: 'desc' }],
+        take: 10,
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          description: true,
+          createdAt: true,
+          actorProfile: {
+            select: {
+              fullName: true,
+            },
+          },
+          targetProfile: {
+            select: {
+              fullName: true,
             },
           },
         },
@@ -876,6 +924,24 @@ export class AdminService {
         title: message.content,
         description: message.ticket?.title ?? 'Системное событие',
         createdAt: message.createdAt,
+      })),
+      ...recentAdminEvents.map((event) => ({
+        id: `admin_${event.id}`,
+        type: event.type,
+        title: event.title,
+        description:
+          event.description ??
+          [
+            event.actorProfile?.fullName
+              ? `Администратор: ${event.actorProfile.fullName}`
+              : null,
+            event.targetProfile?.fullName
+              ? `Пользователь: ${event.targetProfile.fullName}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' • '),
+        createdAt: event.createdAt,
       })),
     ]
       .sort(
@@ -1348,7 +1414,7 @@ export class AdminService {
     companyName?: string;
     createdByAdminId?: string;
     status?: string;
-  }) {
+  }, adminContext?: AdminActorContext) {
     const role = this.normalizeRole(body.role);
     const email = this.normalizeEmail(body.email);
     const authLogin = body.authLogin
@@ -1428,7 +1494,8 @@ export class AdminService {
         companyName,
         supplierId: supplierScopeId,
         supervisorProfileId,
-        createdByAdminId: body.createdByAdminId?.trim() || null,
+        createdByAdminId:
+          body.createdByAdminId?.trim() || adminContext?.adminId?.trim() || null,
         isActive: true,
       },
     });
@@ -1451,6 +1518,19 @@ export class AdminService {
         supplierScopeId,
       );
     }
+
+    await this.logAdminEvent({
+      type: 'user_created',
+      title: 'Администратор создал пользователя',
+      description: `${fullName} • ${role}`,
+      actor: adminContext,
+      targetProfileId: profile.id,
+      metadata: {
+        role,
+        authLogin: credentials.login,
+        passwordChangeRequired: credentials.passwordChangeRequired,
+      },
+    });
 
     return {
       profile,
@@ -1622,7 +1702,7 @@ export class AdminService {
     return updatedProfile;
   }
 
-  async reissueUserPassword(id: string) {
+  async reissueUserPassword(id: string, adminContext?: AdminActorContext) {
     const user = await this.prisma.profile.findUnique({
       where: { id },
     });
@@ -1635,6 +1715,18 @@ export class AdminService {
       user.id,
       user.authLogin ?? user.email ?? undefined,
     );
+
+    await this.logAdminEvent({
+      type: 'password_reissued',
+      title: 'Администратор сбросил пароль',
+      description: `${user.fullName} должен сменить пароль при следующем входе`,
+      actor: adminContext,
+      targetProfileId: user.id,
+      metadata: {
+        authLogin: credentials.login,
+        passwordChangeRequired: true,
+      },
+    });
 
     return {
       userId: user.id,

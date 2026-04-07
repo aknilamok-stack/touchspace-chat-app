@@ -550,6 +550,15 @@ export class MessagesService {
         }
 
         if (senderType === 'client') {
+          ticketUpdateData.lastClientMessageAt = message.createdAt;
+          ticketUpdateData.claimRequiredAt =
+            ticket.assignedManagerId === null ? message.createdAt : undefined;
+          ticketUpdateData.claimMissedAt =
+            ticket.assignedManagerId === null ? null : undefined;
+          ticketUpdateData.returnedToQueueAt =
+            ticket.assignedManagerId === null ? null : undefined;
+          ticketUpdateData.rescueQueuedAt =
+            ticket.assignedManagerId === null ? null : undefined;
           const clientContext = resolveTicketClientContext(
             {
               tradePointId,
@@ -603,6 +612,13 @@ export class MessagesService {
           ticketUpdateData.supplierName = actorName ?? ticket.supplierName;
         }
 
+        if (senderType === 'manager') {
+          ticketUpdateData.lastManagerReplyAt = message.createdAt;
+          ticketUpdateData.claimMissedAt = null;
+          ticketUpdateData.returnedToQueueAt = null;
+          ticketUpdateData.rescueQueuedAt = null;
+        }
+
         await tx.ticket.update({
           where: { id: ticketId },
           data: ticketUpdateData,
@@ -636,6 +652,7 @@ export class MessagesService {
             data: {
               assignedManagerId: managerId,
               assignedManagerName: managerName,
+              claimedAt: message.createdAt,
             },
           });
         }
@@ -668,6 +685,7 @@ export class MessagesService {
               data: {
                 firstResponseAt: message.createdAt,
                 respondedAt: message.createdAt,
+                lastSupplierReplyAt: message.createdAt,
                 responseTime: durationMs,
                 responseBreached: durationMs > 60 * 60 * 1000,
               },
@@ -788,8 +806,33 @@ export class MessagesService {
             createdAt: 'desc',
           },
           select: {
+            id: true,
             assignedSupplierProfileId: true,
           },
+        })
+        .then(async (activeRequest) => {
+          if (activeRequest) {
+            await this.prisma.supplierRequest.update({
+              where: { id: activeRequest.id },
+              data: {
+                lastManagerMessageAt: message.createdAt,
+                claimRequiredAt:
+                  activeRequest.assignedSupplierProfileId === null
+                    ? message.createdAt
+                    : undefined,
+                claimMissedAt:
+                  activeRequest.assignedSupplierProfileId === null
+                    ? null
+                    : undefined,
+                returnedToQueueAt:
+                  activeRequest.assignedSupplierProfileId === null
+                    ? null
+                    : undefined,
+              },
+            });
+          }
+
+          return activeRequest;
         })
         .then((activeRequest) =>
           activeRequest?.assignedSupplierProfileId

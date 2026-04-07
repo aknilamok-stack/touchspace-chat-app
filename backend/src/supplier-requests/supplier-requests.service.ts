@@ -86,7 +86,12 @@ export class SupplierRequestsService {
           slaMinutes: createSupplierRequestDto.slaMinutes ?? null,
           createdByManagerId:
             createSupplierRequestDto.createdByManagerId ?? null,
+          claimRequiredAt: now,
+          claimMissedAt: null,
+          returnedToQueueAt: null,
           requestedAt: now,
+          lastManagerMessageAt: now,
+          lastSupplierReplyAt: null,
           responseStartedAt: now,
           firstResponseAt: null,
           respondedAt: null,
@@ -238,6 +243,14 @@ export class SupplierRequestsService {
             nextStatus === 'in_progress'
               ? supplierRequest.claimedAt ?? now
               : supplierRequest.claimedAt,
+          claimMissedAt:
+            nextStatus === 'in_progress' ? null : supplierRequest.claimMissedAt,
+          returnedToQueueAt:
+            nextStatus === 'pending' ? now : supplierRequest.returnedToQueueAt,
+          lastSupplierReplyAt:
+            nextStatus === 'answered' || nextStatus === 'closed'
+              ? now
+              : supplierRequest.lastSupplierReplyAt,
           respondedAt:
             nextStatus === 'answered' ? now : supplierRequest.respondedAt,
           closedAt: nextStatus === 'closed' ? now : null,

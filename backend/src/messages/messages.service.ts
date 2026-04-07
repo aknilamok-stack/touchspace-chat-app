@@ -105,6 +105,56 @@ export class MessagesService {
     return message.senderProfile?.fullName?.trim() || null;
   }
 
+  private async resolveEmailReplyTarget(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    inReplyTo?: string | null,
+    references?: string | null,
+  ) {
+    const candidateMessageIds = Array.from(
+      new Set(
+        [inReplyTo, references]
+          .flatMap((value) =>
+            (value ?? '')
+              .split(/\s+/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    if (candidateMessageIds.length === 0) {
+      return null;
+    }
+
+    const referencedMessages = await tx.message.findMany({
+      where: {
+        ticketId,
+        messageId: {
+          in: candidateMessageIds,
+        },
+      },
+      select: {
+        id: true,
+        content: true,
+        messageId: true,
+      },
+    });
+
+    for (const candidateMessageId of candidateMessageIds) {
+      const matchedMessage = referencedMessages.find(
+        (message) => message.messageId === candidateMessageId,
+      );
+
+      if (matchedMessage) {
+        return matchedMessage;
+      }
+    }
+
+    return null;
+  }
+
   private isSuggestionCandidate(value: string) {
     const collapsed = value.replace(/\s+/g, ' ').trim();
 
@@ -426,6 +476,16 @@ export class MessagesService {
           });
         }
 
+        const emailReplyTarget =
+          senderType === 'client' && normalizedTransport === 'email'
+            ? await this.resolveEmailReplyTarget(
+                tx,
+                ticketId,
+                emailMetadata.inReplyTo,
+                emailMetadata.references,
+              )
+            : null;
+
         const message = await tx.message.create({
           data: {
             ticketId,
@@ -433,8 +493,10 @@ export class MessagesService {
             senderType,
             senderRole: senderType,
             senderProfileId: actorId ?? null,
-            replyToMessageId: replyToMessageId?.trim() || null,
-            replyToContent: replyToContent?.trim() || null,
+            replyToMessageId:
+              replyToMessageId?.trim() || emailReplyTarget?.id || null,
+            replyToContent:
+              replyToContent?.trim() || emailReplyTarget?.content?.trim() || null,
             status: 'sent',
             deliveryStatus: 'sent',
             messageType: normalizedMessageType,

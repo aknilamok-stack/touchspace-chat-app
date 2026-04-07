@@ -4,7 +4,7 @@ export default function SupplierSupervisorSettingsPage() {
   return (
     <OperatorsSettingsPage
       scope="supplier_supervisor"
-      title="Настройки управленца поставщика"
+      title="Настройки"
       subtitle="Управление операторами поставщика: статусы, доступ к чатам, логины, email и сброс временных паролей."
       backHref="/supplier-supervisor"
     />

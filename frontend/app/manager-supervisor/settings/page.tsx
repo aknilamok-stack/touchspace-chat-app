@@ -4,7 +4,7 @@ export default function ManagerSupervisorSettingsPage() {
   return (
     <OperatorsSettingsPage
       scope="manager_supervisor"
-      title="Настройки управленца менеджеров"
+      title="Настройки"
       subtitle="Управление операторами TouchSpace: статусы, доступ к чатам, логины, email и сброс временных паролей."
       backHref="/manager-supervisor"
     />

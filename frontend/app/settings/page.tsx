@@ -332,7 +332,7 @@ export default function NotificationSettingsPage() {
         throw new Error("Не удалось сохранить настройки уведомлений.");
       }
 
-      setInfo("Настройки уведомлений сохранены.");
+      setInfo("Настройки сохранены.");
     } catch (actionError) {
       setData({
         ...data,
@@ -403,7 +403,7 @@ export default function NotificationSettingsPage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-700">
                 TouchSpace Workspace
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">Настройки уведомлений</h1>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">Настройки</h1>
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 Управление системными push-уведомлениями, устройствами и рабочими счётчиками для роли{" "}
                 <span className="font-semibold text-slate-700">{roleLabels[session.role] ?? session.role}</span>.

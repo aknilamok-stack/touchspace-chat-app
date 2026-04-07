@@ -2846,7 +2846,7 @@ export default function SupplierPage() {
                   onClick={() => router.push("/settings")}
                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#1E1E1E] transition hover:bg-[#F7F8FB]"
                 >
-                  <span>Настройки уведомлений</span>
+                  <span>Настройки</span>
                   <span className="text-xs text-[#8E8E93]">→</span>
                 </button>
 

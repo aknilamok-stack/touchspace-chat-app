@@ -31,7 +31,11 @@ import {
   updateSupplierPresence,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
-import { isDesktopShell, showDesktopShellNotification } from "@/lib/runtime";
+import {
+  isDesktopShell,
+  shouldShowDesktopBackgroundNotification,
+  showDesktopShellNotification,
+} from "@/lib/runtime";
 
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
@@ -1667,6 +1671,10 @@ export default function SupplierPage() {
         : "/supplier";
 
     if (isDesktopShell()) {
+      if (!shouldShowDesktopBackgroundNotification()) {
+        return;
+      }
+
       await showDesktopShellNotification({
         title,
         body,

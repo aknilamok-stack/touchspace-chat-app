@@ -4,6 +4,7 @@ const {
   clipboard,
   Menu,
   Notification,
+  screen,
   shell,
   nativeTheme,
   ipcMain,
@@ -24,8 +25,12 @@ const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 
 let mainWindow = null;
+let notificationWindow = null;
+let notificationWindowReady = false;
+let pendingNotificationPayload = null;
 let lastUnreadAttentionCount = 0;
 let lastDockBounceId = -1;
+let isAppQuitting = false;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -194,6 +199,151 @@ function clearDesktopAttention() {
   lastUnreadAttentionCount = 0;
 }
 
+function getOverlayNotificationBounds() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const workArea = display.workArea;
+  const width = 560;
+  const height = 344;
+  const margin = 24;
+
+  return {
+    width,
+    height,
+    x: Math.round(workArea.x + workArea.width - width - margin),
+    y: Math.round(workArea.y + workArea.height - height - margin),
+  };
+}
+
+function hideOverlayNotificationWindow() {
+  if (!notificationWindow || notificationWindow.isDestroyed()) {
+    return;
+  }
+
+  notificationWindow.hide();
+}
+
+function focusMainWindow(targetUrl) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (!targetUrl) {
+    return;
+  }
+
+  try {
+    const parsedTarget = new URL(targetUrl, startUrl);
+
+    if (parsedTarget.origin === shellOrigin) {
+      void mainWindow.loadURL(parsedTarget.toString());
+    }
+  } catch {
+    return;
+  }
+}
+
+function sendOverlayNotificationPayload() {
+  if (
+    !notificationWindow ||
+    notificationWindow.isDestroyed() ||
+    !notificationWindowReady ||
+    !pendingNotificationPayload
+  ) {
+    return;
+  }
+
+  notificationWindow.webContents.send(
+    "desktop:overlay-notification-data",
+    pendingNotificationPayload,
+  );
+}
+
+function createNotificationWindow() {
+  if (notificationWindow && !notificationWindow.isDestroyed()) {
+    return notificationWindow;
+  }
+
+  const bounds = getOverlayNotificationBounds();
+
+  notificationWindow = new BrowserWindow({
+    ...bounds,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    focusable: true,
+    roundedCorners: false,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      preload: path.join(__dirname, "notification-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      devTools: false,
+    },
+  });
+
+  notificationWindow.setAlwaysOnTop(true, "screen-saver");
+  notificationWindow.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
+
+  notificationWindow.on("close", (event) => {
+    if (isAppQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    notificationWindow?.hide();
+  });
+
+  notificationWindow.on("closed", () => {
+    notificationWindow = null;
+    notificationWindowReady = false;
+  });
+
+  notificationWindow.webContents.on("did-finish-load", () => {
+    notificationWindowReady = true;
+    sendOverlayNotificationPayload();
+  });
+
+  void notificationWindow.loadFile(path.join(__dirname, "notification.html"));
+  return notificationWindow;
+}
+
+function showOverlayNotificationWindow(payload) {
+  pendingNotificationPayload = payload;
+  const overlay = createNotificationWindow();
+
+  if (!overlay) {
+    return false;
+  }
+
+  const bounds = getOverlayNotificationBounds();
+  overlay.setBounds(bounds);
+  sendOverlayNotificationPayload();
+  overlay.showInactive();
+  return true;
+}
+
 function requestDesktopAttention(unreadCount) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -329,6 +479,18 @@ function createWindow() {
 
   mainWindow.on("focus", () => {
     clearDesktopAttention();
+    hideOverlayNotificationWindow();
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+
+    if (notificationWindow && !notificationWindow.isDestroyed()) {
+      notificationWindow.destroy();
+    }
+
+    notificationWindow = null;
+    notificationWindowReady = false;
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -378,50 +540,46 @@ app.whenReady().then(() => {
   }));
 
   ipcMain.handle("desktop:show-notification", async (_, payload) => {
-    if (!payload?.title || !Notification.isSupported()) {
+    if (!payload?.title) {
       return false;
     }
 
-    const targetUrl =
-      typeof payload.url === "string" && payload.url.trim()
-        ? payload.url.trim()
-        : startUrl;
-
-    const notification = new Notification({
+    return showOverlayNotificationWindow({
       title: String(payload.title),
       body: typeof payload.body === "string" ? payload.body : "",
-      icon: windowIconPath,
-      silent: true,
+      url:
+        typeof payload.url === "string" && payload.url.trim()
+          ? payload.url.trim()
+          : startUrl,
+      primaryLabel:
+        typeof payload.primaryLabel === "string" && payload.primaryLabel.trim()
+          ? payload.primaryLabel.trim()
+          : "Открыть",
+      secondaryLabel:
+        typeof payload.secondaryLabel === "string" && payload.secondaryLabel.trim()
+          ? payload.secondaryLabel.trim()
+          : "Позже",
+      header:
+        typeof payload.header === "string" && payload.header.trim()
+          ? payload.header.trim()
+          : "Входящее сообщение",
     });
+  });
 
-    notification.on("click", () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        createWindow();
-      }
+  ipcMain.handle("desktop:overlay-notification-action", (_, payload) => {
+    const action = payload?.action;
 
-      if (!mainWindow) {
-        return;
-      }
+    if (action === "primary") {
+      focusMainWindow(
+        typeof payload?.url === "string" && payload.url.trim()
+          ? payload.url.trim()
+          : startUrl,
+      );
+      hideOverlayNotificationWindow();
+      return true;
+    }
 
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-
-      mainWindow.show();
-      mainWindow.focus();
-
-      try {
-        const parsedTarget = new URL(targetUrl, startUrl);
-
-        if (parsedTarget.origin === shellOrigin) {
-          void mainWindow.loadURL(parsedTarget.toString());
-        }
-      } catch {
-        return;
-      }
-    });
-
-    notification.show();
+    hideOverlayNotificationWindow();
     return true;
   });
 
@@ -491,6 +649,10 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on("before-quit", () => {
+  isAppQuitting = true;
 });
 
 app.on("window-all-closed", () => {

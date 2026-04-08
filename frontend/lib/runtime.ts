@@ -65,3 +65,11 @@ export const showDesktopShellNotification = async (
     return false;
   }
 };
+
+export const shouldShowDesktopBackgroundNotification = () => {
+  if (!isDesktopShell() || typeof document === "undefined" || typeof window === "undefined") {
+    return false;
+  }
+
+  return document.visibilityState !== "visible" || !document.hasFocus();
+};

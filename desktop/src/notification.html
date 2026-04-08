@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>TouchSpace Notification</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      body {
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        overflow: hidden;
+      }
+
+      .shell {
+        width: 100%;
+        height: 100%;
+        padding: 0 0 18px 18px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 560px;
+        overflow: hidden;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #239965 0%, #1e8b5b 100%);
+        color: #ffffff;
+        box-shadow: 0 26px 60px rgba(7, 94, 52, 0.32);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+
+      .top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 20px 20px 16px;
+      }
+
+      .eyebrow {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      .close {
+        border: 0;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 34px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .body {
+        display: flex;
+        gap: 16px;
+        padding: 0 20px 20px;
+      }
+
+      .avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 999px;
+        background: #ff6a6a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 28px;
+      }
+
+      .content {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .title {
+        font-size: 17px;
+        line-height: 1.35;
+        font-weight: 500;
+        margin: 0;
+        word-break: break-word;
+      }
+
+      .message {
+        margin: 14px 0 0;
+        font-size: 16px;
+        line-height: 1.45;
+        opacity: 0.96;
+        word-break: break-word;
+      }
+
+      .footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        padding: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.1);
+      }
+
+      .action {
+        border: 0;
+        background: transparent;
+        color: #ffffff;
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .action:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="card">
+        <div class="top">
+          <div class="eyebrow" id="header">Входящее сообщение</div>
+          <button class="close" id="close" aria-label="Закрыть уведомление">×</button>
+        </div>
+        <div class="body">
+          <div class="avatar" id="avatar">💬</div>
+          <div class="content">
+            <p class="title" id="title">Новое сообщение</p>
+            <p class="message" id="message">Появилось новое сообщение в TouchSpace.</p>
+          </div>
+        </div>
+        <div class="footer">
+          <button class="action" id="primary">Открыть</button>
+          <button class="action" id="secondary">Позже</button>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const headerElement = document.getElementById("header");
+      const titleElement = document.getElementById("title");
+      const messageElement = document.getElementById("message");
+      const primaryButton = document.getElementById("primary");
+      const secondaryButton = document.getElementById("secondary");
+      const closeButton = document.getElementById("close");
+      const avatarElement = document.getElementById("avatar");
+
+      let currentUrl = "";
+
+      const resolveAvatar = (title) => {
+        const normalized = String(title || "").trim();
+        return normalized ? normalized.charAt(0).toUpperCase() : "💬";
+      };
+
+      window.touchspaceDesktopNotification.onData((payload) => {
+        headerElement.textContent = payload?.header || "Входящее сообщение";
+        titleElement.textContent = payload?.title || "Новое сообщение";
+        messageElement.textContent =
+          payload?.body || "Появилось новое сообщение в TouchSpace.";
+        primaryButton.textContent = payload?.primaryLabel || "Открыть";
+        secondaryButton.textContent = payload?.secondaryLabel || "Позже";
+        currentUrl = payload?.url || "";
+        avatarElement.textContent = resolveAvatar(payload?.title);
+      });
+
+      primaryButton.addEventListener("click", () => {
+        void window.touchspaceDesktopNotification.act("primary", currentUrl);
+      });
+
+      secondaryButton.addEventListener("click", () => {
+        void window.touchspaceDesktopNotification.act("secondary", currentUrl);
+      });
+
+      closeButton.addEventListener("click", () => {
+        void window.touchspaceDesktopNotification.act("close", currentUrl);
+      });
+    </script>
+  </body>
+</html>

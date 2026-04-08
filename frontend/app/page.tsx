@@ -34,7 +34,11 @@ import {
   type SupplierPresenceRecord,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
-import { isDesktopShell, showDesktopShellNotification } from "@/lib/runtime";
+import {
+  isDesktopShell,
+  shouldShowDesktopBackgroundNotification,
+  showDesktopShellNotification,
+} from "@/lib/runtime";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
 const supplierDirectory: Record<string, { id: string; name: string }> = {
@@ -1292,6 +1296,10 @@ export default function Home() {
       options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
 
     if (isDesktopShell()) {
+      if (!shouldShowDesktopBackgroundNotification()) {
+        return;
+      }
+
       await showDesktopShellNotification({
         title,
         body,

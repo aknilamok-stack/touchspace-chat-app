@@ -7,6 +7,7 @@ const {
   nativeTheme,
   ipcMain,
 } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 
 process.env.ELECTRON_IS_PACKAGED = app.isPackaged ? "true" : "false";
@@ -15,6 +16,9 @@ const isDev = !app.isPackaged;
 const defaultRemoteUrl = "https://app.aknila.ru/login";
 const startUrl = process.env.DESKTOP_START_URL || defaultRemoteUrl;
 const shellOrigin = new URL(startUrl).origin;
+const desktopSessionPartition = `persist:touchspace-workspace:${new URL(startUrl).host
+  .replace(/[^a-z0-9.-]+/gi, "-")
+  .toLowerCase()}`;
 const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 
@@ -25,6 +29,48 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
+}
+
+function getDesktopAuthSessionPath() {
+  return path.join(app.getPath("userData"), "touchspace-auth-session.json");
+}
+
+function readDesktopAuthSession() {
+  try {
+    const filePath = getDesktopAuthSessionPath();
+
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const rawValue = fs.readFileSync(filePath, "utf8").trim();
+    return rawValue || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDesktopAuthSession(rawValue) {
+  try {
+    fs.writeFileSync(getDesktopAuthSessionPath(), rawValue, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearDesktopAuthSession() {
+  try {
+    const filePath = getDesktopAuthSessionPath();
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function createMenu() {
@@ -188,6 +234,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       devTools: true,
+      partition: desktopSessionPartition,
     },
   });
 
@@ -239,6 +286,21 @@ app.whenReady().then(() => {
     platform: process.platform,
     startUrl,
   }));
+
+  ipcMain.on("desktop:auth-storage:get", (event) => {
+    event.returnValue = readDesktopAuthSession();
+  });
+
+  ipcMain.on("desktop:auth-storage:set", (event, rawValue) => {
+    event.returnValue =
+      typeof rawValue === "string" && rawValue.trim()
+        ? writeDesktopAuthSession(rawValue)
+        : false;
+  });
+
+  ipcMain.on("desktop:auth-storage:clear", (event) => {
+    event.returnValue = clearDesktopAuthSession();
+  });
 
   ipcMain.handle("desktop:open-external", async (_, url) => {
     if (typeof url !== "string" || !url.trim()) {

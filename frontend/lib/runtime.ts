@@ -13,6 +13,11 @@ declare global {
       platform: string;
       getMeta: () => Promise<DesktopRuntimeMeta>;
       openExternal: (url: string) => Promise<boolean>;
+      authStorage?: {
+        get: () => string | null;
+        set: (rawValue: string) => boolean;
+        clear: () => boolean;
+      };
     };
   }
 }

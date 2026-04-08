@@ -69,21 +69,64 @@ export const authStorageKey = "touchspace_auth";
 const clientSessionStorageKey = "touchspace_client_session";
 const managerStatusStorageKey = "touchspace_manager_statuses";
 
+function readDesktopStoredAuthRaw() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.touchspaceDesktop?.authStorage?.get() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDesktopStoredAuthRaw(rawValue: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.touchspaceDesktop?.authStorage?.set(rawValue);
+  } catch {
+    return;
+  }
+}
+
+function clearDesktopStoredAuth() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.touchspaceDesktop?.authStorage?.clear();
+  } catch {
+    return;
+  }
+}
+
 export function readAuthSession(): AuthSession | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(authStorageKey);
+  const rawValue = window.localStorage.getItem(authStorageKey) ?? readDesktopStoredAuthRaw();
 
   if (!rawValue) {
     return null;
   }
 
   try {
-    return JSON.parse(rawValue) as AuthSession;
+    const parsed = JSON.parse(rawValue) as AuthSession;
+
+    if (!window.localStorage.getItem(authStorageKey)) {
+      window.localStorage.setItem(authStorageKey, rawValue);
+    }
+
+    return parsed;
   } catch {
     window.localStorage.removeItem(authStorageKey);
+    clearDesktopStoredAuth();
     return null;
   }
 }
@@ -121,11 +164,14 @@ export function getHomePathForRole(role?: string | null) {
 }
 
 export function writeAuthSession(session: AuthSession) {
-  window.localStorage.setItem(authStorageKey, JSON.stringify(session));
+  const rawValue = JSON.stringify(session);
+  window.localStorage.setItem(authStorageKey, rawValue);
+  writeDesktopStoredAuthRaw(rawValue);
 }
 
 export function clearAuthSession() {
   window.localStorage.removeItem(authStorageKey);
+  clearDesktopStoredAuth();
 }
 
 export async function validateServerSession(session: AuthSession) {

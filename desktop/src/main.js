@@ -215,6 +215,63 @@ function syncDesktopAttentionFromTitle(title) {
   lastUnreadAttentionCount = unreadCount;
 }
 
+function registerEditingShortcuts(window) {
+  window.webContents.on("before-input-event", (event, input) => {
+    const modifierPressed = process.platform === "darwin" ? input.meta : input.control;
+
+    if (!modifierPressed || !input.key) {
+      return;
+    }
+
+    const normalizedKey = input.key.toLowerCase();
+
+    if (normalizedKey === "a") {
+      event.preventDefault();
+      window.webContents.selectAll();
+      return;
+    }
+
+    if (normalizedKey === "c") {
+      event.preventDefault();
+      window.webContents.copy();
+      return;
+    }
+
+    if (normalizedKey === "x") {
+      event.preventDefault();
+      window.webContents.cut();
+      return;
+    }
+
+    if (normalizedKey === "v") {
+      event.preventDefault();
+      if (input.shift && process.platform === "darwin") {
+        window.webContents.pasteAndMatchStyle();
+        return;
+      }
+
+      window.webContents.paste();
+      return;
+    }
+
+    if (normalizedKey === "z") {
+      event.preventDefault();
+      if (input.shift) {
+        window.webContents.redo();
+        return;
+      }
+
+      window.webContents.undo();
+      return;
+    }
+
+    if (normalizedKey === "y" && process.platform !== "darwin") {
+      event.preventDefault();
+      window.webContents.redo();
+    }
+  });
+}
+
 function createWindow() {
   nativeTheme.themeSource = "light";
 
@@ -239,6 +296,7 @@ function createWindow() {
   });
 
   Menu.setApplicationMenu(createMenu());
+  registerEditingShortcuts(mainWindow);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();

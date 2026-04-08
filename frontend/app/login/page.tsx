@@ -18,22 +18,6 @@ export default function LoginPage() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState("");
 
-  const handlePastePassword = async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
-      setError("Вставка из буфера недоступна в этом браузере.");
-      return;
-    }
-
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      setPassword(clipboardText);
-      setError("");
-    } catch (clipboardError) {
-      console.error("Не удалось прочитать буфер обмена:", clipboardError);
-      setError("Не удалось вставить пароль из буфера обмена.");
-    }
-  };
-
   useEffect(() => {
     const existingSession = readAuthSession();
 
@@ -169,18 +153,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <label className="block text-sm font-medium text-[#1E1E1E]">
-                Пароль
-              </label>
-              <button
-                type="button"
-                onClick={() => void handlePastePassword()}
-                className="text-xs font-medium text-[#0A84FF] transition hover:text-[#0066CC]"
-              >
-                Вставить
-              </button>
-            </div>
+            <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+              Пароль
+            </label>
             <div className="relative">
               <input
                 type={passwordVisible ? "text" : "password"}

@@ -2515,7 +2515,10 @@ export default function Home() {
       const notificationTitle =
         candidate.scopeStatus === "claimed_by_other_recently"
           ? "Чат уже взят в работу"
-          : `Клиент: ${candidate.title || candidate.clientName || "неизвестный клиент"}`;
+          : candidate.tradePointName?.trim() ||
+            candidate.title ||
+            candidate.clientName ||
+            "Неизвестная торговая точка";
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`

@@ -377,6 +377,54 @@ app.whenReady().then(() => {
     startUrl,
   }));
 
+  ipcMain.handle("desktop:show-notification", async (_, payload) => {
+    if (!payload?.title || !Notification.isSupported()) {
+      return false;
+    }
+
+    const targetUrl =
+      typeof payload.url === "string" && payload.url.trim()
+        ? payload.url.trim()
+        : startUrl;
+
+    const notification = new Notification({
+      title: String(payload.title),
+      body: typeof payload.body === "string" ? payload.body : "",
+      icon: windowIconPath,
+      silent: true,
+    });
+
+    notification.on("click", () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+
+      if (!mainWindow) {
+        return;
+      }
+
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+
+      mainWindow.show();
+      mainWindow.focus();
+
+      try {
+        const parsedTarget = new URL(targetUrl, startUrl);
+
+        if (parsedTarget.origin === shellOrigin) {
+          void mainWindow.loadURL(parsedTarget.toString());
+        }
+      } catch {
+        return;
+      }
+    });
+
+    notification.show();
+    return true;
+  });
+
   ipcMain.on("desktop:auth-storage:get", (event) => {
     event.returnValue = readDesktopAuthSession();
   });

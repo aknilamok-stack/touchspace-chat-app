@@ -5,6 +5,12 @@ export type DesktopRuntimeMeta = {
   startUrl?: string;
 };
 
+export type DesktopShellNotificationPayload = {
+  title: string;
+  body?: string;
+  url?: string;
+};
+
 declare global {
   interface Window {
     touchspaceDesktop?: {
@@ -13,6 +19,7 @@ declare global {
       platform: string;
       getMeta: () => Promise<DesktopRuntimeMeta>;
       openExternal: (url: string) => Promise<boolean>;
+      showNotification?: (payload: DesktopShellNotificationPayload) => Promise<boolean>;
       clipboard?: {
         readText: () => string;
         writeText: (value: string) => boolean;
@@ -42,5 +49,19 @@ export const readDesktopRuntimeMeta = async (): Promise<DesktopRuntimeMeta | nul
       isPackaged: false,
       platform: "unknown",
     };
+  }
+};
+
+export const showDesktopShellNotification = async (
+  payload: DesktopShellNotificationPayload,
+) => {
+  if (typeof window === "undefined" || !window.touchspaceDesktop?.showNotification) {
+    return false;
+  }
+
+  try {
+    return await window.touchspaceDesktop.showNotification(payload);
+  } catch {
+    return false;
   }
 };

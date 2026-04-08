@@ -170,6 +170,8 @@ contextBridge.exposeInMainWorld("touchspaceDesktop", {
   isPackaged: process.env.ELECTRON_IS_PACKAGED === "true",
   getMeta: async () => ipcRenderer.invoke("desktop:get-meta"),
   openExternal: async (url) => ipcRenderer.invoke("desktop:open-external", url),
+  showNotification: async (payload) =>
+    ipcRenderer.invoke("desktop:show-notification", payload),
   clipboard: {
     readText: () => ipcRenderer.sendSync("desktop:clipboard:read-text"),
     writeText: (value) => ipcRenderer.sendSync("desktop:clipboard:write-text", value),

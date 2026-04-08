@@ -31,6 +31,7 @@ import {
   updateSupplierPresence,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
+import { isDesktopShell, showDesktopShellNotification } from "@/lib/runtime";
 
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
@@ -1635,6 +1636,21 @@ export default function SupplierPage() {
     body: string,
     options?: { tag?: string; ticketId?: string; requestId?: string | null }
   ) => {
+    const targetUrl = options?.requestId
+      ? `/supplier?request=${options.requestId}`
+      : options?.ticketId
+        ? `/supplier?ticket=${options.ticketId}`
+        : "/supplier";
+
+    if (isDesktopShell()) {
+      await showDesktopShellNotification({
+        title,
+        body,
+        url: targetUrl,
+      });
+      return;
+    }
+
     if (typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
@@ -1642,12 +1658,6 @@ export default function SupplierPage() {
     if (Notification.permission !== "granted") {
       return;
     }
-
-    const targetUrl = options?.requestId
-      ? `/supplier?request=${options.requestId}`
-      : options?.ticketId
-        ? `/supplier?ticket=${options.ticketId}`
-        : "/supplier";
 
     if ("serviceWorker" in navigator) {
       try {

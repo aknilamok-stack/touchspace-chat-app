@@ -34,6 +34,7 @@ import {
   type SupplierPresenceRecord,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
+import { isDesktopShell, showDesktopShellNotification } from "@/lib/runtime";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
 const supplierDirectory: Record<string, { id: string; name: string }> = {
@@ -1289,6 +1290,18 @@ export default function Home() {
     body: string,
     options?: { tag?: string; ticketId?: string }
   ) => {
+    const targetUrl =
+      options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
+
+    if (isDesktopShell()) {
+      await showDesktopShellNotification({
+        title,
+        body,
+        url: targetUrl,
+      });
+      return;
+    }
+
     if (typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
@@ -1306,7 +1319,7 @@ export default function Home() {
           badge: "/pwa/badge.svg",
           tag: `manager-ui-${options?.tag ?? title}`,
           data: {
-            url: options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/",
+            url: targetUrl,
           },
         });
         return;

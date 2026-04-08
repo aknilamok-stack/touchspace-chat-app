@@ -109,6 +109,10 @@ export const adminApi = {
     adminRequest<any>(`/admin/users/${id}/reissue-password`, {
       method: "POST",
     }),
+  deleteUser: (id: string) =>
+    adminRequest<any>(`/admin/users/${id}`, {
+      method: "DELETE",
+    }),
   getDialogs: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/dialogs", undefined, query),
   getDialog: (id: string) => adminRequest<any>(`/admin/dialogs/${id}`),

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -148,6 +149,11 @@ export class AdminController {
   @Post('users/:id/reissue-password')
   reissueUserPassword(@Req() request: AdminRequest, @Param('id') id: string) {
     return this.adminService.reissueUserPassword(id, request.adminContext);
+  }
+
+  @Delete('users/:id')
+  deleteUser(@Req() request: AdminRequest, @Param('id') id: string) {
+    return this.adminService.deleteUser(id, request.adminContext);
   }
 
   @Get('dialogs')

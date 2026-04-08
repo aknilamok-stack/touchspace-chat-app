@@ -1735,6 +1735,75 @@ export class AdminService {
     };
   }
 
+  async deleteUser(id: string, adminContext?: AdminActorContext) {
+    const user = await this.prisma.profile.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        authLogin: true,
+        role: true,
+        companyName: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with id "${id}" not found`);
+    }
+
+    if (adminContext?.adminId?.trim() && adminContext.adminId.trim() === user.id) {
+      throw new BadRequestException('Нельзя удалить собственную учётную запись');
+    }
+
+    if (user.role === 'admin') {
+      const otherAdminsCount = await this.prisma.profile.count({
+        where: {
+          role: 'admin',
+          id: {
+            not: user.id,
+          },
+        },
+      });
+
+      if (otherAdminsCount <= 0) {
+        throw new BadRequestException('Нельзя удалить последнего администратора');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.managerMessageSuggestion.deleteMany({
+        where: {
+          managerId: user.id,
+        },
+      });
+
+      await tx.profile.delete({
+        where: {
+          id: user.id,
+        },
+      });
+    });
+
+    await this.logAdminEvent({
+      type: 'user_deleted',
+      title: 'Учётная запись удалена',
+      description: user.fullName,
+      actor: adminContext,
+      targetProfileId: user.id,
+      metadata: {
+        role: user.role,
+        email: user.email,
+        authLogin: user.authLogin,
+        companyName: user.companyName,
+      },
+    });
+
+    return {
+      ok: true,
+    };
+  }
+
   async getDialogs(filters: DialogsFilter) {
     const dialogs = await this.prisma.ticket.findMany({
       where: this.buildDialogsWhere(filters),

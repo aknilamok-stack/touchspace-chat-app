@@ -98,12 +98,18 @@ export function AdminUsers() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
   const [issuedCredentials, setIssuedCredentials] = useState<null | {
     login: string;
     temporaryPassword: string;
     passwordChangeRequired?: boolean;
   }>(null);
   const [credentialsCopied, setCredentialsCopied] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<null | {
+    id: string;
+    fullName: string;
+    email?: string | null;
+  }>(null);
 
   const loadUsers = async () => {
     try {
@@ -314,6 +320,42 @@ export function AdminUsers() {
     }
   };
 
+  const requestDeleteUser = (user: any) => {
+    setDeleteTarget({
+      id: user.id,
+      fullName: user.fullName ?? "Без имени",
+      email: user.email ?? user.authLogin ?? null,
+    });
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setDeletingUser(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      await adminApi.deleteUser(deleteTarget.id);
+      setMessage("Учётная запись удалена");
+
+      if (editingUserId === deleteTarget.id) {
+        setDrawerOpen(false);
+        setEditingUserId(null);
+        setDetail(null);
+      }
+
+      setDeleteTarget(null);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось удалить пользователя");
+    } finally {
+      setDeletingUser(false);
+    }
+  };
+
   const handleCopyIssuedCredentials = async () => {
     if (!issuedCredentials || typeof navigator === "undefined" || !navigator.clipboard) {
       return;
@@ -476,6 +518,9 @@ export function AdminUsers() {
                         </AdminButton>
                         <AdminButton tone="secondary" onClick={() => void handleArchive(user)}>
                           Архивировать
+                        </AdminButton>
+                        <AdminButton tone="danger" onClick={() => requestDeleteUser(user)}>
+                          Удалить
                         </AdminButton>
                       </div>
                     </td>
@@ -689,14 +734,29 @@ export function AdminUsers() {
                   <section className="grid gap-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-slate-900">Доступ</p>
-                      <AdminButton
-                        type="button"
-                        tone="secondary"
-                        onClick={() => void handleResetPassword()}
-                        disabled={resettingPassword}
-                      >
-                        Сбросить пароль
-                      </AdminButton>
+                      <div className="flex flex-wrap gap-2">
+                        <AdminButton
+                          type="button"
+                          tone="secondary"
+                          onClick={() => void handleResetPassword()}
+                          disabled={resettingPassword}
+                        >
+                          Сбросить пароль
+                        </AdminButton>
+                        <AdminButton
+                          type="button"
+                          tone="danger"
+                          onClick={() =>
+                            requestDeleteUser({
+                              id: detail.id,
+                              fullName: detail.fullName,
+                              email: detail.email ?? detail.authLogin ?? null,
+                            })
+                          }
+                        >
+                          Удалить учётную запись
+                        </AdminButton>
+                      </div>
                     </div>
                     <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                       <p>
@@ -800,6 +860,59 @@ export function AdminUsers() {
                   }}
                 >
                   Понятно
+                </AdminButton>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/26 backdrop-blur-[2px]">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-[520px] rounded-[28px] border border-rose-200 bg-white p-6 shadow-[0_30px_70px_rgba(15,23,42,0.18)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                    Удалить учётную запись?
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Вы действительно хотите удалить учётную запись{" "}
+                    <span className="font-semibold text-slate-950">{deleteTarget.fullName}</span>
+                    {deleteTarget.email ? <> ({deleteTarget.email})</> : null}
+                    ? Это действие необратимо.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                  disabled={deletingUser}
+                >
+                  Закрыть
+                </button>
+              </div>
+
+              <div className="mt-5 rounded-[24px] border border-rose-100 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-900">
+                Учётная запись будет удалена из системы. Перед удалением убедитесь, что этот доступ больше не нужен.
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <AdminButton
+                  type="button"
+                  tone="danger"
+                  onClick={() => void handleDeleteUser()}
+                  disabled={deletingUser}
+                >
+                  {deletingUser ? "Удаляем..." : "Да, удалить"}
+                </AdminButton>
+                <AdminButton
+                  type="button"
+                  tone="secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deletingUser}
+                >
+                  Отмена
                 </AdminButton>
               </div>
             </div>

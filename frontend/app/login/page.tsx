@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import {
@@ -10,6 +10,7 @@ import {
   readAuthSession,
   writeAuthSession,
 } from "@/lib/auth";
+import { isDesktopShell } from "@/lib/runtime";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +18,59 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState("");
+
+  const handleDesktopInputShortcut = async (
+    event: KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (!isDesktopShell()) {
+      return;
+    }
+
+    const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
+    const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+
+    if (!modifierPressed || event.altKey) {
+      return;
+    }
+
+    const target = event.currentTarget;
+    const code = (event.code || "").toLowerCase();
+    const nativeClipboard = window.touchspaceDesktop?.clipboard;
+
+    if (code === "keya") {
+      event.preventDefault();
+      target.focus();
+      target.select();
+      return;
+    }
+
+    if (code === "keyc" && nativeClipboard) {
+      event.preventDefault();
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? start;
+      nativeClipboard.writeText(target.value.slice(start, end));
+      return;
+    }
+
+    if (code === "keyx" && nativeClipboard) {
+      event.preventDefault();
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? start;
+      nativeClipboard.writeText(target.value.slice(start, end));
+      target.setRangeText("", start, end, "start");
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+
+    if (code === "keyv" && nativeClipboard) {
+      event.preventDefault();
+      const clipboardText = nativeClipboard.readText() ?? "";
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? start;
+      target.setRangeText(clipboardText, start, end, "end");
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
 
   useEffect(() => {
     const existingSession = readAuthSession();
@@ -146,6 +200,7 @@ export default function LoginPage() {
             <input
               value={login}
               onChange={(event) => setLogin(event.target.value)}
+              onKeyDown={(event) => void handleDesktopInputShortcut(event)}
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
               placeholder="Введите логин"
               autoComplete="username"
@@ -161,6 +216,7 @@ export default function LoginPage() {
                 type={passwordVisible ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => void handleDesktopInputShortcut(event)}
                 className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pr-14 outline-none text-[#1E1E1E]"
                 placeholder="Введите пароль"
                 autoComplete="current-password"

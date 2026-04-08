@@ -49,9 +49,9 @@
         max-width: 560px;
         overflow: hidden;
         border-radius: 24px;
-        background: linear-gradient(180deg, #239965 0%, #1e8b5b 100%);
+        background: linear-gradient(180deg, #1888ff 0%, #0f6fe0 100%);
         color: #ffffff;
-        box-shadow: 0 26px 60px rgba(7, 94, 52, 0.32);
+        box-shadow: 0 26px 60px rgba(10, 96, 212, 0.34);
         border: 1px solid rgba(0, 0, 0, 0.1);
       }
 
@@ -109,12 +109,27 @@
         word-break: break-word;
       }
 
+      .subtitle {
+        margin: 6px 0 0;
+        font-size: 14px;
+        line-height: 1.4;
+        opacity: 0.9;
+      }
+
       .message {
         margin: 14px 0 0;
         font-size: 16px;
         line-height: 1.45;
         opacity: 0.96;
         word-break: break-word;
+      }
+
+      .meta {
+        margin: 12px 0 0;
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0.82;
+        font-weight: 500;
       }
 
       .footer {
@@ -153,7 +168,9 @@
           <div class="avatar" id="avatar">💬</div>
           <div class="content">
             <p class="title" id="title">Новое сообщение</p>
+            <p class="subtitle" id="subtitle" hidden></p>
             <p class="message" id="message">Появилось новое сообщение в TouchSpace.</p>
+            <p class="meta" id="meta" hidden></p>
           </div>
         </div>
         <div class="footer">
@@ -166,7 +183,9 @@
     <script>
       const headerElement = document.getElementById("header");
       const titleElement = document.getElementById("title");
+      const subtitleElement = document.getElementById("subtitle");
       const messageElement = document.getElementById("message");
+      const metaElement = document.getElementById("meta");
       const primaryButton = document.getElementById("primary");
       const secondaryButton = document.getElementById("secondary");
       const closeButton = document.getElementById("close");
@@ -182,12 +201,17 @@
       window.touchspaceDesktopNotification.onData((payload) => {
         headerElement.textContent = payload?.header || "Входящее сообщение";
         titleElement.textContent = payload?.title || "Новое сообщение";
+        subtitleElement.textContent = payload?.subtitle || "";
+        subtitleElement.hidden = !payload?.subtitle;
         messageElement.textContent =
           payload?.body || "Появилось новое сообщение в TouchSpace.";
+        metaElement.textContent = payload?.metaLabel || "";
+        metaElement.hidden = !payload?.metaLabel;
         primaryButton.textContent = payload?.primaryLabel || "Открыть";
         secondaryButton.textContent = payload?.secondaryLabel || "Позже";
         currentUrl = payload?.url || "";
-        avatarElement.textContent = resolveAvatar(payload?.title);
+        avatarElement.textContent = payload?.avatarEmoji || resolveAvatar(payload?.title);
+        avatarElement.style.backgroundColor = payload?.avatarColor || "#ff6a6a";
       });
 
       primaryButton.addEventListener("click", () => {

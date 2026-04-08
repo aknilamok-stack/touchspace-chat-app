@@ -1662,7 +1662,16 @@ export default function SupplierPage() {
   const showDesktopNotification = async (
     title: string,
     body: string,
-    options?: { tag?: string; ticketId?: string; requestId?: string | null }
+    options?: {
+      tag?: string;
+      ticketId?: string;
+      requestId?: string | null;
+      metaLabel?: string | null;
+      primaryLabel?: string;
+      secondaryLabel?: string;
+      avatarEmoji?: string | null;
+      avatarColor?: string | null;
+    }
   ) => {
     const targetUrl = options?.requestId
       ? `/supplier?request=${options.requestId}`
@@ -1679,6 +1688,12 @@ export default function SupplierPage() {
         title,
         body,
         url: targetUrl,
+        metaLabel: options?.metaLabel ?? null,
+        primaryLabel: options?.primaryLabel,
+        secondaryLabel: options?.secondaryLabel,
+        avatarEmoji: options?.avatarEmoji ?? null,
+        avatarColor: options?.avatarColor ?? null,
+        tone: "blue",
       });
       return;
     }
@@ -2346,6 +2361,23 @@ export default function SupplierPage() {
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
+      const notificationMeta =
+        candidate.scopeStatus === "missed_unclaimed"
+          ? "Пропущенный запрос более 10 минут"
+          : candidate.scopeStatus === "owned_active"
+            ? candidate.kind === "request"
+              ? "Новый supplier request"
+              : "Новое сообщение в вашем диалоге"
+            : candidate.waitSeconds > 0
+              ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+              : null;
+      const notificationPrimaryLabel =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Открыть"
+          : candidate.scopeStatus === "new_unclaimed" ||
+              candidate.scopeStatus === "missed_unclaimed"
+            ? "Взять в работу"
+            : "Ответить";
       const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
@@ -2364,6 +2396,11 @@ export default function SupplierPage() {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
         requestId: candidate.requestId,
+        metaLabel: notificationMeta,
+        primaryLabel: notificationPrimaryLabel,
+        secondaryLabel: "Позже",
+        avatarEmoji: candidate.avatarEmoji,
+        avatarColor: candidate.avatarColor,
       });
     });
   }, [notificationCandidates, authReady, supplierSupervisorPowerEnabled]);

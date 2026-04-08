@@ -551,6 +551,14 @@ app.whenReady().then(() => {
         typeof payload.url === "string" && payload.url.trim()
           ? payload.url.trim()
           : startUrl,
+      subtitle:
+        typeof payload.subtitle === "string" && payload.subtitle.trim()
+          ? payload.subtitle.trim()
+          : "",
+      metaLabel:
+        typeof payload.metaLabel === "string" && payload.metaLabel.trim()
+          ? payload.metaLabel.trim()
+          : "",
       primaryLabel:
         typeof payload.primaryLabel === "string" && payload.primaryLabel.trim()
           ? payload.primaryLabel.trim()
@@ -563,6 +571,18 @@ app.whenReady().then(() => {
         typeof payload.header === "string" && payload.header.trim()
           ? payload.header.trim()
           : "Входящее сообщение",
+      avatarEmoji:
+        typeof payload.avatarEmoji === "string" && payload.avatarEmoji.trim()
+          ? payload.avatarEmoji.trim()
+          : "",
+      avatarColor:
+        typeof payload.avatarColor === "string" && payload.avatarColor.trim()
+          ? payload.avatarColor.trim()
+          : "",
+      tone:
+        payload.tone === "green" || payload.tone === "amber" || payload.tone === "blue"
+          ? payload.tone
+          : "blue",
     });
   });
 

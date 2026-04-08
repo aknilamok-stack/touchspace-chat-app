@@ -1292,7 +1292,16 @@ export default function Home() {
   const showDesktopNotification = async (
     title: string,
     body: string,
-    options?: { tag?: string; ticketId?: string }
+    options?: {
+      tag?: string;
+      ticketId?: string;
+      subtitle?: string | null;
+      metaLabel?: string | null;
+      primaryLabel?: string;
+      secondaryLabel?: string;
+      avatarEmoji?: string | null;
+      avatarColor?: string | null;
+    }
   ) => {
     const targetUrl =
       options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
@@ -1306,6 +1315,13 @@ export default function Home() {
         title,
         body,
         url: targetUrl,
+        subtitle: options?.subtitle ?? null,
+        metaLabel: options?.metaLabel ?? null,
+        primaryLabel: options?.primaryLabel,
+        secondaryLabel: options?.secondaryLabel,
+        avatarEmoji: options?.avatarEmoji ?? null,
+        avatarColor: options?.avatarColor ?? null,
+        tone: "blue",
       });
       return;
     }
@@ -2539,6 +2555,30 @@ export default function Home() {
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
+      const notificationSubtitle =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? candidate.assignedManagerName
+            ? `Уже ведёт ${candidate.assignedManagerName}`
+            : "Чат уже забрал другой менеджер"
+          : null;
+      const notificationMeta =
+        candidate.scopeStatus === "missed_unclaimed"
+          ? "Пропущенное сообщение более 10 минут"
+          : candidate.scopeStatus === "rescue_queue"
+            ? "Чат возвращён в общую очередь"
+            : candidate.scopeStatus === "owned_active"
+              ? "Новое сообщение в вашем диалоге"
+              : candidate.waitSeconds > 0
+                ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+                : null;
+      const notificationPrimaryLabel =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Открыть"
+          : candidate.scopeStatus === "new_unclaimed" ||
+              candidate.scopeStatus === "missed_unclaimed" ||
+              candidate.scopeStatus === "rescue_queue"
+            ? "Взять в работу"
+            : "Ответить";
       const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
@@ -2556,6 +2596,12 @@ export default function Home() {
       void showDesktopNotification(notificationTitle, notificationBody, {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
+        subtitle: notificationSubtitle,
+        metaLabel: notificationMeta,
+        primaryLabel: notificationPrimaryLabel,
+        secondaryLabel: "Позже",
+        avatarEmoji: candidate.avatarEmoji,
+        avatarColor: candidate.avatarColor,
       });
     });
   }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);

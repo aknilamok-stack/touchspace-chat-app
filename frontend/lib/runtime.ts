@@ -9,6 +9,14 @@ export type DesktopShellNotificationPayload = {
   title: string;
   body?: string;
   url?: string;
+  subtitle?: string | null;
+  metaLabel?: string | null;
+  primaryLabel?: string;
+  secondaryLabel?: string;
+  header?: string;
+  avatarEmoji?: string | null;
+  avatarColor?: string | null;
+  tone?: "green" | "amber" | "blue";
 };
 
 declare global {

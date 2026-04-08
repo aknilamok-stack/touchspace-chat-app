@@ -76,9 +76,9 @@ function installEditingShortcutFallback() {
         return;
       }
 
-      const key = event.key.toLowerCase();
+      const code = (event.code || "").toLowerCase();
 
-      if (key === "a") {
+      if (code === "keya") {
         event.preventDefault();
 
         if (isTextInput(target)) {
@@ -91,7 +91,7 @@ function installEditingShortcutFallback() {
         return;
       }
 
-      if (key === "c") {
+      if (code === "keyc") {
         event.preventDefault();
         const selectedText = isTextInput(target)
           ? getSelectedTextFromInput(target)
@@ -101,7 +101,7 @@ function installEditingShortcutFallback() {
         return;
       }
 
-      if (key === "x") {
+      if (code === "keyx") {
         event.preventDefault();
         const selectedText = isTextInput(target)
           ? getSelectedTextFromInput(target)
@@ -117,7 +117,7 @@ function installEditingShortcutFallback() {
         return;
       }
 
-      if (key === "v") {
+      if (code === "keyv") {
         event.preventDefault();
         const clipboardText = readClipboardText();
         if (isTextInput(target)) {
@@ -128,6 +128,29 @@ function installEditingShortcutFallback() {
 
         document.execCommand("insertText", false, clipboardText);
       }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    "contextmenu",
+    (event) => {
+      const target = getEditableTarget(event.target);
+
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      const hasSelection = isTextInput(target)
+        ? (target.selectionStart ?? 0) !== (target.selectionEnd ?? 0)
+        : Boolean(window.getSelection()?.toString());
+
+      void ipcRenderer.invoke("desktop:show-edit-context-menu", {
+        x: event.clientX,
+        y: event.clientY,
+        hasSelection,
+      });
     },
     true,
   );

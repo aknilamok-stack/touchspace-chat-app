@@ -138,7 +138,7 @@ function createMenu() {
   return Menu.buildFromTemplate(template);
 }
 
-function createEditableContextMenu(window, params) {
+function createEditableContextMenu(window, params, popupOptions = {}) {
   const menu = Menu.buildFromTemplate([
     { role: "undo", label: "Отменить", enabled: params.editFlags.canUndo },
     { role: "redo", label: "Повторить", enabled: params.editFlags.canRedo },
@@ -158,6 +158,7 @@ function createEditableContextMenu(window, params) {
 
   menu.popup({
     window,
+    ...popupOptions,
   });
 }
 
@@ -247,27 +248,27 @@ function registerEditingShortcuts(window) {
       return;
     }
 
-    const normalizedKey = input.key.toLowerCase();
+    const normalizedCode = (input.code || "").toLowerCase();
 
-    if (normalizedKey === "a") {
+    if (normalizedCode === "keya") {
       event.preventDefault();
       window.webContents.selectAll();
       return;
     }
 
-    if (normalizedKey === "c") {
+    if (normalizedCode === "keyc") {
       event.preventDefault();
       window.webContents.copy();
       return;
     }
 
-    if (normalizedKey === "x") {
+    if (normalizedCode === "keyx") {
       event.preventDefault();
       window.webContents.cut();
       return;
     }
 
-    if (normalizedKey === "v") {
+    if (normalizedCode === "keyv") {
       event.preventDefault();
       if (input.shift && process.platform === "darwin") {
         window.webContents.pasteAndMatchStyle();
@@ -278,7 +279,7 @@ function registerEditingShortcuts(window) {
       return;
     }
 
-    if (normalizedKey === "z") {
+    if (normalizedCode === "keyz") {
       event.preventDefault();
       if (input.shift) {
         window.webContents.redo();
@@ -289,7 +290,7 @@ function registerEditingShortcuts(window) {
       return;
     }
 
-    if (normalizedKey === "y" && process.platform !== "darwin") {
+    if (normalizedCode === "keyy" && process.platform !== "darwin") {
       event.preventDefault();
       window.webContents.redo();
     }
@@ -398,6 +399,32 @@ app.whenReady().then(() => {
   ipcMain.on("desktop:clipboard:write-text", (event, value) => {
     clipboard.writeText(typeof value === "string" ? value : "");
     event.returnValue = true;
+  });
+
+  ipcMain.handle("desktop:show-edit-context-menu", (event, payload) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+
+    if (!window) {
+      return false;
+    }
+
+    createEditableContextMenu(
+      window,
+      {
+        editFlags: {
+          canUndo: true,
+          canRedo: true,
+          canCut: true,
+          canCopy: Boolean(payload?.hasSelection),
+          canPaste: true,
+        },
+      },
+      typeof payload?.x === "number" && typeof payload?.y === "number"
+        ? { x: Math.round(payload.x), y: Math.round(payload.y) }
+        : {},
+    );
+
+    return true;
   });
 
   ipcMain.handle("desktop:open-external", async (_, url) => {

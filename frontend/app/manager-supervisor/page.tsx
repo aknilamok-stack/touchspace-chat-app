@@ -33,6 +33,7 @@ import {
   updateManagerPresence,
   type SupplierPresenceRecord,
 } from "@/lib/manager-presence";
+import { playNotificationSound } from "@/lib/notification-sound";
 
 const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
 const supplierDirectory: Record<string, { id: string; name: string }> = {
@@ -1315,49 +1316,6 @@ export default function Home() {
     }
 
     new Notification(title, { body });
-  };
-
-  const playNotificationSound = () => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-
-    if (!AudioContextClass) {
-      return;
-    }
-
-    try {
-      const audioContext = new AudioContextClass();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.28);
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
-
-      oscillator.addEventListener(
-        "ended",
-        () => {
-          void audioContext.close().catch(() => undefined);
-        },
-        { once: true }
-      );
-    } catch (error) {
-      console.error("Не удалось воспроизвести звук уведомления:", error);
-    }
   };
 
   const readReplyMap = (ticketId: string) => {

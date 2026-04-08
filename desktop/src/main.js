@@ -1,6 +1,7 @@
 const {
   app,
   BrowserWindow,
+  clipboard,
   Menu,
   Notification,
   shell,
@@ -135,6 +136,29 @@ function createMenu() {
   ];
 
   return Menu.buildFromTemplate(template);
+}
+
+function createEditableContextMenu(window, params) {
+  const menu = Menu.buildFromTemplate([
+    { role: "undo", label: "Отменить", enabled: params.editFlags.canUndo },
+    { role: "redo", label: "Повторить", enabled: params.editFlags.canRedo },
+    { type: "separator" },
+    { role: "cut", label: "Вырезать", enabled: params.editFlags.canCut },
+    { role: "copy", label: "Копировать", enabled: params.editFlags.canCopy },
+    { role: "paste", label: "Вставить", enabled: params.editFlags.canPaste },
+    {
+      role: "pasteAndMatchStyle",
+      label: "Вставить без форматирования",
+      enabled: params.editFlags.canPaste,
+    },
+    { role: "delete", label: "Удалить" },
+    { type: "separator" },
+    { role: "selectAll", label: "Выделить всё" },
+  ]);
+
+  menu.popup({
+    window,
+  });
 }
 
 function parseUnreadCountFromTitle(title) {
@@ -320,6 +344,13 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on("context-menu", (event, params) => {
+    if (params.isEditable || params.selectionText) {
+      event.preventDefault();
+      createEditableContextMenu(mainWindow, params);
+    }
+  });
+
   if (isDev && shouldOpenDevTools) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
@@ -358,6 +389,15 @@ app.whenReady().then(() => {
 
   ipcMain.on("desktop:auth-storage:clear", (event) => {
     event.returnValue = clearDesktopAuthSession();
+  });
+
+  ipcMain.on("desktop:clipboard:read-text", (event) => {
+    event.returnValue = clipboard.readText();
+  });
+
+  ipcMain.on("desktop:clipboard:write-text", (event, value) => {
+    clipboard.writeText(typeof value === "string" ? value : "");
+    event.returnValue = true;
   });
 
   ipcMain.handle("desktop:open-external", async (_, url) => {

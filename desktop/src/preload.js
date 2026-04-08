@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+function readClipboardText() {
+  return ipcRenderer.sendSync("desktop:clipboard:read-text");
+}
+
+function writeClipboardText(value) {
+  return ipcRenderer.sendSync("desktop:clipboard:write-text", value);
+}
+
 function isTextInput(element) {
   if (!element) {
     return false;
@@ -84,55 +92,41 @@ function installEditingShortcutFallback() {
       }
 
       if (key === "c") {
-        if (!navigator.clipboard?.writeText) {
-          return;
-        }
-
         event.preventDefault();
         const selectedText = isTextInput(target)
           ? getSelectedTextFromInput(target)
           : window.getSelection()?.toString() ?? "";
 
-        void navigator.clipboard.writeText(selectedText);
+        writeClipboardText(selectedText);
         return;
       }
 
       if (key === "x") {
-        if (!navigator.clipboard?.writeText) {
-          return;
-        }
-
         event.preventDefault();
         const selectedText = isTextInput(target)
           ? getSelectedTextFromInput(target)
           : window.getSelection()?.toString() ?? "";
 
-        void navigator.clipboard.writeText(selectedText).then(() => {
-          if (isTextInput(target)) {
-            replaceSelectedText(target, "");
-            return;
-          }
+        writeClipboardText(selectedText);
+        if (isTextInput(target)) {
+          replaceSelectedText(target, "");
+          return;
+        }
 
-          document.execCommand("delete");
-        });
+        document.execCommand("delete");
         return;
       }
 
       if (key === "v") {
-        if (!navigator.clipboard?.readText) {
+        event.preventDefault();
+        const clipboardText = readClipboardText();
+        if (isTextInput(target)) {
+          target.focus();
+          replaceSelectedText(target, clipboardText);
           return;
         }
 
-        event.preventDefault();
-        void navigator.clipboard.readText().then((clipboardText) => {
-          if (isTextInput(target)) {
-            target.focus();
-            replaceSelectedText(target, clipboardText);
-            return;
-          }
-
-          document.execCommand("insertText", false, clipboardText);
-        });
+        document.execCommand("insertText", false, clipboardText);
       }
     },
     true,

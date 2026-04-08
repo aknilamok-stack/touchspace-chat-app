@@ -57,6 +57,20 @@ function createMenu() {
       ],
     },
     {
+      label: "Редактирование",
+      submenu: [
+        { role: "undo", label: "Отменить" },
+        { role: "redo", label: "Повторить" },
+        { type: "separator" },
+        { role: "cut", label: "Вырезать" },
+        { role: "copy", label: "Копировать" },
+        { role: "paste", label: "Вставить" },
+        { role: "pasteAndMatchStyle", label: "Вставить без форматирования" },
+        { role: "delete", label: "Удалить" },
+        { role: "selectAll", label: "Выделить всё" },
+      ],
+    },
+    {
       label: "Окно",
       submenu: [
         { role: "minimize", label: "Свернуть" },

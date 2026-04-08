@@ -202,9 +202,9 @@ function clearDesktopAttention() {
 function getOverlayNotificationBounds() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const workArea = display.workArea;
-  const width = 560;
-  const height = 344;
-  const margin = 24;
+  const width = 456;
+  const height = 332;
+  const margin = 18;
 
   return {
     width,

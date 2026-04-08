@@ -1301,6 +1301,7 @@ export default function Home() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
+      tone?: "green" | "amber" | "blue";
     }
   ) => {
     const targetUrl =
@@ -1321,7 +1322,7 @@ export default function Home() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: "blue",
+        tone: options?.tone ?? "green",
       });
       return;
     }
@@ -2602,6 +2603,13 @@ export default function Home() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
+        tone:
+          candidate.scopeStatus === "missed_unclaimed" ||
+          candidate.scopeStatus === "rescue_queue"
+            ? "amber"
+            : candidate.scopeStatus === "claimed_by_other_recently"
+              ? "blue"
+              : "green",
       });
     });
   }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);

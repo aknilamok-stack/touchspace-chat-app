@@ -231,6 +231,11 @@ function focusMainWindow(targetUrl) {
     return;
   }
 
+  if (process.platform === "darwin") {
+    app.focus({ steal: true });
+    app.dock?.show();
+  }
+
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
@@ -474,7 +479,13 @@ function createWindow() {
   registerEditingShortcuts(mainWindow);
 
   mainWindow.once("ready-to-show", () => {
+    if (process.platform === "darwin") {
+      app.dock?.show();
+      app.focus({ steal: true });
+    }
+
     mainWindow?.show();
+    mainWindow?.focus();
   });
 
   mainWindow.on("focus", () => {
@@ -665,9 +676,22 @@ app.whenReady().then(() => {
   createWindow();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
+      return;
     }
+
+    if (process.platform === "darwin") {
+      app.dock?.show();
+      app.focus({ steal: true });
+    }
+
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+
+    mainWindow.show();
+    mainWindow.focus();
   });
 });
 

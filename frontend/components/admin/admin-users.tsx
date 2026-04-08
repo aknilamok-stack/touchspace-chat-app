@@ -103,6 +103,7 @@ export function AdminUsers() {
     temporaryPassword: string;
     passwordChangeRequired?: boolean;
   }>(null);
+  const [credentialsCopied, setCredentialsCopied] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -127,6 +128,7 @@ export function AdminUsers() {
     setMessage(null);
     setError(null);
     setIssuedCredentials(null);
+    setCredentialsCopied(false);
   };
 
   const openEditDrawer = async (userId: string) => {
@@ -136,6 +138,7 @@ export function AdminUsers() {
     setMessage(null);
     setError(null);
     setIssuedCredentials(null);
+    setCredentialsCopied(false);
 
     try {
       const result = await adminApi.getUser(userId);
@@ -308,6 +311,21 @@ export function AdminUsers() {
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось архивировать пользователя");
+    }
+  };
+
+  const handleCopyIssuedCredentials = async () => {
+    if (!issuedCredentials || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        `Логин: ${issuedCredentials.login}\nВременный пароль: ${issuedCredentials.temporaryPassword}`,
+      );
+      setCredentialsCopied(true);
+    } catch (copyError) {
+      setError(copyError instanceof Error ? copyError.message : "Не удалось скопировать данные");
     }
   };
 
@@ -719,6 +737,71 @@ export function AdminUsers() {
               ) : (
                 <p className="text-sm text-slate-500">Карточка пользователя загружается.</p>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {issuedCredentials ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/26 backdrop-blur-[2px]">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-[560px] rounded-[28px] border border-emerald-200 bg-white p-6 shadow-[0_30px_70px_rgba(15,23,42,0.18)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                    Временный пароль для пользователя
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Сохраните эти данные сейчас. Пароль показывается только один раз.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIssuedCredentials(null);
+                    setCredentialsCopied(false);
+                  }}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Закрыть
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Логин</p>
+                  <p className="mt-2 break-all text-lg font-semibold text-slate-950">
+                    {issuedCredentials.login}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Временный пароль
+                  </p>
+                  <p className="mt-2 break-all text-lg font-semibold text-slate-950">
+                    {issuedCredentials.temporaryPassword}
+                  </p>
+                </div>
+                <p className="text-sm leading-6 text-slate-600">
+                  При первом входе пользователь должен будет сразу сменить пароль на свой.
+                </p>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <AdminButton type="button" onClick={() => void handleCopyIssuedCredentials()}>
+                  {credentialsCopied ? "Скопировано" : "Скопировать логин и пароль"}
+                </AdminButton>
+                <AdminButton
+                  type="button"
+                  tone="secondary"
+                  onClick={() => {
+                    setIssuedCredentials(null);
+                    setCredentialsCopied(false);
+                  }}
+                >
+                  Понятно
+                </AdminButton>
+              </div>
             </div>
           </div>
         </div>

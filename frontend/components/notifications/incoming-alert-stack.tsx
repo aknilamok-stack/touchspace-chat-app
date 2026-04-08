@@ -56,12 +56,24 @@ export function IncomingAlertStack({
           <section
             key={item.id}
             className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${tone.card}`}
+            onClick={() => onPrimary?.(item.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onPrimary?.(item.id);
+              }
+            }}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>
               <button
                 type="button"
-                onClick={() => onClose(item.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose(item.id);
+                }}
                 className="text-[36px] leading-none opacity-90 transition hover:opacity-100"
                 aria-label="Закрыть уведомление"
               >
@@ -92,14 +104,24 @@ export function IncomingAlertStack({
             <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${tone.footer}`}>
               <button
                 type="button"
-                onClick={() => onPrimary?.(item.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPrimary?.(item.id);
+                }}
                 className="rounded-[16px] px-4 py-3 text-sm font-medium transition hover:bg-white/10"
               >
                 {item.primaryLabel ?? "Ответить"}
               </button>
               <button
                 type="button"
-                onClick={() => (onSecondary ? onSecondary(item.id) : onClose(item.id))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (onSecondary) {
+                    onSecondary(item.id);
+                    return;
+                  }
+                  onClose(item.id);
+                }}
                 className="rounded-[16px] px-4 py-3 text-sm font-medium opacity-90 transition hover:bg-white/10"
               >
                 {item.secondaryLabel ?? "Позже"}

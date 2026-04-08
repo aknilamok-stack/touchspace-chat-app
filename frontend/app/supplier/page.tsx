@@ -3182,7 +3182,12 @@ export default function SupplierPage() {
                             ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
                             : null,
                     primaryLabel:
-                      candidate.scopeStatus === "claimed_by_other_recently" ? "Открыть" : "Ответить",
+                      candidate.scopeStatus === "claimed_by_other_recently"
+                        ? "Открыть"
+                        : candidate.scopeStatus === "new_unclaimed" ||
+                            candidate.scopeStatus === "missed_unclaimed"
+                          ? "Взять в работу"
+                          : "Ответить",
                     secondaryLabel: "Позже",
                   }))}
                   onClose={dismissFloatingNotification}

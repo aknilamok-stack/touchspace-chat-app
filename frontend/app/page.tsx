@@ -1980,16 +1980,38 @@ export default function Home() {
     }
 
     void updateManagerPresence(currentManagerId, currentManagerName, currentManagerStatus)
-      .then(() => {
+      .then(async () => {
         setManagerStatuses((prev) => ({
           ...prev,
           [currentManagerId]: currentManagerStatus,
         }));
+
+        if (currentManagerStatus !== "online") {
+          return;
+        }
+
+        const [tickets, candidates] = await Promise.all([
+          fetchTickets().catch((): ApiTicket[] => []),
+          fetchManagerNotificationCandidates().catch((): NotificationCandidate[] => []),
+        ]);
+
+        if (tickets.length > 0) {
+          syncTickets(tickets);
+          await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
+        }
+
+        setNotificationCandidates(candidates);
       })
       .catch((error) => {
         console.error("Ошибка синхронизации статуса менеджера:", error);
       });
-  }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
+  }, [
+    authReady,
+    currentManagerId,
+    currentManagerName,
+    currentManagerStatus,
+    syncMessagesForTickets,
+  ]);
 
   useEffect(() => {
     if (!authReady || activeChatSupplierScopeIds.length === 0) {

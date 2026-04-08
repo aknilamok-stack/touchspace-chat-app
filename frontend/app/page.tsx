@@ -1914,7 +1914,7 @@ export default function Home() {
   }, [authReady, currentManagerId, syncMessagesForTickets]);
 
   useEffect(() => {
-    if (!deepLinkTicketId || chatData.length === 0) {
+    if (!deepLinkTicketId || chatData.length === 0 || isChatPaneDismissed) {
       return;
     }
 
@@ -1922,7 +1922,7 @@ export default function Home() {
       setIsChatPaneDismissed(false);
       setActiveChatId(deepLinkTicketId);
     }
-  }, [deepLinkTicketId, chatData]);
+  }, [deepLinkTicketId, chatData, isChatPaneDismissed]);
 
   useEffect(() => {
     if (!authReady) {
@@ -4192,6 +4192,13 @@ export default function Home() {
                 <div className="relative">
                   <button
                     onClick={() => {
+                      if (typeof window !== "undefined") {
+                        const nextUrl = new URL(window.location.href);
+                        nextUrl.searchParams.delete("ticket");
+                        window.history.replaceState({}, "", nextUrl.toString());
+                      }
+
+                      setDeepLinkTicketId("");
                       setHoveredHeaderAction(null);
                       setIsChatPaneDismissed(true);
                       setActiveChatId("");

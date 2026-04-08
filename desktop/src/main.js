@@ -16,6 +16,7 @@ const defaultRemoteUrl = "https://app.aknila.ru/login";
 const startUrl = process.env.DESKTOP_START_URL || defaultRemoteUrl;
 const shellOrigin = new URL(startUrl).origin;
 const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
+const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 
 let mainWindow = null;
 let lastUnreadAttentionCount = 0;
@@ -200,7 +201,7 @@ function createWindow() {
     }
   });
 
-  if (isDev) {
+  if (isDev && shouldOpenDevTools) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
@@ -214,6 +215,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(windowIconPath);
+  }
+
   ipcMain.handle("desktop:get-meta", () => ({
     isDesktopShell: true,
     isPackaged: app.isPackaged,

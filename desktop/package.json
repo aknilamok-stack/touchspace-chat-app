@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "electron .",
     "dev:local": "DESKTOP_START_URL=http://localhost:3000/login electron .",
-    "dev:remote": "electron .",
+    "dev:remote": "DESKTOP_START_URL=https://app.aknila.ru/login electron .",
     "package:dir": "electron-builder --dir",
     "package:mac": "electron-builder --mac",
     "package:mac:zip": "electron-builder --mac zip",
@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.touchspace.workspace",
     "productName": "TouchSpace Workspace",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },
@@ -26,12 +27,14 @@
       "package.json"
     ],
     "mac": {
+      "icon": "assets/icon.icns",
       "category": "public.app-category.business",
       "target": [
         "dmg"
       ]
     },
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         "nsis"
       ]

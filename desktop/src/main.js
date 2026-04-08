@@ -12,9 +12,10 @@ const path = require("node:path");
 process.env.ELECTRON_IS_PACKAGED = app.isPackaged ? "true" : "false";
 
 const isDev = !app.isPackaged;
-const defaultRemoteUrl = "https://touchspace-chat-app-git-main-aknilamok-stacks-projects.vercel.app/login";
+const defaultRemoteUrl = "https://app.aknila.ru/login";
 const startUrl = process.env.DESKTOP_START_URL || defaultRemoteUrl;
 const shellOrigin = new URL(startUrl).origin;
+const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 
 let mainWindow = null;
 let lastUnreadAttentionCount = 0;
@@ -165,6 +166,7 @@ function createWindow() {
     backgroundColor: "#eff4ff",
     show: false,
     autoHideMenuBar: false,
+    icon: windowIconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

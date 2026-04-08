@@ -17,6 +17,8 @@ const startUrl = process.env.DESKTOP_START_URL || defaultRemoteUrl;
 const shellOrigin = new URL(startUrl).origin;
 
 let mainWindow = null;
+let lastUnreadAttentionCount = 0;
+let lastDockBounceId = -1;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -73,6 +75,84 @@ function createMenu() {
   return Menu.buildFromTemplate(template);
 }
 
+function parseUnreadCountFromTitle(title) {
+  if (typeof title !== "string") {
+    return 0;
+  }
+
+  const match = title.match(/^\((\d+)\)/);
+
+  if (!match) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function clearDesktopAttention() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.flashFrame(false);
+  }
+
+  if (typeof app.setBadgeCount === "function") {
+    app.setBadgeCount(0);
+  }
+
+  if (process.platform === "darwin" && app.dock && lastDockBounceId !== -1) {
+    app.dock.cancelBounce(lastDockBounceId);
+    lastDockBounceId = -1;
+  }
+
+  lastUnreadAttentionCount = 0;
+}
+
+function requestDesktopAttention(unreadCount) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (typeof app.setBadgeCount === "function") {
+    app.setBadgeCount(unreadCount);
+  }
+
+  if (mainWindow.isFocused()) {
+    lastUnreadAttentionCount = unreadCount;
+    return;
+  }
+
+  if (process.platform === "darwin" && app.dock) {
+    if (lastDockBounceId !== -1) {
+      app.dock.cancelBounce(lastDockBounceId);
+    }
+
+    lastDockBounceId = app.dock.bounce("informational");
+  }
+
+  mainWindow.flashFrame(true);
+  lastUnreadAttentionCount = unreadCount;
+}
+
+function syncDesktopAttentionFromTitle(title) {
+  const unreadCount = parseUnreadCountFromTitle(title);
+
+  if (unreadCount <= 0) {
+    clearDesktopAttention();
+    return;
+  }
+
+  if (unreadCount > lastUnreadAttentionCount) {
+    requestDesktopAttention(unreadCount);
+    return;
+  }
+
+  if (typeof app.setBadgeCount === "function") {
+    app.setBadgeCount(unreadCount);
+  }
+
+  lastUnreadAttentionCount = unreadCount;
+}
+
 function createWindow() {
   nativeTheme.themeSource = "light";
 
@@ -100,6 +180,10 @@ function createWindow() {
     mainWindow?.show();
   });
 
+  mainWindow.on("focus", () => {
+    clearDesktopAttention();
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
@@ -117,6 +201,12 @@ function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
+
+  mainWindow.webContents.on("page-title-updated", (event, title) => {
+    event.preventDefault();
+    mainWindow?.setTitle(title);
+    syncDesktopAttentionFromTitle(title);
+  });
 
   void mainWindow.loadURL(startUrl);
 }
@@ -179,7 +269,5 @@ app.on("web-contents-created", (_, contents) => {
 });
 
 app.on("browser-window-focus", () => {
-  if (Notification.isSupported() && isDev) {
-    // no-op hook reserved for later native unread badge/sync logic
-  }
+  clearDesktopAttention();
 });

@@ -961,6 +961,8 @@ export default function SupplierPage() {
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [activeChatSearchMatchIndex, setActiveChatSearchMatchIndex] = useState(0);
   const [replyText, setReplyText] = useState("");
+  const [sendMode, setSendMode] = useState<"chat" | "email">("chat");
+  const [emailRecipient, setEmailRecipient] = useState("");
   const [quickReplies, setQuickReplies] = useState<string[]>(QUICK_REPLIES);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -1177,6 +1179,13 @@ export default function SupplierPage() {
       ? supplierChatSearchMatchIds[normalizedActiveChatSearchMatchIndex]
       : null;
   const supplierChatSearchMatchIdSet = new Set(supplierChatSearchMatchIds);
+  const resolvedTicketEmail =
+    ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
+    selectedTicket?.canonicalEmail?.trim() ||
+    selectedTicket?.clientEmail?.trim() ||
+    selectedTicket?.currentUserEmail?.trim() ||
+    selectedTicket?.superuserEmail?.trim() ||
+    "";
   const filteredHistoryRequests = selectedTicketRequests.filter((request) => {
     if (requestHistoryFilter === "all") {
       return true;
@@ -2466,6 +2475,16 @@ export default function SupplierPage() {
     )}px`;
   }, [replyText]);
 
+  useEffect(() => {
+    setEmailRecipient(resolvedTicketEmail);
+  }, [resolvedTicketEmail, selectedRequestId]);
+
+  useEffect(() => {
+    if (!emailRecipient.trim() && resolvedTicketEmail) {
+      setEmailRecipient(resolvedTicketEmail);
+    }
+  }, [resolvedTicketEmail, emailRecipient]);
+
   const handleLogout = () => {
     const session = readAuthSession();
 
@@ -2785,6 +2804,7 @@ export default function SupplierPage() {
   const handleSendReply = async () => {
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
+    const isEmailMode = sendMode === "email";
 
     if (
       !selectedRequest ||
@@ -2798,6 +2818,16 @@ export default function SupplierPage() {
     setReplyError("");
 
     try {
+      if (isEmailMode && hasAttachmentToSend) {
+        setReplyError("В MVP email-режим пока поддерживает только текстовые сообщения");
+        return;
+      }
+
+      if (isEmailMode && !emailRecipient.trim()) {
+        setReplyError("Укажите email получателя");
+        return;
+      }
+
       if (editTarget) {
         if (!hasTextToSend) {
           return;
@@ -2844,10 +2874,12 @@ export default function SupplierPage() {
             ticketId: selectedRequest.ticketId,
             content: replyText,
             senderType: "supplier",
+            transport: isEmailMode ? "email" : "chat",
             senderId: supplierProfileId,
             senderName: resolvedSupplierEmployeeName,
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
+            toEmail: isEmailMode ? emailRecipient.trim() : undefined,
           }),
         });
 
@@ -2914,6 +2946,12 @@ export default function SupplierPage() {
       setAttachmentName("");
       setSelectedFiles([]);
       setHoveredMessageId("");
+      if (isEmailMode) {
+        setToast({
+          message: `Email отправлен на ${emailRecipient.trim()}`,
+          tone: "info",
+        });
+      }
       requestAnimationFrame(() => {
         scrollSupplierChatToBottom("smooth");
       });
@@ -3852,99 +3890,6 @@ export default function SupplierPage() {
                       </div>
                     ) : null}
 
-                    {selectedRequest ? (
-                      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#E3E5EA] bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                        <div className="relative min-w-[220px] flex-1">
-                          <svg
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8E8E93]"
-                            aria-hidden="true"
-                          >
-                            <circle
-                              cx="9"
-                              cy="9"
-                              r="5.75"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                            />
-                            <path
-                              d="M13.5 13.5L16.5 16.5"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                          <input
-                            value={chatSearchQuery}
-                            onChange={(event) => {
-                              setChatSearchQuery(event.target.value);
-                              setActiveChatSearchMatchIndex(0);
-                            }}
-                            placeholder="Поиск по чату"
-                            className="w-full rounded-full border border-[#E3E5EA] bg-[#FBFBFD] py-2 pl-10 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                          />
-                        </div>
-                        {chatSearchQuery.trim() ? (
-                          <>
-                            <span className="shrink-0 text-xs font-medium text-[#8E8E93]">
-                              {supplierChatSearchMatchIds.length
-                                ? `${normalizedActiveChatSearchMatchIndex + 1}/${supplierChatSearchMatchIds.length}`
-                                : "0"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => moveChatSearchMatch(-1)}
-                              disabled={supplierChatSearchMatchIds.length === 0}
-                              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
-                              aria-label="Предыдущее совпадение"
-                            >
-                              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-                                <path
-                                  d="M10 6L6 10L10 14"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                                <path
-                                  d="M14 6L10 10L14 14"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveChatSearchMatch(1)}
-                              disabled={supplierChatSearchMatchIds.length === 0}
-                              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
-                              aria-label="Следующее совпадение"
-                            >
-                              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-                                <path
-                                  d="M10 6L14 10L10 14"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                                <path
-                                  d="M6 6L10 10L6 14"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-
                     {replyTarget ? (
                       <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
                         <button
@@ -3987,6 +3932,135 @@ export default function SupplierPage() {
 
                     {canSupplierReply ? (
                       <>
+                      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7]/0 bg-transparent px-0 py-0">
+                        <button
+                          type="button"
+                          onClick={() => setSendMode("chat")}
+                          className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                            sendMode === "chat"
+                              ? "bg-[#0A84FF] text-white shadow-[0_8px_16px_rgba(10,132,255,0.18)]"
+                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E9EEF8]"
+                          }`}
+                        >
+                          Чат
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSendMode("email")}
+                          className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                            sendMode === "email"
+                              ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
+                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
+                          }`}
+                        >
+                          Email
+                        </button>
+                        {sendMode === "chat" ? (
+                          <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
+                            <div className="relative min-w-[220px] flex-1">
+                              <svg
+                                viewBox="0 0 20 20"
+                                fill="none"
+                                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8E8E93]"
+                                aria-hidden="true"
+                              >
+                                <circle
+                                  cx="9"
+                                  cy="9"
+                                  r="5.75"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                />
+                                <path
+                                  d="M13.5 13.5L16.5 16.5"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                              <input
+                                value={chatSearchQuery}
+                                onChange={(event) => {
+                                  setChatSearchQuery(event.target.value);
+                                  setActiveChatSearchMatchIndex(0);
+                                }}
+                                placeholder="Поиск по чату"
+                                className="w-full rounded-full border border-[#E3E5EA] bg-white py-2 pl-10 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                              />
+                            </div>
+                            {chatSearchQuery.trim() ? (
+                              <>
+                                <span className="shrink-0 text-xs font-medium text-[#8E8E93]">
+                                  {supplierChatSearchMatchIds.length
+                                    ? `${normalizedActiveChatSearchMatchIndex + 1}/${supplierChatSearchMatchIds.length}`
+                                    : "0"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => moveChatSearchMatch(-1)}
+                                  disabled={supplierChatSearchMatchIds.length === 0}
+                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                                  aria-label="Предыдущее совпадение"
+                                >
+                                  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                                    <path
+                                      d="M10 6L6 10L10 14"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                    <path
+                                      d="M14 6L10 10L14 14"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveChatSearchMatch(1)}
+                                  disabled={supplierChatSearchMatchIds.length === 0}
+                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                                  aria-label="Следующее совпадение"
+                                >
+                                  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                                    <path
+                                      d="M10 6L14 10L10 14"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                    <path
+                                      d="M6 6L10 10L6 14"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {sendMode === "email" ? (
+                          <>
+                            <span className="ml-1 text-sm font-medium text-[#9A6B2E]">
+                              Получатель:
+                            </span>
+                            <input
+                              value={emailRecipient}
+                              onChange={(event) => setEmailRecipient(event.target.value)}
+                              placeholder="client@example.com"
+                              className="min-w-[240px] flex-1 rounded-full border border-[#E5D2B8] bg-[#FFF9F2] px-4 py-2 text-sm text-[#1E1E1E] outline-none placeholder:text-[#B7A48B]"
+                            />
+                          </>
+                        ) : null}
+                      </div>
                       <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                       <div className="min-w-0 flex-1">
                         <textarea

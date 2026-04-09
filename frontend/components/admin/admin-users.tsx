@@ -67,6 +67,8 @@ const emptyEditForm = {
 const roleNeedsCompany = (role?: string | null) =>
   role === "supplier" || role === "supplier_supervisor";
 
+const roleUsesSupervisorCompanySelect = (role?: string | null) => role === "supplier";
+
 const roleNeedsName = (_role?: string | null) => true;
 
 const getInviteCount = (items: any[]) =>
@@ -88,6 +90,7 @@ export function AdminUsers() {
     company: "",
   });
   const [payload, setPayload] = useState<any>(null);
+  const [supplierSupervisorCompanies, setSupplierSupervisorCompanies] = useState<string[]>([]);
   const [detail, setDetail] = useState<any>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -122,6 +125,26 @@ export function AdminUsers() {
       setError(null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить пользователей");
+    }
+  };
+
+  const loadSupplierSupervisorCompanies = async () => {
+    try {
+      const result = await adminApi.getUsers({
+        role: "supplier_supervisor",
+      });
+
+      const companies = Array.from(
+        new Set<string>(
+          (result?.items ?? [])
+            .map((item: any) => item.companyName?.trim())
+            .filter((value: string | undefined | null): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right, "ru"));
+
+      setSupplierSupervisorCompanies(companies);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить компании поставщиков");
     }
   };
 
@@ -165,6 +188,10 @@ export function AdminUsers() {
   useEffect(() => {
     void loadUsers();
   }, [filters.role, filters.status, filters.company]);
+
+  useEffect(() => {
+    void loadSupplierSupervisorCompanies();
+  }, []);
 
   const users = useMemo(() => {
     const items = payload?.items ?? [];
@@ -222,6 +249,7 @@ export function AdminUsers() {
       setDrawerOpen(false);
       setCreateForm(emptyCreateForm);
       await loadUsers();
+      await loadSupplierSupervisorCompanies();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось создать пользователя");
     } finally {
@@ -260,6 +288,7 @@ export function AdminUsers() {
       });
       setMessage("Изменения сохранены");
       await loadUsers();
+      await loadSupplierSupervisorCompanies();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось обновить пользователя");
     } finally {
@@ -596,8 +625,13 @@ export function AdminUsers() {
                         setCreateForm((current) => ({
                           ...current,
                           role: event.target.value as InternalRole,
-                          companyName:
-                            roleNeedsCompany(event.target.value) ? current.companyName : "",
+                          companyName: roleNeedsCompany(event.target.value)
+                            ? roleUsesSupervisorCompanySelect(event.target.value)
+                              ? current.companyName && supplierSupervisorCompanies.includes(current.companyName)
+                                ? current.companyName
+                                : supplierSupervisorCompanies[0] ?? ""
+                              : current.companyName
+                            : "",
                         }))
                       }
                     >
@@ -619,14 +653,44 @@ export function AdminUsers() {
                   {roleNeedsCompany(createForm.role) ? (
                     <section className="grid gap-3">
                       <p className="text-sm font-semibold text-slate-900">Компания</p>
-                      <AdminInput
-                        value={createForm.companyName}
-                        onChange={(event) =>
-                          setCreateForm((current) => ({ ...current, companyName: event.target.value }))
-                        }
-                        placeholder="Компания"
-                        required
-                      />
+                      {roleUsesSupervisorCompanySelect(createForm.role) ? (
+                        <>
+                          <AdminSelect
+                            value={createForm.companyName}
+                            onChange={(event) =>
+                              setCreateForm((current) => ({ ...current, companyName: event.target.value }))
+                            }
+                            required
+                            disabled={supplierSupervisorCompanies.length === 0}
+                          >
+                            {supplierSupervisorCompanies.length === 0 ? (
+                              <option value="">Сначала создайте руководителя поставщика</option>
+                            ) : null}
+                            {supplierSupervisorCompanies.length > 0 ? (
+                              <>
+                                <option value="">Выберите компанию</option>
+                                {supplierSupervisorCompanies.map((companyName) => (
+                                  <option key={companyName} value={companyName}>
+                                    {companyName}
+                                  </option>
+                                ))}
+                              </>
+                            ) : null}
+                          </AdminSelect>
+                          <p className="text-xs text-slate-500">
+                            Для поставщика доступны только компании, у которых уже создан руководитель поставщика.
+                          </p>
+                        </>
+                      ) : (
+                        <AdminInput
+                          value={createForm.companyName}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({ ...current, companyName: event.target.value }))
+                          }
+                          placeholder="Компания"
+                          required
+                        />
+                      )}
                     </section>
                   ) : null}
 
@@ -685,8 +749,13 @@ export function AdminUsers() {
                         setEditForm((current) => ({
                           ...current,
                           role: event.target.value as InternalRole,
-                          companyName:
-                            roleNeedsCompany(event.target.value) ? current.companyName : "",
+                          companyName: roleNeedsCompany(event.target.value)
+                            ? roleUsesSupervisorCompanySelect(event.target.value)
+                              ? current.companyName && supplierSupervisorCompanies.includes(current.companyName)
+                                ? current.companyName
+                                : supplierSupervisorCompanies[0] ?? ""
+                              : current.companyName
+                            : "",
                         }))
                       }
                     >
@@ -701,14 +770,44 @@ export function AdminUsers() {
                   {roleNeedsCompany(editForm.role) ? (
                     <section className="grid gap-3">
                       <p className="text-sm font-semibold text-slate-900">Компания</p>
-                      <AdminInput
-                        value={editForm.companyName}
-                        onChange={(event) =>
-                          setEditForm((current) => ({ ...current, companyName: event.target.value }))
-                        }
-                        placeholder="Компания"
-                        required
-                      />
+                      {roleUsesSupervisorCompanySelect(editForm.role) ? (
+                        <>
+                          <AdminSelect
+                            value={editForm.companyName}
+                            onChange={(event) =>
+                              setEditForm((current) => ({ ...current, companyName: event.target.value }))
+                            }
+                            required
+                            disabled={supplierSupervisorCompanies.length === 0}
+                          >
+                            {supplierSupervisorCompanies.length === 0 ? (
+                              <option value="">Сначала создайте руководителя поставщика</option>
+                            ) : null}
+                            {supplierSupervisorCompanies.length > 0 ? (
+                              <>
+                                <option value="">Выберите компанию</option>
+                                {supplierSupervisorCompanies.map((companyName) => (
+                                  <option key={companyName} value={companyName}>
+                                    {companyName}
+                                  </option>
+                                ))}
+                              </>
+                            ) : null}
+                          </AdminSelect>
+                          <p className="text-xs text-slate-500">
+                            Для поставщика доступны только компании, у которых уже создан руководитель поставщика.
+                          </p>
+                        </>
+                      ) : (
+                        <AdminInput
+                          value={editForm.companyName}
+                          onChange={(event) =>
+                            setEditForm((current) => ({ ...current, companyName: event.target.value }))
+                          }
+                          placeholder="Компания"
+                          required
+                        />
+                      )}
                     </section>
                   ) : null}
 

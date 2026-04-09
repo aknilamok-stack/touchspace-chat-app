@@ -317,6 +317,22 @@ const isSameLocalDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
+const getSupplierMessageAuthorLabel = (message: TicketMessage) => {
+  if (message.senderType === "supplier") {
+    return "Вы";
+  }
+
+  if (message.senderType === "manager") {
+    return "Менеджер";
+  }
+
+  if (message.senderType === "client") {
+    return "Клиент";
+  }
+
+  return "";
+};
+
 const formatTicketMessage = (message: TicketMessageApi): TicketMessage => {
   const attachments = parseChatAttachmentPayloads(message.content);
   const normalizedContent = message.content.trim();
@@ -3613,6 +3629,7 @@ export default function SupplierPage() {
                         const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
                         const isCurrentSearchMatch =
                           currentSupplierChatSearchMatchId === message.id;
+                        const authorLabel = getSupplierMessageAuthorLabel(message);
 
                         return (
                           <div
@@ -3758,6 +3775,19 @@ export default function SupplierPage() {
                                   }`}
                                 >
                                   <div className="min-w-0 max-w-full">
+                                    {authorLabel ? (
+                                      <p
+                                        className={`mb-1 text-[11px] font-semibold ${
+                                          message.senderType === "supplier"
+                                            ? "text-white/78"
+                                            : message.isInternal
+                                              ? "text-[#C1812B]"
+                                              : "text-[#7A8495]"
+                                        }`}
+                                      >
+                                        {authorLabel}
+                                      </p>
+                                    ) : null}
                                     {message.isInternal ? (
                                       <p className="mb-1 text-[11px] font-semibold text-[#C1812B]">
                                         Комментарий менеджера

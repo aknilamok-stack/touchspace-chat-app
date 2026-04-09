@@ -1816,8 +1816,8 @@ export class AdminService {
       title: 'Учётная запись удалена',
       description: user.fullName,
       actor: adminContext,
-      targetProfileId: user.id,
       metadata: {
+        deletedUserId: user.id,
         role: user.role,
         email: user.email,
         authLogin: user.authLogin,

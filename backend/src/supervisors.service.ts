@@ -97,6 +97,51 @@ export class SupervisorsService {
     return supervisor;
   }
 
+  async listSupplierCompanies() {
+    const supervisors = await this.prisma.profile.findMany({
+      where: {
+        role: 'supplier_supervisor',
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        companyName: {
+          not: null,
+        },
+      },
+      orderBy: [{ companyName: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        companyName: true,
+        supplierId: true,
+        fullName: true,
+      },
+    });
+
+    const seenCompanies = new Set<string>();
+
+    return {
+      items: supervisors
+        .map((supervisor) => {
+          const companyName = supervisor.companyName?.trim();
+
+          if (!companyName || seenCompanies.has(companyName)) {
+            return null;
+          }
+
+          seenCompanies.add(companyName);
+
+          return {
+            supervisorProfileId: supervisor.id,
+            companyName,
+            supplierId: supervisor.supplierId?.trim() || null,
+            supervisorName: supervisor.fullName?.trim() || null,
+          };
+        })
+        .filter(Boolean),
+    };
+  }
+
   private toDate(value?: string | null) {
     if (!value?.trim()) {
       return null;

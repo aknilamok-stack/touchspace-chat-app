@@ -5,6 +5,11 @@ import { SupervisorsService } from './supervisors.service';
 export class SupervisorsController {
   constructor(private readonly supervisorsService: SupervisorsService) {}
 
+  @Get('supplier-companies')
+  listSupplierCompanies() {
+    return this.supervisorsService.listSupplierCompanies();
+  }
+
   @Get('operators')
   listOperators(@Query('supervisorId') supervisorId: string) {
     return this.supervisorsService.listOperators(supervisorId);

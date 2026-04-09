@@ -41,13 +41,6 @@ import {
   showDesktopShellNotification,
 } from "@/lib/runtime";
 
-const suppliers = ["Karelia", "Pergo", "LabArte", "Alpine Floor"];
-const supplierDirectory: Record<string, { id: string; name: string }> = {
-  Karelia: { id: "supplier_karelia", name: "Karelia" },
-  Pergo: { id: "supplier_pergo", name: "Pergo" },
-  LabArte: { id: "supplier_labarte", name: "LabArte" },
-  "Alpine Floor": { id: "supplier_alpine_floor", name: "Alpine Floor" },
-};
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
@@ -112,6 +105,13 @@ type ApiTicketContactsResponse = {
 type ApiTicketPageViewsResponse = {
   current?: ChatPageViewItem | null;
   items?: ChatPageViewItem[];
+};
+
+type SupplierCompanyOption = {
+  supervisorProfileId: string;
+  companyName: string;
+  supplierId: string | null;
+  supervisorName?: string | null;
 };
 
 type ApiTicket = {
@@ -1010,7 +1010,8 @@ export default function Home() {
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
 
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState(suppliers[0]);
+  const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompanyOption[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState("");
   const [supplierRequestText, setSupplierRequestText] = useState("");
   const [supplierFollowUpText, setSupplierFollowUpText] = useState("");
   const [isLoadingSupplierRequests, setIsLoadingSupplierRequests] = useState(false);
@@ -1019,6 +1020,7 @@ export default function Home() {
   const [isSendingSupplierFollowUp, setIsSendingSupplierFollowUp] = useState(false);
   const [createSupplierRequestError, setCreateSupplierRequestError] = useState("");
   const [supplierFollowUpError, setSupplierFollowUpError] = useState("");
+  const [supplierCompaniesError, setSupplierCompaniesError] = useState("");
   const [isTogglingPinned, setIsTogglingPinned] = useState(false);
   const [isClaimingIncoming, setIsClaimingIncoming] = useState(false);
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
@@ -1624,6 +1626,19 @@ export default function Home() {
     return (await response.json()) as ApiTicketPageViewsResponse;
   };
 
+  const fetchSupplierCompanies = async (): Promise<SupplierCompanyOption[]> => {
+    const response = await fetch(apiUrl("/supervisors/supplier-companies"), {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить компании поставщиков");
+    }
+
+    const payload = (await response.json()) as { items?: SupplierCompanyOption[] };
+    return Array.isArray(payload.items) ? payload.items : [];
+  };
+
   const fetchTyping = async (
     ticketId: string
   ): Promise<{
@@ -1855,6 +1870,8 @@ export default function Home() {
   const availableSupplierRequestSuppliers = Array.from(
     new Set((activeChat?.supplierRequests ?? []).map((request) => request.supplierName))
   );
+  const selectedSupplierOption =
+    supplierCompanies.find((item) => item.companyName === selectedSupplier) ?? null;
   const availableSupplierRequestStatuses = Array.from(
     new Set((activeChat?.supplierRequests ?? []).map((request) => request.status))
   );
@@ -1911,7 +1928,14 @@ export default function Home() {
 
     const loadInitialTickets = async () => {
       try {
-        const [data, remoteStatuses, remoteManagerRecords, supplierStatuses, candidates] =
+        const [
+          data,
+          remoteStatuses,
+          remoteManagerRecords,
+          supplierStatuses,
+          candidates,
+          nextSupplierCompanies,
+        ] =
           await Promise.all([
           fetchTickets(),
           fetchManagerStatuses().catch(
@@ -1929,6 +1953,7 @@ export default function Home() {
           fetchManagerNotificationCandidates().catch(
             (): NotificationCandidate[] => []
           ),
+          fetchSupplierCompanies().catch((): SupplierCompanyOption[] => []),
         ]);
 
         setManagerStatuses(remoteStatuses);
@@ -1936,6 +1961,18 @@ export default function Home() {
         setSupplierPresenceRecords(supplierStatuses);
         setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
         setNotificationCandidates(candidates);
+        setSupplierCompanies(nextSupplierCompanies);
+        setSupplierCompaniesError("");
+        setSelectedSupplier((currentValue) => {
+          if (
+            currentValue &&
+            nextSupplierCompanies.some((item) => item.companyName === currentValue)
+          ) {
+            return currentValue;
+          }
+
+          return nextSupplierCompanies[0]?.companyName ?? "";
+        });
         syncTickets(data);
         await syncMessagesForTickets(data.map((ticket) => ticket.id));
       } catch (error) {
@@ -3315,10 +3352,10 @@ export default function Home() {
     setCreateSupplierRequestError("");
 
     try {
-      const supplier = supplierDirectory[selectedSupplier] ?? {
-        id: `supplier_${selectedSupplier.toLowerCase().replace(/\s+/g, "_")}`,
-        name: selectedSupplier,
-      };
+      if (!selectedSupplierOption) {
+        throw new Error("Сначала создайте управленца поставщика с компанией в админке");
+      }
+
       const response = await fetch(apiUrl("/supplier-requests"), {
         method: "POST",
         headers: {
@@ -3326,8 +3363,10 @@ export default function Home() {
         },
         body: JSON.stringify({
           ticketId: activeChatId,
-          supplierId: supplier.id,
-          supplierName: supplier.name,
+          supplierId:
+            selectedSupplierOption.supplierId?.trim() ||
+            `supplier_${selectedSupplierOption.companyName.toLowerCase().replace(/\s+/g, "_")}`,
+          supplierName: selectedSupplierOption.companyName,
           requestText: supplierRequestText,
           slaMinutes: 240,
           createdByManagerId: currentManagerId,
@@ -3362,12 +3401,12 @@ export default function Home() {
       setSupplierRequestText("");
       setSupplierFollowUpText("");
       setSupplierFollowUpError("");
-      setSelectedSupplier(suppliers[0]);
+      setSelectedSupplier(supplierCompanies[0]?.companyName ?? "");
       setIsSupplierFormOpen(false);
       setToast({
-        message: isSupplierScopeOnline(supplier.id)
-          ? `Запрос отправлен поставщику ${supplier.name}`
-          : `Сейчас поставщик ${supplier.name} не в сети. Как только кто-то появится, запрос сразу уйдёт в работу.`,
+        message: isSupplierScopeOnline(selectedSupplierOption?.supplierId ?? null)
+          ? `Запрос отправлен поставщику ${selectedSupplierOption?.companyName ?? "Поставщик"}`
+          : `Сейчас поставщик ${selectedSupplierOption?.companyName ?? "Поставщик"} не в сети. Как только кто-то появится, запрос сразу уйдёт в работу.`,
         tone: "info",
       });
     } catch (error) {
@@ -5503,12 +5542,22 @@ export default function Home() {
                         onChange={(e) => setSelectedSupplier(e.target.value)}
                         className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm outline-none"
                       >
-                        {suppliers.map((supplier) => (
-                          <option key={supplier} value={supplier}>
-                            {supplier}
+                        {supplierCompanies.length === 0 ? (
+                          <option value="">Нет доступных компаний поставщиков</option>
+                        ) : null}
+                        {supplierCompanies.map((supplier) => (
+                          <option key={supplier.supervisorProfileId} value={supplier.companyName}>
+                            {supplier.companyName}
                           </option>
                         ))}
                       </select>
+                      {supplierCompaniesError ? (
+                        <p className="mt-2 text-xs text-red-500">{supplierCompaniesError}</p>
+                      ) : supplierCompanies.length === 0 ? (
+                        <p className="mt-2 text-xs text-[#8E8E93]">
+                          Сначала создайте управленца поставщика с нужной компанией в админке.
+                        </p>
+                      ) : null}
                     </div>
 
                     <div>

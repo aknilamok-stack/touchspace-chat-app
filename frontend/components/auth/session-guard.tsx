@@ -9,7 +9,7 @@ import {
   validateServerSession,
 } from "@/lib/auth";
 
-const publicPaths = new Set(["/login", "/client"]);
+const publicPaths = new Set(["/login", "/client", "/chat-app"]);
 
 export function SessionGuard() {
   const pathname = usePathname();

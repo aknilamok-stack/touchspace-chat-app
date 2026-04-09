@@ -355,12 +355,12 @@ export default function ChatAppLandingPage() {
 
           <div class="ts-install-actions">
             <a href="/downloads/touchspace-macos.zip" download class="ts-btn ts-btn-white">Скачать для macOS</a>
-            <a href="#" class="ts-btn ts-btn-muted" onclick="event.preventDefault()">Скачать для Windows — скоро</a>
+            <a href="/downloads/touchspace-windows.exe" download class="ts-btn ts-btn-white">Скачать для Windows</a>
             <a href="#about-app" class="ts-btn ts-btn-secondary" style="background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.18); color: #fff;">Сначала посмотреть возможности</a>
           </div>
 
           <div class="ts-note">
-            macOS-версия уже доступна для скачивания. Windows-кнопка подготовлена и заработает после загрузки файла .exe на сервер.
+            Для macOS и Windows используются отдельные установочные файлы. Если одна из ссылок не открывается, значит соответствующий установщик ещё не загружен на сервер.
           </div>
         </div>
 

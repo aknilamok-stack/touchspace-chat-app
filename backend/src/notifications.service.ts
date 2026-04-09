@@ -619,6 +619,7 @@ export class NotificationsService {
         select: {
           id: true,
           title: true,
+          status: true,
           clientName: true,
           tradePointName: true,
           assignedManagerId: true,
@@ -696,6 +697,10 @@ export class NotificationsService {
 
         if (!ticket.assignedManagerId) {
           return candidate;
+        }
+
+        if (ticket.status === 'waiting_supplier') {
+          return null;
         }
 
         if (

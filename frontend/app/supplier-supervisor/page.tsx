@@ -299,14 +299,14 @@ const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
     return fallback?.trim() || "Поставщик";
   }
 
-  const withoutPrefix = normalizedSupplierId.replace(/^(supplier|scope)[_-]?/i, "");
+  const withoutPrefix = normalizedSupplierId.replace(/^(supplier|scope)[\s_-]?/i, "");
 
   if (!withoutPrefix) {
     return fallback?.trim() || "Поставщик";
   }
 
   return withoutPrefix
-    .split(/[_-]+/)
+    .split(/[\s_-]+/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");

@@ -548,6 +548,21 @@ const getSupplierQueueTab = (
   return "in_progress";
 };
 
+const isSupplierRequestMine = (
+  request: SupplierRequest,
+  supplierProfileId: string
+) => {
+  if (request.status === "pending") {
+    return false;
+  }
+
+  if (!request.assignedSupplierProfileId || !supplierProfileId) {
+    return false;
+  }
+
+  return request.assignedSupplierProfileId === supplierProfileId;
+};
+
 const buildSupplierRequestCards = (
   requests: SupplierRequest[],
   ticketMessagesByTicketId: Record<string, TicketMessage[]>,
@@ -1338,7 +1353,7 @@ export default function SupplierPage() {
           imageSrc: "/icons/moi.webp",
           title: "Мои диалоги",
           description:
-            "Все диалоги, в которых вы участвуете и уже обрабатываете, остаются под рукой в текущей вкладке.",
+            "Во вкладке остаются только активные запросы, закреплённые за вами.",
         };
   const selectedClientLabel =
     selectedTicket?.tradePointName?.trim() ||
@@ -1393,6 +1408,13 @@ export default function SupplierPage() {
       return false;
     }
 
+    if (
+      activeQueueTab === "in_progress" &&
+      !isSupplierRequestMine(card.request, supplierProfileId)
+    ) {
+      return false;
+    }
+
     if (!normalizedSearchQuery) {
       return true;
     }
@@ -1420,7 +1442,10 @@ export default function SupplierPage() {
   const queueCounts = supplierQueueTabs.reduce<Record<SupplierQueueTab, number>>(
     (accumulator, tab) => {
       accumulator[tab.id] = supplierRequestCards.filter(
-        (card) => card.queueTab === tab.id
+        (card) =>
+          card.queueTab === tab.id &&
+          (tab.id !== "in_progress" ||
+            isSupplierRequestMine(card.request, supplierProfileId))
       ).length;
       return accumulator;
     },

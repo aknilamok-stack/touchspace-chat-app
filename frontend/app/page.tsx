@@ -1248,7 +1248,7 @@ export default function Home() {
             imageSrc: "/icons/moi.webp",
             title: "Мои диалоги",
             description:
-              'Все диалоги, в которых вы участвуете, попадают во вкладку "Мои".',
+              'Во вкладке "Мои" отображаются только активные диалоги, закреплённые за вами.',
           }
         : {
             imageSrc: "/icons/moi.webp",
@@ -1732,17 +1732,10 @@ export default function Home() {
       if (
         resolvedCurrentManagerName &&
         chat.assignedManagerName &&
-        chat.assignedManagerName === resolvedCurrentManagerName
+        chat.assignedManagerName === resolvedCurrentManagerName &&
+        !chat.assignedManagerId
       ) {
         return true;
-      }
-
-      if (!chat.assignedManagerId) {
-        const lastNonSystemMessage = getLastNonSystemMessage(chat);
-        return (
-          chat.rawStatus !== "new" &&
-          lastNonSystemMessage?.from === "manager"
-        );
       }
 
       return false;

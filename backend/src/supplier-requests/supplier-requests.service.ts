@@ -158,20 +158,42 @@ export class SupplierRequestsService {
   }
 
   async findByTicket(ticketId: string, supplierId?: string) {
+    const normalizedSupplierId = supplierId?.trim();
+
     return this.prisma.supplierRequest.findMany({
       where: {
         ticketId,
-        ...(supplierId ? { supplierId } : {}),
+        ...(normalizedSupplierId
+          ? {
+              OR: [
+                { supplierId: normalizedSupplierId },
+                { supplierName: normalizedSupplierId },
+              ],
+            }
+          : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findAll(supplierName?: string, supplierId?: string) {
+    const normalizedSupplierName = supplierName?.trim();
+    const normalizedSupplierId = supplierId?.trim();
+
     return this.prisma.supplierRequest.findMany({
       where: {
-        ...(supplierName ? { supplierName } : {}),
-        ...(supplierId ? { supplierId } : {}),
+        ...(normalizedSupplierName && normalizedSupplierId
+          ? {
+              OR: [
+                { supplierName: normalizedSupplierName },
+                { supplierId: normalizedSupplierId },
+              ],
+            }
+          : normalizedSupplierName
+            ? { supplierName: normalizedSupplierName }
+            : normalizedSupplierId
+              ? { supplierId: normalizedSupplierId }
+              : {}),
       },
       orderBy: { createdAt: 'desc' },
     });

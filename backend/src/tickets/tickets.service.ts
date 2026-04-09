@@ -194,14 +194,7 @@ export class TicketsService {
     }
 
     if (viewerType === 'manager') {
-      return {
-        OR: [
-          { assignedManagerId: null },
-          { assignedManagerId: viewerId },
-          { invitedManagerIds: { path: '$', array_contains: viewerId } },
-          { lastResolvedByManagerId: viewerId },
-        ],
-      };
+      return undefined;
     }
 
     return undefined;

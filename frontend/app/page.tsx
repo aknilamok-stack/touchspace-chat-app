@@ -130,6 +130,7 @@ type ApiTicket = {
   avatarEmoji?: string | null;
   status?: string;
   pinned?: boolean;
+  invitedManagerIds?: string[];
   invitedManagerNames?: string[];
   assignedManagerId?: string | null;
   assignedManagerName?: string | null;
@@ -209,6 +210,7 @@ type ChatItem = {
   headerStatus: string;
   rawStatus: string;
   pinned: boolean;
+  invitedManagerIds: string[];
   invitedManagerNames: string[];
   assignedManagerId: string | null;
   assignedManagerName: string | null;
@@ -803,6 +805,7 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   headerStatus: getStatusLabel(ticket.status || "open"),
   rawStatus: ticket.status || "open",
   pinned: ticket.pinned ?? false,
+  invitedManagerIds: ticket.invitedManagerIds ?? [],
   invitedManagerNames: ticket.invitedManagerNames ?? [],
   assignedManagerId: ticket.assignedManagerId ?? null,
   assignedManagerName: ticket.assignedManagerName ?? null,
@@ -1738,9 +1741,36 @@ export default function Home() {
         return true;
       }
 
+      if (currentManagerId && chat.invitedManagerIds.includes(currentManagerId)) {
+        return true;
+      }
+
       return false;
     },
     [currentManagerId, resolvedCurrentManagerName]
+  );
+
+  const canCurrentManagerWriteToChat = useCallback(
+    (chat: ChatItem | null) => {
+      if (!chat || chat.rawStatus === "resolved") {
+        return false;
+      }
+
+      if (!chat.assignedManagerId) {
+        return true;
+      }
+
+      if (currentManagerId && chat.assignedManagerId === currentManagerId) {
+        return true;
+      }
+
+      if (currentManagerId && chat.invitedManagerIds.includes(currentManagerId)) {
+        return true;
+      }
+
+      return false;
+    },
+    [currentManagerId]
   );
 
   const filteredChats = chatData.filter((chat) => {
@@ -3622,6 +3652,61 @@ export default function Home() {
     }
   };
 
+  const handleJoinActiveDialog = async () => {
+    if (!activeChatId || !currentManagerId || !resolvedCurrentManagerName) {
+      return;
+    }
+
+    setIsInvitingManager(true);
+    setInviteManagerError("");
+
+    try {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/invite-manager`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId: currentManagerId,
+          managerName: resolvedCurrentManagerName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(response, "Не удалось подключиться к диалогу")
+        );
+      }
+
+      const [tickets, messages] = await Promise.all([
+        fetchTickets(),
+        fetchMessages(activeChatId),
+      ]);
+
+      syncTickets(tickets);
+      await refreshNotificationCandidates();
+      applyMessagesToTicket(activeChatId, messages);
+      setFilter("in_progress");
+      setToast({
+        message: "Вы подключились к диалогу",
+        tone: "success",
+      });
+
+      window.setTimeout(() => {
+        composerTextareaRef.current?.focus();
+      }, 100);
+    } catch (error) {
+      console.error("Ошибка подключения к диалогу:", error);
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Не удалось подключиться к диалогу",
+        tone: "error",
+      });
+    } finally {
+      setIsInvitingManager(false);
+    }
+  };
+
   const handleTransferDialog = async () => {
     if (!activeChatId) return;
 
@@ -4733,6 +4818,20 @@ export default function Home() {
                 >
                   Начать диалог
                 </button>
+              ) : activeChat && !canCurrentManagerWriteToChat(activeChat) ? (
+                <div className="space-y-3">
+                  <button
+                    onClick={handleJoinActiveDialog}
+                    disabled={isInvitingManager}
+                    className="flex min-h-[72px] w-full items-center justify-center rounded-[28px] border border-[#DCE7FF] bg-white px-6 py-5 text-base font-semibold text-[#0A84FF] shadow-[0_14px_32px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-[#F7FAFF] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  >
+                    {isInvitingManager ? "Подключаем..." : "Начать диалог"}
+                  </button>
+                  <p className="text-sm text-[#8E8E93]">
+                    Сейчас этот чат ведёт другой менеджер. Вы можете читать переписку уже сейчас,
+                    а писать сможете после нажатия кнопки.
+                  </p>
+                </div>
               ) : (
                 <>
               {attachmentName ? (

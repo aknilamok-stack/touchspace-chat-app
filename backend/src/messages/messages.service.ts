@@ -342,9 +342,7 @@ export class MessagesService {
 
     if (
       viewerType === 'manager' &&
-      (ticket.assignedManagerId === null ||
-        ticket.assignedManagerId === viewerId ||
-        invitedManagerIds.includes(viewerId))
+      viewerId
     ) {
       return;
     }
@@ -491,6 +489,20 @@ export class MessagesService {
 
         if (!ticket) {
           throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+        }
+
+        if (senderType === 'manager') {
+          const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
+          const canManagerWrite =
+            ticket.assignedManagerId === null ||
+            ticket.assignedManagerId === actorId ||
+            invitedManagerIds.includes(actorId ?? '');
+
+          if (!canManagerWrite) {
+            throw new ForbiddenException(
+              'Менеджер может отвечать в этом диалоге только после подключения к нему',
+            );
+          }
         }
 
         const isClientReopeningResolvedDialog =

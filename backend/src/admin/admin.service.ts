@@ -130,6 +130,14 @@ export class AdminService {
     'client',
   ] as const;
 
+  private readonly adminUsersVisibleRoles = [
+    'admin',
+    'manager',
+    'manager_supervisor',
+    'supplier',
+    'supplier_supervisor',
+  ] as const;
+
   private sanitizeLoginCandidate(value: string) {
     return value
       .trim()
@@ -1279,10 +1287,24 @@ export class AdminService {
   async getUsers(filters: UsersFilter) {
     const from = this.toDate(filters.dateFrom);
     const to = this.toDate(filters.dateTo);
+    const normalizedRole = filters.role?.trim() || '';
+
+    if (normalizedRole === 'client') {
+      return {
+        items: [],
+        total: 0,
+      };
+    }
 
     const users = await this.prisma.profile.findMany({
       where: {
-        ...(filters.role ? { role: filters.role } : {}),
+        ...(normalizedRole
+          ? { role: normalizedRole }
+          : {
+              role: {
+                in: [...this.adminUsersVisibleRoles],
+              },
+            }),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.company
           ? {
@@ -1399,6 +1421,10 @@ export class AdminService {
     });
 
     if (!user) {
+      throw new NotFoundException(`User with id "${id}" not found`);
+    }
+
+    if (user.role === 'client') {
       throw new NotFoundException(`User with id "${id}" not found`);
     }
 

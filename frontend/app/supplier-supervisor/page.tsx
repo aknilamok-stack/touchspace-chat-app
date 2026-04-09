@@ -1868,13 +1868,14 @@ export default function SupplierPage() {
     }
 
     const resolvedSupplierId = session.supplierId;
-    const resolvedSupplierCompanyName = formatSupplierCompanyName(
-      resolvedSupplierId,
-      session.supplierName ?? session.fullName ?? "Поставщик"
-    );
+    const resolvedSupplierCompanyName =
+      session.companyName?.trim() ||
+      formatSupplierCompanyName(
+        resolvedSupplierId,
+        session.supplierName ?? session.fullName ?? "Поставщик"
+      );
     const resolvedSupplierEmployeeName =
       session.fullName?.trim() ||
-      session.supplierName?.trim() ||
       resolvedSupplierCompanyName;
 
     setSupplierId(resolvedSupplierId);

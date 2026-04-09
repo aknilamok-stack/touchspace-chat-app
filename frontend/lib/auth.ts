@@ -17,6 +17,7 @@ export type AuthSession = {
   userId?: string;
   fullName?: string;
   email?: string;
+  companyName?: string;
   passwordChangeRequired?: boolean;
   adminId?: string;
   adminName?: string;

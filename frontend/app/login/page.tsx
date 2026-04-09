@@ -131,6 +131,7 @@ export default function LoginPage() {
               | "supplier_supervisor";
             fullName: string;
             email?: string | null;
+            companyName?: string | null;
             supplierId?: string | null;
             chatAccessEnabled?: boolean;
             passwordChangeRequired?: boolean;
@@ -146,6 +147,7 @@ export default function LoginPage() {
           userId: payload.user.id,
           fullName: payload.user.fullName,
           email: payload.user.email ?? undefined,
+          companyName: payload.user.companyName ?? undefined,
           passwordChangeRequired: payload.user.passwordChangeRequired ?? false,
           adminId: payload.user.role === "admin" ? payload.user.id : undefined,
           adminName: payload.user.role === "admin" ? payload.user.fullName : undefined,

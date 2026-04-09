@@ -240,6 +240,7 @@ export class AuthService {
         role: authorizedProfile.role,
         fullName: authorizedProfile.fullName,
         email: authorizedProfile.email,
+        companyName: authorizedProfile.companyName,
         supplierId: authorizedProfile.supplierId,
         chatAccessEnabled: authorizedProfile.chatAccessEnabled,
         passwordChangeRequired: authorizedProfile.passwordChangeRequired,

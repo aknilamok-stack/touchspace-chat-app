@@ -28,6 +28,7 @@ import {
 } from "@/lib/chat-attachments";
 import { formatDialogActivityLabel } from "@/lib/dialog-list";
 import {
+  fetchManagerStatusRecords,
   fetchManagerStatuses,
   fetchSupplierStatusRecords,
   updateManagerPresence,
@@ -971,6 +972,9 @@ export default function Home() {
     useState<ManagerPresence>("online");
   const [isManagerMenuOpen, setIsManagerMenuOpen] = useState(false);
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [managerPresenceRecords, setManagerPresenceRecords] = useState<
+    Array<{ id: string; fullName: string; status: ManagerPresence; lastLoginAt?: string | null }>
+  >([]);
   const [activeChatId, setActiveChatId] = useState("");
   const [messageText, setMessageText] = useState("");
   const [managerSuggestions, setManagerSuggestions] = useState<
@@ -1020,14 +1024,14 @@ export default function Home() {
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedInvitedManagerId, setSelectedInvitedManagerId] = useState(
-    BASE_MANAGERS[0].id
+    BASE_MANAGERS[0].id as string
   );
   const [isInvitingManager, setIsInvitingManager] = useState(false);
   const [inviteManagerError, setInviteManagerError] = useState("");
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isCreatingClientDialog, setIsCreatingClientDialog] = useState(false);
   const [selectedTransferManagerId, setSelectedTransferManagerId] = useState(
-    BASE_MANAGERS[0].id
+    BASE_MANAGERS[0].id as string
   );
   const [isTransferringDialog, setIsTransferringDialog] = useState(false);
   const [transferDialogError, setTransferDialogError] = useState("");
@@ -1260,9 +1264,23 @@ export default function Home() {
               "Здесь можно быстро открыть любой диалог из общей очереди и истории работы.",
           };
   const availableManagers = dedupeManagers(
-    BASE_MANAGERS.map((manager) => ({
+    (
+      managerPresenceRecords.length > 0
+        ? managerPresenceRecords.map((manager) => ({
+            id: manager.id,
+            name: manager.fullName,
+            status: manager.status,
+          }))
+        : BASE_MANAGERS.map((manager) => ({
+            ...manager,
+            status: managerStatuses[manager.id] ?? "offline",
+          }))
+    ).map((manager) => ({
       ...manager,
-      status: managerStatuses[manager.id] ?? "offline",
+      status:
+        manager.id === currentManagerId
+          ? currentManagerStatus
+          : manager.status,
     }))
   );
   const firstOnlineManagerId =
@@ -1453,6 +1471,7 @@ export default function Home() {
     setCurrentManagerId(nextManagerId);
     setCurrentManagerName(nextManagerName);
     setManagerStatuses({});
+    setManagerPresenceRecords([]);
     setCurrentManagerStatus("online");
     setAuthReady(true);
   }, [router]);
@@ -1911,10 +1930,19 @@ export default function Home() {
 
     const loadInitialTickets = async () => {
       try {
-        const [data, remoteStatuses, supplierStatuses, candidates] = await Promise.all([
+        const [data, remoteStatuses, remoteManagerRecords, supplierStatuses, candidates] =
+          await Promise.all([
           fetchTickets(),
           fetchManagerStatuses().catch(
             (): Record<string, ManagerPresence> => ({})
+          ),
+          fetchManagerStatusRecords().catch(
+            (): Array<{
+              id: string;
+              fullName: string;
+              status: ManagerPresence;
+              lastLoginAt?: string | null;
+            }> => []
           ),
           fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
           fetchManagerNotificationCandidates().catch(
@@ -1923,6 +1951,7 @@ export default function Home() {
         ]);
 
         setManagerStatuses(remoteStatuses);
+        setManagerPresenceRecords(remoteManagerRecords);
         setSupplierPresenceRecords(supplierStatuses);
         setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
         setNotificationCandidates(candidates);
@@ -1955,10 +1984,19 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
-          const [tickets, remoteStatuses, supplierStatuses, candidates] = await Promise.all([
+          const [tickets, remoteStatuses, remoteManagerRecords, supplierStatuses, candidates] =
+            await Promise.all([
             fetchTickets(),
             fetchManagerStatuses().catch(
               (): Record<string, ManagerPresence> => ({})
+            ),
+            fetchManagerStatusRecords().catch(
+              (): Array<{
+                id: string;
+                fullName: string;
+                status: ManagerPresence;
+                lastLoginAt?: string | null;
+              }> => []
             ),
             fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
             fetchManagerNotificationCandidates().catch(
@@ -1967,6 +2005,7 @@ export default function Home() {
           ]);
 
           setManagerStatuses(remoteStatuses);
+          setManagerPresenceRecords(remoteManagerRecords);
           setSupplierPresenceRecords(supplierStatuses);
           setNotificationCandidates(candidates);
           if (currentManagerId) {

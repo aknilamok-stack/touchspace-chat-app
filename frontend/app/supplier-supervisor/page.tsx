@@ -299,7 +299,7 @@ const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
     return fallback?.trim() || "Поставщик";
   }
 
-  const withoutPrefix = normalizedSupplierId.replace(/^supplier[_-]?/i, "");
+  const withoutPrefix = normalizedSupplierId.replace(/^(supplier|scope)[_-]?/i, "");
 
   if (!withoutPrefix) {
     return fallback?.trim() || "Поставщик";
@@ -1119,12 +1119,12 @@ export default function SupplierPage() {
     "Менеджер";
   const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
   const resolvedSupplierEmployeeName = supplierEmployeeName?.trim() || "Поставщик";
-  const supplierHeaderTitle = selectedRequest
-    ? `${supplierCompanyName} / ${selectedManagerName}`
-    : supplierCompanyName;
-  const supplierProfileSubtitle = selectedRequest
-    ? `${selectedManagerName} • ${supplierStatusLabels[supplierStatus]}`
-    : resolvedSupplierEmployeeName !== supplierCompanyName
+  const supplierHeaderTitle =
+    resolvedSupplierEmployeeName !== supplierCompanyName
+      ? `${supplierCompanyName} / ${resolvedSupplierEmployeeName}`
+      : supplierCompanyName;
+  const supplierProfileSubtitle =
+    resolvedSupplierEmployeeName !== supplierCompanyName
       ? `${resolvedSupplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
       : supplierStatusLabels[supplierStatus];
   const supplierSupervisorPowerLabel = supplierSupervisorPowerEnabled

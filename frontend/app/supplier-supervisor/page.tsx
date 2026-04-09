@@ -293,23 +293,35 @@ const formatDateTimeLabel = (createdAt: string) =>
   });
 
 const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
-  const normalizedSupplierId = supplierId?.trim();
+  const normalizeCompanyLabel = (value?: string | null) => {
+    const normalizedValue = value?.trim();
 
-  if (!normalizedSupplierId) {
-    return fallback?.trim() || "Поставщик";
+    if (!normalizedValue) {
+      return "";
+    }
+
+    const withoutPrefix = normalizedValue.replace(/^(supplier|scope)[\s_-]?/i, "");
+
+    return withoutPrefix
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+
+  const normalizedSupplierId = normalizeCompanyLabel(supplierId);
+
+  if (normalizedSupplierId) {
+    return normalizedSupplierId;
   }
 
-  const withoutPrefix = normalizedSupplierId.replace(/^(supplier|scope)[\s_-]?/i, "");
+  const normalizedFallback = normalizeCompanyLabel(fallback);
 
-  if (!withoutPrefix) {
-    return fallback?.trim() || "Поставщик";
+  if (normalizedFallback) {
+    return normalizedFallback;
   }
 
-  return withoutPrefix
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return "Поставщик";
 };
 
 const isSameLocalDay = (left: Date, right: Date) =>

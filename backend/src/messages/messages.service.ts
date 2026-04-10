@@ -12,6 +12,10 @@ import { PushService } from '../push.service';
 import { readJsonStringArray } from '../prisma-json.util';
 import { resolveTicketClientContext } from '../tickets/client-context.util';
 import { EmailService } from '../email/email.service';
+import {
+  getSupplierRequestSyncState,
+  SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+} from '../supplier-requests/supplier-request-sync.util';
 
 type MessageViewer = {
   viewerType?: string;
@@ -379,6 +383,60 @@ export class MessagesService {
     }
   }
 
+  private async getLatestOpenSupplierRequestState(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+  ) {
+    const ticketRequests = await tx.supplierRequest.findMany({
+      where: {
+        ticketId,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        assignedSupplierProfileId: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    const latestOpenRequest = [...ticketRequests]
+      .reverse()
+      .find((request) => !['closed', 'cancelled', 'resolved'].includes(request.status));
+
+    if (!latestOpenRequest) {
+      return null;
+    }
+
+    const controlMessages = await tx.message.findMany({
+      where: {
+        ticketId,
+        messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+      },
+      select: {
+        content: true,
+        createdAt: true,
+        messageType: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    const syncState = getSupplierRequestSyncState(
+      ticketRequests,
+      controlMessages,
+      latestOpenRequest.id,
+    );
+
+    return {
+      request: latestOpenRequest,
+      syncState,
+    };
+  }
+
   async create(input: CreateMessageInput) {
     const {
       ticketId,
@@ -448,6 +506,18 @@ export class MessagesService {
       id: actorId,
       role: senderType,
     });
+
+    if (senderType === 'supplier') {
+      const latestSupplierRequestState = await this.prisma.$transaction((tx) =>
+        this.getLatestOpenSupplierRequestState(tx, ticketId),
+      );
+
+      if (latestSupplierRequestState?.syncState.isPaused) {
+        throw new ForbiddenException(
+          'Поставщик сейчас на паузе. Сначала нажмите "Вернуться в диалог".',
+        );
+      }
+    }
 
     const { message, shouldAiReply, ticketSnapshot } =
       await this.prisma.$transaction(async (tx) => {
@@ -898,10 +968,51 @@ export class MessagesService {
             });
           }
 
-          return activeRequest;
+          if (!activeRequest) {
+            return null;
+          }
+
+          const ticketRequests = await this.prisma.supplierRequest.findMany({
+            where: {
+              ticketId,
+            },
+            select: {
+              id: true,
+              createdAt: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          });
+          const controlMessages = await this.prisma.message.findMany({
+            where: {
+              ticketId,
+              messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+            },
+            select: {
+              content: true,
+              createdAt: true,
+              messageType: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          });
+          const syncState = getSupplierRequestSyncState(
+            ticketRequests,
+            controlMessages,
+            activeRequest.id,
+          );
+
+          return {
+            ...activeRequest,
+            supplierSyncPaused: syncState.isPaused,
+          };
         })
         .then((activeRequest) =>
-          activeRequest?.assignedSupplierProfileId
+          !activeRequest || activeRequest.supplierSyncPaused
+            ? []
+            : activeRequest.assignedSupplierProfileId
             ? [activeRequest.assignedSupplierProfileId]
             : this.pushService.getActiveSupplierProfileIds(ticketSnapshot.supplierId),
         )

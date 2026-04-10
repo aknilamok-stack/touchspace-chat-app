@@ -26,6 +26,10 @@ import {
 } from "@/lib/chat-attachments";
 import { formatDialogActivityLabel } from "@/lib/dialog-list";
 import {
+  getSupplierRequestSyncState,
+  isSupplierSyncControlMessage,
+} from "@/lib/supplier-request-sync";
+import {
   fetchManagerStatuses,
   fetchSupplierStatuses,
   updateSupplierPresence,
@@ -79,6 +83,9 @@ type SupplierRequest = {
   firstResponseAt?: string | null;
   responseTime?: number | null;
   responseBreached?: boolean;
+  supplierSyncPaused?: boolean;
+  supplierSyncPausedAt?: string | null;
+  supplierSyncResumedAt?: string | null;
   closedAt?: string | null;
   createdAt: string;
 };
@@ -461,6 +468,10 @@ const getVisibleMessagesForTicket = (
       return false;
     }
 
+    if (isSupplierSyncControlMessage(message)) {
+      return false;
+    }
+
     const isDuplicatedSupplierRequestSystemMessage =
       message.senderType === "system" &&
       typeof message.displayContent === "string" &&
@@ -504,6 +515,15 @@ const getVisibleMessagesForTicket = (
         messageCreatedAt > requestClosedAt
       ) {
         return isSupplierResolvedSystemMessage && messageCreatedAt - requestClosedAt <= 10_000;
+      }
+
+      if (message.senderType === "manager" || message.senderType === "client") {
+        const syncState = getSupplierRequestSyncState(sortedRequests, messages, request.id);
+
+        return syncState.visibleIntervals.some(
+          (interval) =>
+            messageCreatedAt >= interval.start && messageCreatedAt < interval.end
+        );
       }
 
       return true;
@@ -1009,6 +1029,7 @@ export default function SupplierPage() {
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingReply, setIsSendingReply] = useState(false);
+  const [isResumingSupplierSync, setIsResumingSupplierSync] = useState(false);
   const [isTogglingPinned, setIsTogglingPinned] = useState(false);
   const [isInvitingManager, setIsInvitingManager] = useState(false);
   const [isTransferringDialog, setIsTransferringDialog] = useState(false);
@@ -1429,7 +1450,9 @@ export default function SupplierPage() {
     Boolean(selectedActiveRequest) &&
     !isSupplierDialogResolved &&
     !canSupplierTakeRequestInWork &&
-    !isSelectedRequestClaimedByAnotherSupplier;
+    !isSelectedRequestClaimedByAnotherSupplier &&
+    !selectedActiveRequest?.supplierSyncPaused;
+  const isSupplierPausedByManager = Boolean(selectedActiveRequest?.supplierSyncPaused);
   const canReturnSupplierRequestToQueue =
     Boolean(selectedActiveRequest) &&
     !isSupplierDialogResolved &&
@@ -2996,6 +3019,59 @@ export default function SupplierPage() {
     }
   };
 
+  const handleResumeSupplierSync = async () => {
+    if (!selectedActiveRequest) {
+      return;
+    }
+
+    setIsResumingSupplierSync(true);
+    setReplyError("");
+
+    try {
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/sync`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "resume",
+          actorType: "supplier",
+          actorId: supplierProfileId,
+          actorName: resolvedSupplierEmployeeName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось вернуться в диалог");
+      }
+
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(supplierId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
+      ]);
+
+      syncSupplierRequests(updatedRequests);
+      setTicketsById(updatedTicketsMap);
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((currentMap) => ({
+        ...currentMap,
+        [selectedActiveRequest.ticketId]: refreshedMessages,
+      }));
+      setToast({
+        message: "Live-диалог снова доступен",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка возобновления live-диалога:", error);
+      setReplyError(
+        error instanceof Error ? error.message : "Не удалось вернуться в диалог"
+      );
+    } finally {
+      setIsResumingSupplierSync(false);
+    }
+  };
+
   const moveChatSearchMatch = (direction: 1 | -1) => {
     if (supplierChatSearchMatchIds.length === 0) {
       return;
@@ -3915,6 +3991,23 @@ export default function SupplierPage() {
                             ? `Сейчас этот запрос ведёт ${selectedActiveRequest.assignedSupplierProfileName}.`
                             : "Сейчас этот запрос ведёт другой сотрудник поставщика."}
                         </p>
+                      </div>
+                    ) : isSupplierPausedByManager ? (
+                      <div className="rounded-[24px] border border-[#E5D2B8] bg-[#FFF9F2] px-5 py-5 shadow-[0_14px_32px_rgba(193,129,43,0.10)]">
+                        <p className="text-center text-sm font-semibold text-[#1E1E1E]">
+                          Вы на паузе
+                        </p>
+                        <p className="mt-2 text-center text-xs leading-5 text-[#8E8E93]">
+                          Новые сообщения клиента и менеджера временно скрыты
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResumeSupplierSync}
+                          disabled={isResumingSupplierSync}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[#0A84FF] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                        >
+                          {isResumingSupplierSync ? "Возвращаем..." : "Вернуться в диалог"}
+                        </button>
                       </div>
                     ) : attachmentName ? (
                       <div className="mb-3 flex">

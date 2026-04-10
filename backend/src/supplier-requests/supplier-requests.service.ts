@@ -8,6 +8,12 @@ import { CreateSupplierRequestDto } from './dto/create-supplier-request.dto';
 import { UpdateSupplierRequestStatusDto } from './dto/update-supplier-request-status.dto';
 import { ProfilesService } from '../profiles.service';
 import { PushService } from '../push.service';
+import { ToggleSupplierRequestSyncDto } from './dto/toggle-supplier-request-sync.dto';
+import {
+  buildSupplierRequestSyncPayload,
+  getSupplierRequestSyncState,
+  SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+} from './supplier-request-sync.util';
 
 @Injectable()
 export class SupplierRequestsService {
@@ -48,6 +54,79 @@ export class SupplierRequestsService {
 
   private buildReturnedToQueueMessage(supplierName: string) {
     return `Запрос поставщику ${supplierName} возвращён в общую очередь`;
+  }
+
+  private async attachSyncState<
+    T extends {
+      id: string;
+      ticketId: string;
+      createdAt: Date;
+    },
+  >(requests: T[]) {
+    if (requests.length === 0) {
+      return [];
+    }
+
+    const uniqueTicketIds = [...new Set(requests.map((request) => request.ticketId))];
+    const controlMessages = await this.prisma.message.findMany({
+      where: {
+        ticketId: {
+          in: uniqueTicketIds,
+        },
+        messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+      },
+      select: {
+        ticketId: true,
+        content: true,
+        createdAt: true,
+        messageType: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    const controlMessagesByTicketId = controlMessages.reduce<
+      Record<
+        string,
+        Array<{
+          content: string;
+          createdAt: Date;
+          messageType: string;
+        }>
+      >
+    >((accumulator, message) => {
+      if (!accumulator[message.ticketId]) {
+        accumulator[message.ticketId] = [];
+      }
+
+      accumulator[message.ticketId].push(message);
+      return accumulator;
+    }, {});
+
+    const requestsByTicketId = requests.reduce<Record<string, T[]>>((accumulator, request) => {
+      if (!accumulator[request.ticketId]) {
+        accumulator[request.ticketId] = [];
+      }
+
+      accumulator[request.ticketId].push(request);
+      return accumulator;
+    }, {});
+
+    return requests.map((request) => {
+      const state = getSupplierRequestSyncState(
+        requestsByTicketId[request.ticketId] ?? [],
+        controlMessagesByTicketId[request.ticketId] ?? [],
+        request.id,
+      );
+
+      return {
+        ...request,
+        supplierSyncPaused: state.isPaused,
+        supplierSyncPausedAt: state.lastPausedAt,
+        supplierSyncResumedAt: state.lastResumedAt,
+      };
+    });
   }
 
   async create(createSupplierRequestDto: CreateSupplierRequestDto) {
@@ -160,7 +239,7 @@ export class SupplierRequestsService {
   async findByTicket(ticketId: string, supplierId?: string) {
     const normalizedSupplierId = supplierId?.trim();
 
-    return this.prisma.supplierRequest.findMany({
+    const requests = await this.prisma.supplierRequest.findMany({
       where: {
         ticketId,
         ...(normalizedSupplierId
@@ -174,13 +253,15 @@ export class SupplierRequestsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return this.attachSyncState(requests);
   }
 
   async findAll(supplierName?: string, supplierId?: string) {
     const normalizedSupplierName = supplierName?.trim();
     const normalizedSupplierId = supplierId?.trim();
 
-    return this.prisma.supplierRequest.findMany({
+    const requests = await this.prisma.supplierRequest.findMany({
       where: {
         ...(normalizedSupplierName && normalizedSupplierId
           ? {
@@ -196,6 +277,116 @@ export class SupplierRequestsService {
               : {}),
       },
       orderBy: { createdAt: 'desc' },
+    });
+
+    return this.attachSyncState(requests);
+  }
+
+  async toggleSync(id: string, input: ToggleSupplierRequestSyncDto) {
+    const actorId = input.actorId?.trim() || null;
+    const actorName = input.actorName?.trim() || null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const supplierRequest = await tx.supplierRequest.findUnique({
+        where: { id },
+      });
+
+      if (!supplierRequest) {
+        throw new NotFoundException(`SupplierRequest with id "${id}" not found`);
+      }
+
+      if (
+        supplierRequest.status === 'closed' ||
+        supplierRequest.status === 'cancelled' ||
+        supplierRequest.closedAt
+      ) {
+        throw new BadRequestException('Запрос уже завершён, пауза больше недоступна');
+      }
+
+      if (input.action === 'pause' && input.actorType !== 'manager') {
+        throw new BadRequestException('Поставить запрос на паузу может только менеджер');
+      }
+
+      if (input.action === 'resume') {
+        if (input.actorType !== 'supplier') {
+          throw new BadRequestException('Возобновить диалог может только поставщик');
+        }
+
+        if (
+          supplierRequest.assignedSupplierProfileId &&
+          actorId &&
+          supplierRequest.assignedSupplierProfileId !== actorId
+        ) {
+          throw new BadRequestException(
+            'Этот запрос закреплён за другим сотрудником поставщика',
+          );
+        }
+      }
+
+      const ticketRequests = await tx.supplierRequest.findMany({
+        where: {
+          ticketId: supplierRequest.ticketId,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        select: {
+          id: true,
+          createdAt: true,
+        },
+      });
+
+      const controlMessages = await tx.message.findMany({
+        where: {
+          ticketId: supplierRequest.ticketId,
+          messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+        },
+        select: {
+          content: true,
+          createdAt: true,
+          messageType: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+
+      const state = getSupplierRequestSyncState(
+        ticketRequests,
+        controlMessages,
+        supplierRequest.id,
+      );
+
+      if (
+        (input.action === 'pause' && state.isPaused) ||
+        (input.action === 'resume' && !state.isPaused)
+      ) {
+        const [enrichedRequest] = await this.attachSyncState([supplierRequest]);
+        return enrichedRequest;
+      }
+
+      await tx.message.create({
+        data: {
+          ticketId: supplierRequest.ticketId,
+          content: buildSupplierRequestSyncPayload({
+            kind: 'supplier_request_sync',
+            requestId: supplierRequest.id,
+            action: input.action,
+            actorType: input.actorType,
+            actorId,
+            actorName,
+          }),
+          senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+          isInternal: true,
+        },
+      });
+
+      const [updatedRequest] = await this.attachSyncState([supplierRequest]);
+      return updatedRequest;
     });
   }
 

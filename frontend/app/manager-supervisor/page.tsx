@@ -27,6 +27,7 @@ import {
   validateChatAttachmentFiles,
 } from "@/lib/chat-attachments";
 import { formatDialogActivityLabel } from "@/lib/dialog-list";
+import { SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE } from "@/lib/supplier-request-sync";
 import {
   fetchManagerStatusRecords,
   fetchManagerStatuses,
@@ -94,6 +95,9 @@ type ApiSupplierRequest = {
   firstResponseAt: string | null;
   responseTime: number | null;
   responseBreached: boolean;
+  supplierSyncPaused?: boolean;
+  supplierSyncPausedAt?: string | null;
+  supplierSyncResumedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
@@ -201,6 +205,9 @@ type ChatSupplierRequest = {
   claimedAt: string | null;
   assignedSupplierProfileId: string | null;
   assignedSupplierProfileName: string | null;
+  supplierSyncPaused: boolean;
+  supplierSyncPausedAt: string | null;
+  supplierSyncResumedAt: string | null;
 };
 
 type SupplierRequestPeriodFilter = "today" | "yesterday" | "week" | "month" | "all";
@@ -743,7 +750,13 @@ const formatSupplierRequest = (
   claimedAt: request.claimedAt ?? null,
   assignedSupplierProfileId: request.assignedSupplierProfileId ?? null,
   assignedSupplierProfileName: request.assignedSupplierProfileName ?? null,
+  supplierSyncPaused: Boolean(request.supplierSyncPaused),
+  supplierSyncPausedAt: request.supplierSyncPausedAt ?? null,
+  supplierSyncResumedAt: request.supplierSyncResumedAt ?? null,
 });
+
+const shouldIncludeManagerChatMessage = (message: ApiMessage) =>
+  message.messageType !== SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE;
 
 const extractApiErrorMessage = async (
   response: Response,
@@ -889,7 +902,9 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   canonicalEmail: ticket.canonicalEmail?.trim() || null,
   avatarColor: ticket.avatarColor ?? null,
   avatarEmoji: ticket.avatarEmoji ?? null,
-  messages: Array.isArray(ticket.messages) ? ticket.messages.map(formatMessage) : [],
+  messages: Array.isArray(ticket.messages)
+    ? ticket.messages.filter(shouldIncludeManagerChatMessage).map(formatMessage)
+    : [],
   supplierRequests: Array.isArray(ticket.supplierRequests)
     ? ticket.supplierRequests.map(formatSupplierRequest)
     : [],
@@ -1036,6 +1051,7 @@ export default function Home() {
   const [supplierRequestsError, setSupplierRequestsError] = useState("");
   const [isCreatingSupplierRequest, setIsCreatingSupplierRequest] = useState(false);
   const [isSendingSupplierFollowUp, setIsSendingSupplierFollowUp] = useState(false);
+  const [isTogglingSupplierSync, setIsTogglingSupplierSync] = useState(false);
   const [createSupplierRequestError, setCreateSupplierRequestError] = useState("");
   const [supplierFollowUpError, setSupplierFollowUpError] = useState("");
   const [supplierCompaniesError, setSupplierCompaniesError] = useState("");
@@ -1156,6 +1172,7 @@ export default function Home() {
         !["closed", "cancelled", "resolved"].includes(request.status)
     )
   );
+  const isActiveSupplierRequestPaused = Boolean(activeSupplierRequest?.supplierSyncPaused);
   const resolvedTicketEmail =
     ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
     activeChat?.canonicalEmail?.trim() ||
@@ -1716,7 +1733,7 @@ export default function Home() {
         chat.id === ticketId
           ? {
               ...chat,
-              messages: messages.map(formatMessage),
+              messages: messages.filter(shouldIncludeManagerChatMessage).map(formatMessage),
             }
           : chat
       )
@@ -3532,6 +3549,66 @@ export default function Home() {
       );
     } finally {
       setIsSendingSupplierFollowUp(false);
+    }
+  };
+
+  const handleToggleSupplierSync = async () => {
+    if (!activeChatId || !activeSupplierRequest) {
+      return;
+    }
+
+    setIsTogglingSupplierSync(true);
+    setSupplierFollowUpError("");
+
+    try {
+      const nextAction = activeSupplierRequest.supplierSyncPaused ? "resume" : "pause";
+      const response = await fetch(apiUrl(`/supplier-requests/${activeSupplierRequest.id}/sync`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: nextAction,
+          actorType: "manager",
+          actorId: currentManagerId,
+          actorName: currentManagerName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(
+            response,
+            nextAction === "pause"
+              ? "Не удалось поставить поставщика на паузу"
+              : "Не удалось возобновить диалог для поставщика"
+          )
+        );
+      }
+
+      const [messages, supplierRequests] = await Promise.all([
+        fetchMessages(activeChatId),
+        fetchSupplierRequests(activeChatId),
+      ]);
+
+      applyMessagesToTicket(activeChatId, messages);
+      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      setToast({
+        message:
+          nextAction === "pause"
+            ? "Поставщик переведён на паузу"
+            : "Поставщику снова открыт live-диалог",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка переключения паузы поставщика:", error);
+      setSupplierFollowUpError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось изменить режим паузы поставщика"
+      );
+    } finally {
+      setIsTogglingSupplierSync(false);
     }
   };
 
@@ -5688,7 +5765,26 @@ export default function Home() {
                       <p className="mt-2 text-sm leading-6 text-[#5A6270]">
                         {activeSupplierRequest.requestText}
                       </p>
+                      {isActiveSupplierRequestPaused ? (
+                        <p className="mt-3 inline-flex rounded-full bg-[#FFF4DE] px-3 py-1 text-xs font-semibold text-[#B7791F]">
+                          Поставщик на паузе
+                        </p>
+                      ) : null}
                     </div>
+
+                    <button
+                      onClick={handleToggleSupplierSync}
+                      disabled={isTogglingSupplierSync}
+                      className={`w-full rounded-xl py-3 font-medium text-white ${
+                        isActiveSupplierRequestPaused ? "bg-[#0A84FF]" : "bg-[#6C6C70]"
+                      }`}
+                    >
+                      {isTogglingSupplierSync
+                        ? "Сохраняем..."
+                        : isActiveSupplierRequestPaused
+                          ? "Возобновить"
+                          : "Пауза"}
+                    </button>
 
                     <div>
                       <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">

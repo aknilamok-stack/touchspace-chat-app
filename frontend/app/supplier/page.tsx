@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
@@ -65,6 +65,7 @@ const QUICK_REPLIES = [
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
+const COMPLETED_SUPPLIER_REQUEST_STATUSES = new Set(["closed", "cancelled", "resolved"]);
 
 type SupplierRequest = {
   id: string;
@@ -177,6 +178,26 @@ type SupplierNotificationCandidate = {
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
   kind: "message" | "request";
+};
+
+const mergeSupplierNotificationCandidates = (
+  serverCandidates: SupplierNotificationCandidate[],
+  localCandidates: SupplierNotificationCandidate[]
+) => {
+  const merged = new Map<string, SupplierNotificationCandidate>();
+
+  serverCandidates.forEach((candidate) => {
+    merged.set(candidate.notificationKey, candidate);
+  });
+
+  localCandidates.forEach((candidate) => {
+    merged.set(candidate.notificationKey, candidate);
+  });
+
+  return [...merged.values()].sort(
+    (left, right) =>
+      new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  );
 };
 
 type Ticket = {
@@ -1254,6 +1275,98 @@ export default function SupplierPage() {
     "";
   const visibleSupplierMessages =
     selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
+  const localMessageNotificationCandidates = useMemo<SupplierNotificationCandidate[]>(() => {
+    if (!authReady || !supplierProfileId) {
+      return [];
+    }
+
+    return supplierRequests.flatMap((request) => {
+      if (COMPLETED_SUPPLIER_REQUEST_STATUSES.has(request.status)) {
+        return [];
+      }
+
+      if (request.supplierSyncPaused) {
+        return [];
+      }
+
+      if (
+        request.assignedSupplierProfileId &&
+        request.assignedSupplierProfileId !== supplierProfileId
+      ) {
+        return [];
+      }
+
+      const ticket = ticketsById[request.ticketId];
+
+      if (!ticket || ticket.status === "resolved" || ticket.status === "closed") {
+        return [];
+      }
+
+      const ticketMessagesForRequest = ticketMessagesByTicketId[request.ticketId] ?? [];
+      const latestIncomingMessage = [...ticketMessagesForRequest]
+        .reverse()
+        .find(
+          (message) =>
+            message.senderType === "manager" || message.senderType === "client"
+        );
+
+      if (!latestIncomingMessage) {
+        return [];
+      }
+
+      const latestSupplierMessage = [...ticketMessagesForRequest]
+        .reverse()
+        .find((message) => message.senderType === "supplier");
+      const supplierBaselineAt =
+        latestSupplierMessage?.createdAt ?? request.claimedAt ?? request.createdAt;
+
+      if (
+        new Date(latestIncomingMessage.createdAt).getTime() <=
+        new Date(supplierBaselineAt).getTime()
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          notificationKey: `supplier-message-local:${request.ticketId}:${latestIncomingMessage.id}`,
+          ticketId: request.ticketId,
+          requestId: request.id,
+          title:
+            ticket.tradePointName?.trim() ||
+            ticket.title?.trim() ||
+            ticket.clientName?.trim() ||
+            "Диалог с клиентом",
+          messageId: latestIncomingMessage.id,
+          messageText: latestIncomingMessage.displayContent || latestIncomingMessage.content,
+          createdAt: latestIncomingMessage.createdAt,
+          senderType:
+            latestIncomingMessage.senderType === "client" ? "client" : "manager",
+          tradePointName: ticket.tradePointName?.trim() || null,
+          avatarColor: ticket.avatarColor ?? null,
+          avatarEmoji: ticket.avatarEmoji ?? null,
+          scopeStatus: request.assignedSupplierProfileId ? "owned_active" : "new_unclaimed",
+          waitSeconds: Math.max(
+            Math.floor(
+              (Date.now() - new Date(latestIncomingMessage.createdAt).getTime()) / 1000
+            ),
+            0
+          ),
+          assignedSupplierProfileId: request.assignedSupplierProfileId ?? null,
+          assignedSupplierProfileName: request.assignedSupplierProfileName ?? null,
+          kind: "message",
+        },
+      ];
+    });
+  }, [authReady, supplierProfileId, supplierRequests, ticketMessagesByTicketId, ticketsById]);
+  const effectiveNotificationCandidates = useMemo(
+    () =>
+      mergeSupplierNotificationCandidates(
+        notificationCandidates,
+        localMessageNotificationCandidates
+      ),
+    [notificationCandidates, localMessageNotificationCandidates]
+  );
   const supplierTimelineItems = selectedRequest
     ? buildSupplierTimelineItems(
         [...selectedTicketRequests].sort(
@@ -2495,7 +2608,7 @@ export default function SupplierPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const visibleFloatingNotifications = notificationCandidates
+  const visibleFloatingNotifications = effectiveNotificationCandidates
     .filter((candidate) => {
       const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
       return hiddenUntil <= notificationNow;
@@ -2510,7 +2623,9 @@ export default function SupplierPage() {
   };
 
   const handlePrimaryFloatingNotification = (notificationKey: string) => {
-    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
+    const candidate = effectiveNotificationCandidates.find(
+      (item) => item.notificationKey === notificationKey
+    );
 
     if (!candidate) {
       return;
@@ -2543,7 +2658,9 @@ export default function SupplierPage() {
       return;
     }
 
-    const activeCandidateIds = new Set(notificationCandidates.map((candidate) => candidate.notificationKey));
+    const activeCandidateIds = new Set(
+      effectiveNotificationCandidates.map((candidate) => candidate.notificationKey)
+    );
 
     Object.keys(lastNotificationAtRef.current).forEach((candidateId) => {
       if (!activeCandidateIds.has(candidateId)) {
@@ -2552,7 +2669,7 @@ export default function SupplierPage() {
       }
     });
 
-    notificationCandidates.forEach((candidate) => {
+    effectiveNotificationCandidates.forEach((candidate) => {
       const notificationTitle =
         candidate.scopeStatus === "claimed_by_other_recently"
           ? "Запрос уже взят в работу"
@@ -2613,7 +2730,7 @@ export default function SupplierPage() {
               : "green",
       });
     });
-  }, [notificationCandidates, authReady]);
+  }, [effectiveNotificationCandidates, authReady]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2629,7 +2746,7 @@ export default function SupplierPage() {
       titleFlashIntervalRef.current = null;
     }
 
-    const actionableNotifications = notificationCandidates.filter(
+    const actionableNotifications = effectiveNotificationCandidates.filter(
       (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
     );
 
@@ -2654,7 +2771,7 @@ export default function SupplierPage() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [notificationCandidates]);
+  }, [effectiveNotificationCandidates]);
 
   useEffect(() => {
     setEditTarget(null);

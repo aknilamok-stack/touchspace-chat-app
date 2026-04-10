@@ -2532,11 +2532,7 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
-      return;
-    }
-
-    if (Notification.permission !== "granted") {
+    if (!authReady || typeof window === "undefined") {
       return;
     }
 
@@ -3511,8 +3507,7 @@ export default function SupplierPage() {
           {selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
-                {!isDesktopShell() ? (
-                  <IncomingAlertStack
+                <IncomingAlertStack
                   items={visibleFloatingNotifications.map((candidate) => ({
                     id: candidate.notificationKey,
                     title:
@@ -3564,7 +3559,6 @@ export default function SupplierPage() {
                   onSecondary={dismissFloatingNotification}
                   onPrimary={handlePrimaryFloatingNotification}
                   />
-                ) : null}
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="min-w-0">
                     <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">

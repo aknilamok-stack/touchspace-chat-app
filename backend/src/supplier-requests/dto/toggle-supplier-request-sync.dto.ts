@@ -1,6 +1,11 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
-const supplierRequestSyncActions = ['pause', 'resume'] as const;
+const supplierRequestSyncActions = [
+  'pause',
+  'resume',
+  'resume_request',
+  'resume_defer',
+] as const;
 const supplierRequestSyncActorTypes = ['manager', 'supplier'] as const;
 
 export class ToggleSupplierRequestSyncDto {

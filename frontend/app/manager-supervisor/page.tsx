@@ -96,8 +96,13 @@ type ApiSupplierRequest = {
   responseTime: number | null;
   responseBreached: boolean;
   supplierSyncPaused?: boolean;
+  supplierSyncMode?: "live" | "paused" | "awaiting_manager";
+  supplierSyncAwaitingManager?: boolean;
   supplierSyncPausedAt?: string | null;
   supplierSyncResumedAt?: string | null;
+  supplierSyncResumeRequestedAt?: string | null;
+  supplierSyncResumeDeferredAt?: string | null;
+  supplierSyncManagerPromptAvailableAt?: string | null;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
@@ -206,8 +211,13 @@ type ChatSupplierRequest = {
   assignedSupplierProfileId: string | null;
   assignedSupplierProfileName: string | null;
   supplierSyncPaused: boolean;
+  supplierSyncMode: "live" | "paused" | "awaiting_manager";
+  supplierSyncAwaitingManager: boolean;
   supplierSyncPausedAt: string | null;
   supplierSyncResumedAt: string | null;
+  supplierSyncResumeRequestedAt: string | null;
+  supplierSyncResumeDeferredAt: string | null;
+  supplierSyncManagerPromptAvailableAt: string | null;
 };
 
 type SupplierRequestPeriodFilter = "today" | "yesterday" | "week" | "month" | "all";
@@ -751,8 +761,13 @@ const formatSupplierRequest = (
   assignedSupplierProfileId: request.assignedSupplierProfileId ?? null,
   assignedSupplierProfileName: request.assignedSupplierProfileName ?? null,
   supplierSyncPaused: Boolean(request.supplierSyncPaused),
+  supplierSyncMode: request.supplierSyncMode ?? (request.supplierSyncPaused ? "paused" : "live"),
+  supplierSyncAwaitingManager: Boolean(request.supplierSyncAwaitingManager),
   supplierSyncPausedAt: request.supplierSyncPausedAt ?? null,
   supplierSyncResumedAt: request.supplierSyncResumedAt ?? null,
+  supplierSyncResumeRequestedAt: request.supplierSyncResumeRequestedAt ?? null,
+  supplierSyncResumeDeferredAt: request.supplierSyncResumeDeferredAt ?? null,
+  supplierSyncManagerPromptAvailableAt: request.supplierSyncManagerPromptAvailableAt ?? null,
 });
 
 const shouldIncludeManagerChatMessage = (message: ApiMessage) =>
@@ -1173,6 +1188,11 @@ export default function Home() {
     )
   );
   const isActiveSupplierRequestPaused = Boolean(activeSupplierRequest?.supplierSyncPaused);
+  const shouldShowSupplierResumePrompt =
+    Boolean(activeSupplierRequest?.supplierSyncAwaitingManager) &&
+    (!activeSupplierRequest?.supplierSyncManagerPromptAvailableAt ||
+      new Date(activeSupplierRequest.supplierSyncManagerPromptAvailableAt).getTime() <=
+        (currentTimeMs ?? Date.now()));
   const resolvedTicketEmail =
     ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
     activeChat?.canonicalEmail?.trim() ||
@@ -3612,6 +3632,60 @@ export default function Home() {
     }
   };
 
+  const handleSupplierResumeDecision = async (action: "resume" | "resume_defer") => {
+    if (!activeChatId || !activeSupplierRequest) {
+      return;
+    }
+
+    setIsTogglingSupplierSync(true);
+    setSupplierFollowUpError("");
+
+    try {
+      const response = await fetch(apiUrl(`/supplier-requests/${activeSupplierRequest.id}/sync`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action,
+          actorType: "manager",
+          actorId: currentManagerId,
+          actorName: currentManagerName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(
+            response,
+            action === "resume"
+              ? "Не удалось впустить поставщика в чат"
+              : "Не удалось отложить вход поставщика"
+          )
+        );
+      }
+
+      const supplierRequests = await fetchSupplierRequests(activeChatId);
+      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      setToast({
+        message:
+          action === "resume"
+            ? "Поставщик снова может писать в чат"
+            : "Вход поставщика отложен на 2 минуты",
+        tone: "info",
+      });
+    } catch (error) {
+      console.error("Ошибка решения по возврату поставщика:", error);
+      setSupplierFollowUpError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось обработать запрос поставщика"
+      );
+    } finally {
+      setIsTogglingSupplierSync(false);
+    }
+  };
+
   const handleLogout = () => {
     const session = readAuthSession();
 
@@ -5008,6 +5082,38 @@ export default function Home() {
                       {toast.message}
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {shouldShowSupplierResumePrompt ? (
+            <div className="absolute left-1/2 top-[118px] z-30 w-full max-w-[460px] -translate-x-1/2 px-4">
+              <div className="rounded-[28px] border border-[#D6E7FF] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+                <p className="text-base font-semibold text-[#1E1E1E]">
+                  Поставщик хочет вернуться в чат
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#5A6270]">
+                  Если впустить сейчас, поставщик сразу увидит новую live-переписку и сможет писать
+                  в чат.
+                </p>
+                <div className="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSupplierResumeDecision("resume")}
+                    disabled={isTogglingSupplierSync}
+                    className="flex-1 rounded-2xl bg-[#0A84FF] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    Впустить
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSupplierResumeDecision("resume_defer")}
+                    disabled={isTogglingSupplierSync}
+                    className="flex-1 rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm font-semibold text-[#1E1E1E] disabled:opacity-60"
+                  >
+                    Позже
+                  </button>
                 </div>
               </div>
             </div>

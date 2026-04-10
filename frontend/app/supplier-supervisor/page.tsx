@@ -85,8 +85,13 @@ type SupplierRequest = {
   responseTime?: number | null;
   responseBreached?: boolean;
   supplierSyncPaused?: boolean;
+  supplierSyncMode?: "live" | "paused" | "awaiting_manager";
+  supplierSyncAwaitingManager?: boolean;
   supplierSyncPausedAt?: string | null;
   supplierSyncResumedAt?: string | null;
+  supplierSyncResumeRequestedAt?: string | null;
+  supplierSyncResumeDeferredAt?: string | null;
+  supplierSyncManagerPromptAvailableAt?: string | null;
   closedAt?: string | null;
   createdAt: string;
 };
@@ -1461,6 +1466,8 @@ export default function SupplierPage() {
     !isSelectedRequestClaimedByAnotherSupplier &&
     !selectedActiveRequest?.supplierSyncPaused;
   const isSupplierPausedByManager = Boolean(selectedActiveRequest?.supplierSyncPaused);
+  const isSupplierWaitingForManager =
+    selectedActiveRequest?.supplierSyncMode === "awaiting_manager";
   const canReturnSupplierRequestToQueue =
     Boolean(selectedActiveRequest) &&
     !isSupplierDialogResolved &&
@@ -3121,7 +3128,7 @@ export default function SupplierPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "resume",
+          action: "resume_request",
           actorType: "supplier",
           actorId: supplierProfileId,
           actorName: resolvedSupplierEmployeeName,
@@ -3129,7 +3136,7 @@ export default function SupplierPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось вернуться в диалог");
+        throw new Error("Не удалось запросить возврат в диалог");
       }
 
       const updatedRequest = (await response.json()) as SupplierRequest;
@@ -3149,13 +3156,16 @@ export default function SupplierPage() {
         [selectedActiveRequest.ticketId]: refreshedMessages,
       }));
       setToast({
-        message: "Live-диалог снова доступен",
+        message:
+          updatedRequest.supplierSyncMode === "awaiting_manager"
+            ? "Запрос отправлен менеджеру"
+            : "Live-диалог снова доступен",
         tone: "info",
       });
     } catch (error) {
       console.error("Ошибка возобновления live-диалога:", error);
       setReplyError(
-        error instanceof Error ? error.message : "Не удалось вернуться в диалог"
+        error instanceof Error ? error.message : "Не удалось запросить возврат в диалог"
       );
     } finally {
       setIsResumingSupplierSync(false);
@@ -4119,6 +4129,16 @@ export default function SupplierPage() {
                           {selectedActiveRequest?.assignedSupplierProfileName
                             ? `Сейчас этот запрос ведёт ${selectedActiveRequest.assignedSupplierProfileName}.`
                             : "Сейчас этот запрос ведёт другой сотрудник поставщика."}
+                        </p>
+                      </div>
+                    ) : isSupplierWaitingForManager ? (
+                      <div className="rounded-[24px] border border-[#DCE7FF] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF6FF_100%)] px-5 py-5 shadow-[0_14px_32px_rgba(10,132,255,0.10)]">
+                        <p className="text-center text-sm font-semibold text-[#1E1E1E]">
+                          Ожидайте, менеджер скоро запустит вас в чат
+                        </p>
+                        <p className="mt-2 text-center text-xs leading-5 text-[#8E8E93]">
+                          Как только менеджер подтвердит вход или если ответ не поступит вовремя,
+                          поле ввода появится автоматически
                         </p>
                       </div>
                     ) : isSupplierPausedByManager ? (

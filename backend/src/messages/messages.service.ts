@@ -514,7 +514,9 @@ export class MessagesService {
 
       if (latestSupplierRequestState?.syncState.isPaused) {
         throw new ForbiddenException(
-          'Поставщик сейчас на паузе. Сначала нажмите "Вернуться в диалог".',
+          latestSupplierRequestState.syncState.mode === 'awaiting_manager'
+            ? 'Ожидайте, пока менеджер разрешит вернуться в чат.'
+            : 'Поставщик сейчас на паузе. Сначала нажмите "Вернуться в диалог".',
         );
       }
     }

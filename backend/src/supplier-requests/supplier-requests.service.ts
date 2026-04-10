@@ -12,6 +12,7 @@ import { ToggleSupplierRequestSyncDto } from './dto/toggle-supplier-request-sync
 import {
   buildSupplierRequestSyncPayload,
   getSupplierRequestSyncState,
+  SUPPLIER_RESUME_ACTIVITY_WINDOW_MS,
   SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
 } from './supplier-request-sync.util';
 
@@ -86,6 +87,19 @@ export class SupplierRequestsService {
       },
     });
 
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        id: {
+          in: uniqueTicketIds,
+        },
+      },
+      select: {
+        id: true,
+        lastClientMessageAt: true,
+        lastManagerReplyAt: true,
+      },
+    });
+
     const controlMessagesByTicketId = controlMessages.reduce<
       Record<
         string,
@@ -113,18 +127,38 @@ export class SupplierRequestsService {
       return accumulator;
     }, {});
 
+    const ticketsById = Object.fromEntries(
+      tickets.map((ticket) => [ticket.id, ticket]),
+    );
+
     return requests.map((request) => {
       const state = getSupplierRequestSyncState(
         requestsByTicketId[request.ticketId] ?? [],
         controlMessagesByTicketId[request.ticketId] ?? [],
         request.id,
       );
+      const relatedTicket = ticketsById[request.ticketId];
 
       return {
         ...request,
         supplierSyncPaused: state.isPaused,
+        supplierSyncMode: state.mode,
+        supplierSyncAwaitingManager: state.isAwaitingManager,
         supplierSyncPausedAt: state.lastPausedAt,
         supplierSyncResumedAt: state.lastResumedAt,
+        supplierSyncResumeRequestedAt: state.lastResumeRequestedAt,
+        supplierSyncResumeDeferredAt: state.lastResumeDeferredAt,
+        supplierSyncManagerPromptAvailableAt: state.managerPromptAvailableAt,
+        supplierSyncRecentActivityAt: relatedTicket
+          ? [
+              relatedTicket.lastClientMessageAt,
+              relatedTicket.lastManagerReplyAt,
+            ]
+              .filter(Boolean)
+              .map((value) => new Date(value as Date).toISOString())
+              .sort()
+              .at(-1) ?? null
+          : null,
       };
     });
   }
@@ -307,9 +341,17 @@ export class SupplierRequestsService {
         throw new BadRequestException('Поставить запрос на паузу может только менеджер');
       }
 
-      if (input.action === 'resume') {
+      if (input.action === 'resume' && input.actorType !== 'manager') {
+        throw new BadRequestException('Впустить поставщика в чат может только менеджер');
+      }
+
+      if (input.action === 'resume_defer' && input.actorType !== 'manager') {
+        throw new BadRequestException('Отложить вход поставщика может только менеджер');
+      }
+
+      if (input.action === 'resume_request') {
         if (input.actorType !== 'supplier') {
-          throw new BadRequestException('Возобновить диалог может только поставщик');
+          throw new BadRequestException('Вернуться в диалог может только поставщик');
         }
 
         if (
@@ -357,13 +399,45 @@ export class SupplierRequestsService {
         supplierRequest.id,
       );
 
+      const ticket = await tx.ticket.findUnique({
+        where: {
+          id: supplierRequest.ticketId,
+        },
+        select: {
+          lastClientMessageAt: true,
+          lastManagerReplyAt: true,
+        },
+      });
+
+      const latestConversationActivityAtMs = Math.max(
+        ticket?.lastClientMessageAt
+          ? new Date(ticket.lastClientMessageAt).getTime()
+          : Number.NEGATIVE_INFINITY,
+        ticket?.lastManagerReplyAt
+          ? new Date(ticket.lastManagerReplyAt).getTime()
+          : Number.NEGATIVE_INFINITY,
+      );
+      const hasRecentConversationActivity =
+        Number.isFinite(latestConversationActivityAtMs) &&
+        Date.now() - latestConversationActivityAtMs < SUPPLIER_RESUME_ACTIVITY_WINDOW_MS;
+
       if (
         (input.action === 'pause' && state.isPaused) ||
-        (input.action === 'resume' && !state.isPaused)
+        (input.action === 'resume' && !state.isPaused) ||
+        (input.action === 'resume_request' &&
+          (state.mode === 'awaiting_manager' || !state.isPaused)) ||
+        (input.action === 'resume_defer' && state.mode !== 'awaiting_manager')
       ) {
         const [enrichedRequest] = await this.attachSyncState([supplierRequest]);
         return enrichedRequest;
       }
+
+      const nextAction =
+        input.action === 'resume_request'
+          ? hasRecentConversationActivity
+            ? 'resume_request'
+            : 'resume'
+          : input.action;
 
       await tx.message.create({
         data: {
@@ -371,7 +445,7 @@ export class SupplierRequestsService {
           content: buildSupplierRequestSyncPayload({
             kind: 'supplier_request_sync',
             requestId: supplierRequest.id,
-            action: input.action,
+            action: nextAction,
             actorType: input.actorType,
             actorId,
             actorName,

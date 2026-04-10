@@ -1065,6 +1065,7 @@ export default function SupplierPage() {
   const [requestHistoryFilter, setRequestHistoryFilter] =
     useState<SupplierRequestHistoryFilter>("all");
   const [requestHistoryCustomDate, setRequestHistoryCustomDate] = useState("");
+  const [isRequestHistoryOpen, setIsRequestHistoryOpen] = useState(false);
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
@@ -4536,81 +4537,105 @@ export default function SupplierPage() {
                   </div>
                   {selectedTicketRequests.length > 1 ? (
                     <div className="mt-4 border-t border-[#EEF0F4] pt-4">
-                      <div className="sticky top-0 z-10 bg-white pb-3">
-                        <div className="flex items-center justify-between gap-3">
+                      <div className="sticky top-0 z-10 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => setIsRequestHistoryOpen((current) => !current)}
+                          className="flex w-full items-center justify-between gap-3 rounded-[14px] px-1 py-1 text-left transition hover:bg-[#F7F8FB]"
+                        >
                           <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
                             История запросов
                           </p>
-                          <span className="rounded-full bg-[#F2F4F8] px-2.5 py-1 text-[11px] text-[#6C6C70]">
-                            {filteredHistoryRequests.length}
-                          </span>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {[
-                            ["all", "Все"],
-                            ["day", "День"],
-                            ["week", "Неделя"],
-                            ["month", "Месяц"],
-                            ["custom", "Дата"],
-                          ].map(([value, label]) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() =>
-                                setRequestHistoryFilter(value as SupplierRequestHistoryFilter)
-                              }
-                              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition ${
-                                requestHistoryFilter === value
-                                  ? "bg-[#0A84FF] text-white"
-                                  : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full bg-[#F2F4F8] px-2.5 py-1 text-[11px] text-[#6C6C70]">
+                              {filteredHistoryRequests.length}
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className={`text-sm text-[#8E8E93] transition-transform ${
+                                isRequestHistoryOpen ? "rotate-180" : ""
                               }`}
                             >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {requestHistoryFilter === "custom" ? (
-                          <div className="mt-3">
-                            <input
-                              type="date"
-                              value={requestHistoryCustomDate}
-                              onChange={(event) => setRequestHistoryCustomDate(event.target.value)}
-                              className="w-full rounded-[12px] border border-[#D7DBE3] bg-[#FBFBFD] px-3 py-2 text-sm text-[#1E1E1E] outline-none"
-                            />
+                              ˅
+                            </span>
                           </div>
-                        ) : null}
+                        </button>
                       </div>
-                      <div
-                        className={`space-y-3 ${filteredHistoryRequests.length > 3 ? "max-h-[360px] overflow-y-auto pr-1" : ""}`}
-                      >
-                        {filteredHistoryRequests.map((request) => (
+                      {isRequestHistoryOpen ? (
+                        <div className="pb-3 pt-3">
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              ["all", "Все"],
+                              ["day", "День"],
+                              ["week", "Неделя"],
+                              ["month", "Месяц"],
+                              ["custom", "Дата"],
+                            ].map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() =>
+                                  setRequestHistoryFilter(value as SupplierRequestHistoryFilter)
+                                }
+                                className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition ${
+                                  requestHistoryFilter === value
+                                    ? "bg-[#0A84FF] text-white"
+                                    : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          {requestHistoryFilter === "custom" ? (
+                            <div className="mt-3">
+                              <input
+                                type="date"
+                                value={requestHistoryCustomDate}
+                                onChange={(event) =>
+                                  setRequestHistoryCustomDate(event.target.value)
+                                }
+                                className="w-full rounded-[12px] border border-[#D7DBE3] bg-[#FBFBFD] px-3 py-2 text-sm text-[#1E1E1E] outline-none"
+                              />
+                            </div>
+                          ) : null}
                           <div
-                            key={request.id}
-                            className={`rounded-[14px] border p-3 ${
-                              request.id === (selectedActiveRequest ?? selectedRequest).id
-                                ? "border-[#CFE0FF] bg-[#F5F9FF]"
-                                : "border-[#ECECF1] bg-[#FCFCFD]"
+                            className={`mt-3 space-y-3 ${
+                              filteredHistoryRequests.length > 3
+                                ? "max-h-[360px] overflow-y-auto pr-1"
+                                : ""
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-medium text-[#6C6C70]">
-                                {formatDateTimeLabel(request.createdAt)}
-                              </span>
-                              <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#6C6C70]">
-                                {getSupplierRequestStatusLabel(request.status)}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-[#1E1E1E]">
-                              {request.requestText}
-                            </p>
+                            {filteredHistoryRequests.map((request) => (
+                              <div
+                                key={request.id}
+                                className={`rounded-[14px] border p-3 ${
+                                  request.id === (selectedActiveRequest ?? selectedRequest).id
+                                    ? "border-[#CFE0FF] bg-[#F5F9FF]"
+                                    : "border-[#ECECF1] bg-[#FCFCFD]"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-xs font-medium text-[#6C6C70]">
+                                    {formatDateTimeLabel(request.createdAt)}
+                                  </span>
+                                  <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#6C6C70]">
+                                    {getSupplierRequestStatusLabel(request.status)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-[#1E1E1E]">
+                                  {request.requestText}
+                                </p>
+                              </div>
+                            ))}
+                            {filteredHistoryRequests.length === 0 ? (
+                              <div className="rounded-[14px] border border-dashed border-[#D8D8DE] bg-[#FBFBFD] p-4 text-sm text-[#8E8E93]">
+                                По выбранному фильтру запросы не найдены.
+                              </div>
+                            ) : null}
                           </div>
-                        ))}
-                        {filteredHistoryRequests.length === 0 ? (
-                          <div className="rounded-[14px] border border-dashed border-[#D8D8DE] bg-[#FBFBFD] p-4 text-sm text-[#8E8E93]">
-                            По выбранному фильтру запросы не найдены.
-                          </div>
-                        ) : null}
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

@@ -2438,7 +2438,14 @@ export default function SupplierPage() {
     lastMarkedIncomingMessageIdRef.current[selectedRequest.ticketId] =
       latestUnreadIncomingSupplierMessage.id;
 
-    void markTicketMessagesRead(selectedRequest.ticketId)
+    void refreshNotificationCandidates()
+      .catch((error) => {
+        console.error(
+          "Ошибка предварительного обновления уведомлений поставщика:",
+          error
+        );
+      })
+      .then(() => markTicketMessagesRead(selectedRequest.ticketId))
       .then((messages) => {
         setTicketMessages((currentMessages) =>
           areMessagesEqual(currentMessages, messages) ? currentMessages : messages

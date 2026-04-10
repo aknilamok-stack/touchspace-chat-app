@@ -516,7 +516,7 @@ const getVisibleMessagesForTicket = (
         message.senderType === "client" ||
         message.senderType === "supplier" ||
         message.senderType === "system" ||
-        (message.senderType === "manager" && message.isInternal)
+        message.senderType === "manager"
       )
     );
   });

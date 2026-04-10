@@ -171,6 +171,10 @@ export default function ClientPage() {
   };
 
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
+    if (!clientSession.clientId) {
+      return null;
+    }
+
     const response = await fetch(
       apiUrl(
         `/tickets?viewerType=client&viewerId=${encodeURIComponent(clientSession.clientId)}`
@@ -391,6 +395,11 @@ export default function ClientPage() {
   };
 
   const loadTicketContext = async (ticket: Ticket, markAsRead = shouldMarkMessagesAsRead) => {
+    if (!clientSession.clientId) {
+      setError("Не удалось восстановить сессию клиента");
+      return;
+    }
+
     setIsLoadingContext(true);
     setError("");
 
@@ -568,6 +577,10 @@ export default function ClientPage() {
   }, [isEmbeddedWidget, activeTicket?.id]);
 
   useEffect(() => {
+    if (!clientSession.clientId) {
+      return;
+    }
+
     const savedTicketId = window.localStorage.getItem(clientActiveTicketStorageKey);
 
     if (!savedTicketId) {
@@ -594,10 +607,10 @@ export default function ClientPage() {
     };
 
     void restoreTicket();
-  }, [shouldMarkMessagesAsRead]);
+  }, [clientSession.clientId, shouldMarkMessagesAsRead]);
 
   useEffect(() => {
-    if (activeTicket || typeof window === "undefined") {
+    if (activeTicket || typeof window === "undefined" || !clientSession.clientId) {
       return;
     }
 
@@ -1388,7 +1401,9 @@ export default function ClientPage() {
                               className={`relative rounded-[18px] px-4 pb-[10px] pt-3 text-sm leading-6 shadow-sm ${
                                 message.senderType === "client"
                                   ? "rounded-tr-[6px] bg-[#0A84FF] text-white"
-                                  : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
+                                  : message.senderType === "supplier"
+                                    ? "rounded-tl-[6px] bg-[#E9F7EF] text-[#1E1E1E]"
+                                    : "rounded-tl-[6px] bg-white text-[#1E1E1E]"
                               }`}
                             >
                             {message.replyToContent || replyMap[message.id] ? (
@@ -1402,12 +1417,18 @@ export default function ClientPage() {
                                 className={`mb-2 flex w-full items-start gap-2 rounded-[14px] px-1 py-1 text-left transition ${
                                   message.senderType === "client"
                                     ? "hover:bg-white/10"
+                                    : message.senderType === "supplier"
+                                      ? "hover:bg-[#DFF1E6]"
                                     : "hover:bg-[#F2F7FF]"
                                 }`}
                               >
                                 <span
                                   className={`mt-0.5 h-9 w-[3px] shrink-0 rounded-full ${
-                                    message.senderType === "client" ? "bg-white/55" : "bg-[#0A84FF]"
+                                    message.senderType === "client"
+                                      ? "bg-white/55"
+                                      : message.senderType === "supplier"
+                                        ? "bg-[#34C759]"
+                                        : "bg-[#0A84FF]"
                                   }`}
                                 />
                                 <div className="min-w-0">
@@ -1415,6 +1436,8 @@ export default function ClientPage() {
                                     className={`text-[11px] font-semibold uppercase tracking-[0.08em] ${
                                       message.senderType === "client"
                                         ? "text-white/78"
+                                        : message.senderType === "supplier"
+                                          ? "text-[#2D9C55]"
                                         : "text-[#0A84FF]"
                                     }`}
                                   >
@@ -1424,6 +1447,8 @@ export default function ClientPage() {
                                     className={`mt-0.5 line-clamp-2 text-[12px] leading-5 ${
                                       message.senderType === "client"
                                         ? "text-white/82"
+                                        : message.senderType === "supplier"
+                                          ? "text-[#54705C]"
                                         : "text-[#5A6270]"
                                     }`}
                                   >
@@ -1440,6 +1465,8 @@ export default function ClientPage() {
                                 className={`ml-auto flex shrink-0 items-center gap-1 text-[10px] leading-none ${
                                   message.senderType === "client"
                                     ? "text-white/78"
+                                    : message.senderType === "supplier"
+                                      ? "text-[#5E8B6A]"
                                     : "text-[#8E8E93]"
                                 }`}
                               >

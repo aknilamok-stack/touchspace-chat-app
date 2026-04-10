@@ -652,28 +652,28 @@ const buildSupplierRequestCards = (
         (left, right) =>
           new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
       );
-      const request = sortedRequests[0];
-      const requestMessages = ticketMessagesByTicketId[request.ticketId] ?? [];
+      const latestRequest = sortedRequests[0];
+      const requestMessages = ticketMessagesByTicketId[latestRequest.ticketId] ?? [];
       const visibleMessages = getVisibleMessagesForTicket(sortedRequests, requestMessages);
       const lastVisibleMessage = visibleMessages[visibleMessages.length - 1] ?? null;
-      const ticketStatus = ticketsById[request.ticketId]?.status;
-      const activeRequest =
-        sortedRequests.find(
-          (item) => !["closed", "cancelled", "resolved"].includes(item.status)
-        ) ?? request;
+      const ticketStatus = ticketsById[latestRequest.ticketId]?.status;
+      const activeRequest = !["closed", "cancelled", "resolved"].includes(latestRequest.status)
+        ? latestRequest
+        : null;
+      const displayRequest = activeRequest ?? latestRequest;
 
       return {
-        request: activeRequest,
+        request: displayRequest,
         requests: sortedRequests,
-        queueTab: getSupplierQueueTab(activeRequest, ticketStatus),
+        queueTab: getSupplierQueueTab(displayRequest, ticketStatus),
         managerName:
-          (activeRequest.createdByManagerId
-            ? managerNameById[activeRequest.createdByManagerId]
+          (displayRequest.createdByManagerId
+            ? managerNameById[displayRequest.createdByManagerId]
             : undefined) ?? "Не указан",
-        pinned: pinnedRequestIds.includes(request.ticketId),
-        lastActivityAt: lastVisibleMessage?.createdAt ?? request.createdAt,
+        pinned: pinnedRequestIds.includes(latestRequest.ticketId),
+        lastActivityAt: lastVisibleMessage?.createdAt ?? latestRequest.createdAt,
         lastVisibleMessage,
-        ticket: ticketsById[request.ticketId] ?? null,
+        ticket: ticketsById[latestRequest.ticketId] ?? null,
       } satisfies SupplierRequestCard;
     })
     .sort(
@@ -1144,11 +1144,13 @@ export default function SupplierPage() {
             new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
         )
     : [];
+  const selectedLatestRequest = selectedTicketRequests[0] ?? selectedRequest;
   const selectedActiveRequest =
-    selectedTicketRequests.find(
-      (request) => !["closed", "cancelled", "resolved"].includes(request.status)
-    ) ?? null;
-  const selectedRequestDetails = selectedActiveRequest ?? selectedRequest;
+    selectedLatestRequest &&
+    !["closed", "cancelled", "resolved"].includes(selectedLatestRequest.status)
+      ? selectedLatestRequest
+      : null;
+  const selectedRequestDetails = selectedActiveRequest ?? selectedLatestRequest;
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;

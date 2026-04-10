@@ -3901,20 +3901,6 @@ export default function SupplierPage() {
                             : "Сейчас этот запрос ведёт другой сотрудник поставщика."}
                         </p>
                       </div>
-                    ) : canReturnSupplierRequestToQueue ? (
-                      <div className="rounded-[24px] border border-[#FFE1C7] bg-[#FFF8F1] px-5 py-5 shadow-[0_14px_32px_rgba(255,122,0,0.08)]">
-                        <p className="text-center text-sm font-semibold text-[#1E1E1E]">
-                          Запрос сейчас закреплён за вами
-                        </p>
-                        <button
-                          type="button"
-                          onClick={handleReturnRequestToQueue}
-                          disabled={isSendingReply}
-                          className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[#FF7A00] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(255,122,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#E56E00] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
-                        >
-                          {isSendingReply ? "Возвращаем..." : "Вернуть в очередь"}
-                        </button>
-                      </div>
                     ) : attachmentName ? (
                       <div className="mb-3 flex">
                         <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">

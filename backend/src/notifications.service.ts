@@ -846,9 +846,6 @@ export class NotificationsService {
               senderType: {
                 in: ['manager', 'client'],
               },
-              status: {
-                in: ['sent', 'delivered'],
-              },
             },
           },
         },
@@ -866,9 +863,6 @@ export class NotificationsService {
             where: {
               senderType: {
                 in: ['manager', 'client'],
-              },
-              status: {
-                in: ['sent', 'delivered'],
               },
             },
             orderBy: {

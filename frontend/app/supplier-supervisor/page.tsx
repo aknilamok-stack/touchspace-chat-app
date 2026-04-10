@@ -435,7 +435,10 @@ const areRequestsEqual = (
       request.id === nextRequest?.id &&
       request.status === nextRequest.status &&
       request.requestText === nextRequest.requestText &&
-      request.createdAt === nextRequest.createdAt
+      request.createdAt === nextRequest.createdAt &&
+      request.supplierSyncPaused === nextRequest.supplierSyncPaused &&
+      request.supplierSyncPausedAt === nextRequest.supplierSyncPausedAt &&
+      request.supplierSyncResumedAt === nextRequest.supplierSyncResumedAt
     );
   });
 
@@ -1692,7 +1695,10 @@ export default function SupplierPage() {
         `/supplier-requests?supplierName=${encodeURIComponent(
           supplierName
         )}&supplierId=${encodeURIComponent(supplierId)}`
-      )
+      ),
+      {
+        cache: "no-store",
+      }
     );
 
     if (response.ok) {
@@ -1702,7 +1708,10 @@ export default function SupplierPage() {
     const ticketsResponse = await fetch(
       apiUrl(
         `/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`
-      )
+      ),
+      {
+        cache: "no-store",
+      }
     );
 
     if (!ticketsResponse.ok) {
@@ -1717,7 +1726,10 @@ export default function SupplierPage() {
             `/tickets/${ticket.id}/supplier-requests?supplierId=${encodeURIComponent(
               supplierId
             )}`
-          )
+          ),
+          {
+            cache: "no-store",
+          }
         );
 
         if (!ticketRequestsResponse.ok) {
@@ -1856,7 +1868,10 @@ export default function SupplierPage() {
         `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
           supplierId
         )}&markAsRead=true`
-      )
+      ),
+      {
+        cache: "no-store",
+      }
     );
 
     if (!response.ok) {
@@ -1907,6 +1922,14 @@ export default function SupplierPage() {
       areRequestsEqual(currentRequests, requests) ? currentRequests : requests
     );
   };
+
+  const updateSupplierRequestLocally = useCallback((nextRequest: SupplierRequest) => {
+    setSupplierRequests((currentRequests) =>
+      currentRequests.map((request) =>
+        request.id === nextRequest.id ? { ...request, ...nextRequest } : request
+      )
+    );
+  }, []);
 
   useEffect(() => {
     const session = readAuthSession();
@@ -2199,7 +2222,7 @@ export default function SupplierPage() {
       };
 
       void refreshSupplierWorkspace();
-    }, 4000);
+    }, 1000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
@@ -3108,6 +3131,9 @@ export default function SupplierPage() {
       if (!response.ok) {
         throw new Error("Не удалось вернуться в диалог");
       }
+
+      const updatedRequest = (await response.json()) as SupplierRequest;
+      updateSupplierRequestLocally(updatedRequest);
 
       const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
         fetchSupplierRequests(),

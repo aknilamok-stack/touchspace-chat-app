@@ -66,7 +66,8 @@ const isHiddenClientSystemMessage = (message: Message) =>
   (message.content.startsWith("Диалог отмечен как решённый менеджером") ||
     message.content === "Клиент возобновил диалог" ||
     message.content.includes("AI-помощник подключён к диалогу") ||
-    message.content.includes("AI-помощник отключён. Диалог снова ведёт менеджер"));
+    message.content.includes("AI-помощник отключён. Диалог снова ведёт менеджер") ||
+    message.content.startsWith("Чат возвращён в общую очередь:"));
 
 const formatMessageTime = (createdAt: string) =>
   new Date(createdAt).toLocaleTimeString("ru-RU", {

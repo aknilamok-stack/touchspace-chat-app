@@ -46,6 +46,7 @@ type SupplierNotificationCandidate = {
   messageId: string;
   messageText: string;
   createdAt: Date;
+  senderType?: 'manager' | 'client' | null;
   tradePointName?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
@@ -58,6 +59,38 @@ type SupplierNotificationCandidate = {
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
   kind: 'message' | 'request';
+};
+
+type SupplierNotificationMessageRecord = {
+  id: string;
+  content: string;
+  createdAt: Date;
+  senderType: 'manager' | 'client';
+};
+
+type SupplierNotificationRequestRecord = {
+  id: string;
+  status: string;
+  createdAt: Date;
+  assignedSupplierProfileId: string | null;
+  assignedSupplierProfileName: string | null;
+  claimRequiredAt: Date | null;
+  claimMissedAt: Date | null;
+  claimedAt: Date | null;
+  lastManagerMessageAt: Date | null;
+  supplierSyncPaused: boolean | null;
+  lastSupplierReplyAt: Date | null;
+};
+
+type SupplierNotificationTicketRecord = {
+  id: string;
+  title: string | null;
+  tradePointName: string | null;
+  clientName: string | null;
+  avatarColor: string | null;
+  avatarEmoji: string | null;
+  messages: SupplierNotificationMessageRecord[];
+  supplierRequests: SupplierNotificationRequestRecord[];
 };
 
 @Injectable()
@@ -737,7 +770,8 @@ export class NotificationsService {
       )
       .map((ticket) => {
         const latestUnreadMessage = ticket.messages[0];
-        const createdAt = ticket.claimedAt ?? latestUnreadMessage?.createdAt ?? new Date();
+        const createdAt =
+          ticket.claimedAt ?? latestUnreadMessage?.createdAt ?? new Date();
 
         return {
           notificationKey: `ticket-claimed:${ticket.id}:${createdAt.toISOString()}`,
@@ -792,7 +826,7 @@ export class NotificationsService {
     const items: SupplierNotificationCandidate[] = [];
 
     if (profile.notifySupplierChats) {
-      const tickets = await this.prisma.ticket.findMany({
+      const tickets = (await this.prisma.ticket.findMany({
         where: {
           status: {
             notIn: ['resolved', 'closed'],
@@ -809,7 +843,12 @@ export class NotificationsService {
           ],
           messages: {
             some: {
-              senderType: 'manager',
+              senderType: {
+                in: ['manager', 'client'],
+              },
+              status: {
+                in: ['sent', 'delivered'],
+              },
             },
           },
         },
@@ -825,7 +864,12 @@ export class NotificationsService {
           avatarEmoji: true,
           messages: {
             where: {
-              senderType: 'manager',
+              senderType: {
+                in: ['manager', 'client'],
+              },
+              status: {
+                in: ['sent', 'delivered'],
+              },
             },
             orderBy: {
               createdAt: 'desc',
@@ -835,6 +879,7 @@ export class NotificationsService {
               id: true,
               content: true,
               createdAt: true,
+              senderType: true,
             },
           },
           supplierRequests: {
@@ -855,11 +900,12 @@ export class NotificationsService {
               claimMissedAt: true,
               claimedAt: true,
               lastManagerMessageAt: true,
+              supplierSyncPaused: true,
               lastSupplierReplyAt: true,
             },
           },
         },
-      });
+      })) as SupplierNotificationTicketRecord[];
 
       tickets.forEach((ticket) => {
         const latestUnreadMessage = ticket.messages[0];
@@ -879,18 +925,21 @@ export class NotificationsService {
           return;
         }
 
+        if (latestActiveRequest?.supplierSyncPaused) {
+          return;
+        }
+
         if (latestActiveRequest?.assignedSupplierProfileId === profile.id) {
-          const latestManagerActivityAt =
-            latestActiveRequest.lastManagerMessageAt ?? latestUnreadMessage.createdAt;
+          const latestIncomingActivityAt = latestUnreadMessage.createdAt;
           const supplierBaselineAt =
             latestActiveRequest.lastSupplierReplyAt ??
             latestActiveRequest.claimedAt ??
             latestActiveRequest.createdAt;
 
           if (
-            latestManagerActivityAt &&
+            latestIncomingActivityAt &&
             supplierBaselineAt &&
-            latestManagerActivityAt.getTime() <= supplierBaselineAt.getTime()
+            latestIncomingActivityAt.getTime() <= supplierBaselineAt.getTime()
           ) {
             return;
           }
@@ -899,7 +948,8 @@ export class NotificationsService {
         items.push({
           notificationKey: `supplier-message:${ticket.id}:${latestUnreadMessage.id}`,
           ticketId: ticket.id,
-          requestId: latestActiveRequest?.id ?? ticket.supplierRequests[0]?.id ?? null,
+          requestId:
+            latestActiveRequest?.id ?? ticket.supplierRequests[0]?.id ?? null,
           title:
             ticket.tradePointName?.trim() ||
             ticket.title?.trim() ||
@@ -908,6 +958,8 @@ export class NotificationsService {
           messageId: latestUnreadMessage.id,
           messageText: latestUnreadMessage.content,
           createdAt: latestUnreadMessage.createdAt,
+          senderType:
+            latestUnreadMessage.senderType === 'client' ? 'client' : 'manager',
           tradePointName: ticket.tradePointName?.trim() || null,
           avatarColor: ticket.avatarColor,
           avatarEmoji: ticket.avatarEmoji,
@@ -921,9 +973,7 @@ export class NotificationsService {
             latestActiveRequest?.assignedSupplierProfileId === profile.id
               ? Math.max(
                   Math.floor(
-                    (Date.now() -
-                      (latestActiveRequest?.lastManagerMessageAt?.getTime() ??
-                        latestUnreadMessage.createdAt.getTime())) /
+                    (Date.now() - latestUnreadMessage.createdAt.getTime()) /
                       1000,
                   ),
                   0,
@@ -1005,7 +1055,8 @@ export class NotificationsService {
           waitSeconds: Math.max(
             Math.floor(
               (Date.now() -
-                (request.claimRequiredAt?.getTime() ?? request.createdAt.getTime())) /
+                (request.claimRequiredAt?.getTime() ??
+                  request.createdAt.getTime())) /
                 1000,
             ),
             0,
@@ -1087,8 +1138,7 @@ export class NotificationsService {
     });
 
     items.sort(
-      (left, right) =>
-        right.createdAt.getTime() - left.createdAt.getTime(),
+      (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
     );
 
     return {

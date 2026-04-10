@@ -164,6 +164,7 @@ type SupplierNotificationCandidate = {
   messageId: string;
   messageText: string;
   createdAt: string;
+  senderType?: "manager" | "client" | null;
   tradePointName?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
@@ -2476,7 +2477,9 @@ export default function SupplierPage() {
           ? "Запрос уже взят в работу"
           : candidate.kind === "request"
           ? `Новый запрос: ${candidate.title || "поставщик"}`
-          : `Менеджер: ${candidate.title || "диалог"}`;
+          : candidate.senderType === "client"
+            ? `Клиент: ${candidate.title || "диалог"}`
+            : `Менеджер: ${candidate.title || "диалог"}`;
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
@@ -3445,7 +3448,9 @@ export default function SupplierPage() {
                           : "Запрос уже забрал коллега"
                         : candidate.kind === "request"
                           ? "Новый запрос поставщику"
-                          : "Новое сообщение от менеджера",
+                          : candidate.senderType === "client"
+                            ? "Новое сообщение от клиента"
+                            : "Новое сообщение от менеджера",
                     preview:
                       candidate.scopeStatus === "claimed_by_other_recently"
                         ? candidate.assignedSupplierProfileName

@@ -304,17 +304,28 @@ const formatDateTimeLabel = (createdAt: string) =>
     minute: "2-digit",
   });
 
+const sanitizeSupplierDisplaySegment = (value?: string | null) => {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  return normalizedValue
+    .replace(/^(?:(?:supplier|scope)[\s_-]*)+/i, "")
+    .replace(/^[\/\s_-]+/, "")
+    .trim();
+};
+
 const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
   const normalizeCompanyLabel = (value?: string | null) => {
-    const normalizedValue = value?.trim();
+    const sanitizedValue = sanitizeSupplierDisplaySegment(value);
 
-    if (!normalizedValue) {
+    if (!sanitizedValue) {
       return "";
     }
 
-    const withoutPrefix = normalizedValue.replace(/^(supplier|scope)[\s_-]?/i, "");
-
-    return withoutPrefix
+    return sanitizedValue
       .split(/[\s_-]+/)
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -1177,7 +1188,8 @@ export default function SupplierPage() {
     selectedTicket?.assignedManagerName ??
     "Менеджер";
   const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
-  const resolvedSupplierEmployeeName = supplierEmployeeName?.trim() || "Поставщик";
+  const resolvedSupplierEmployeeName =
+    sanitizeSupplierDisplaySegment(supplierEmployeeName) || "Поставщик";
   const supplierHeaderTitle =
     resolvedSupplierEmployeeName !== supplierCompanyName
       ? `${supplierCompanyName} / ${resolvedSupplierEmployeeName}`

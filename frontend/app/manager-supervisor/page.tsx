@@ -706,6 +706,22 @@ const formatMessageDayLabel = (createdAt: string) =>
     year: "numeric",
   });
 
+const getManagerMessageAuthorLabel = (message: ChatMessage) => {
+  if (message.isInternal || message.from === "ai" || message.from === "supplier") {
+    return "";
+  }
+
+  if (message.from === "manager") {
+    return "Вы";
+  }
+
+  if (message.from === "client") {
+    return "Клиент";
+  }
+
+  return "";
+};
+
 const formatSupplierRequest = (
   request: ApiSupplierRequest
 ): ChatSupplierRequest => ({
@@ -4614,6 +4630,7 @@ export default function Home() {
                   getMessageDayKey(message.createdAt);
               const isSearchMatched = chatSearchMatchIdSet.has(message.id);
               const isCurrentSearchMatch = currentChatSearchMatchId === message.id;
+              const authorLabel = getManagerMessageAuthorLabel(message);
 
               return (
                 <div
@@ -4775,6 +4792,11 @@ export default function Home() {
                             }`}
                           >
                             <div className="min-w-0 max-w-full">
+                            {authorLabel ? (
+                              <p className="mb-0.5 text-[11px] font-medium opacity-60">
+                                {authorLabel}
+                              </p>
+                            ) : null}
                             {message.from === "ai" || message.from === "supplier" || message.isInternal ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}

@@ -905,25 +905,30 @@ export class NotificationsService {
         const latestUnreadMessage = ticket.messages[0];
         const latestActiveRequest =
           ticket.supplierRequests.find(
-            (request) => !['closed', 'cancelled'].includes(request.status),
-          ) ?? ticket.supplierRequests[0];
+            (request) =>
+              !['closed', 'cancelled', 'resolved'].includes(request.status),
+          ) ?? null;
 
         if (!latestUnreadMessage) {
           return;
         }
 
+        if (!latestActiveRequest) {
+          return;
+        }
+
         if (
-          latestActiveRequest?.assignedSupplierProfileId &&
+          latestActiveRequest.assignedSupplierProfileId &&
           latestActiveRequest.assignedSupplierProfileId !== profile.id
         ) {
           return;
         }
 
-        if (latestActiveRequest?.supplierSyncPaused) {
+        if (latestActiveRequest.supplierSyncPaused) {
           return;
         }
 
-        if (latestActiveRequest?.assignedSupplierProfileId === profile.id) {
+        if (latestActiveRequest.assignedSupplierProfileId === profile.id) {
           const latestIncomingActivityAt = latestUnreadMessage.createdAt;
           const supplierBaselineAt =
             latestActiveRequest.lastSupplierReplyAt ??
@@ -942,8 +947,7 @@ export class NotificationsService {
         items.push({
           notificationKey: `supplier-message:${ticket.id}:${latestUnreadMessage.id}`,
           ticketId: ticket.id,
-          requestId:
-            latestActiveRequest?.id ?? ticket.supplierRequests[0]?.id ?? null,
+          requestId: latestActiveRequest.id,
           title:
             ticket.tradePointName?.trim() ||
             ticket.title?.trim() ||
@@ -958,13 +962,13 @@ export class NotificationsService {
           avatarColor: ticket.avatarColor,
           avatarEmoji: ticket.avatarEmoji,
           scopeStatus:
-            latestActiveRequest?.assignedSupplierProfileId === profile.id
+            latestActiveRequest.assignedSupplierProfileId === profile.id
               ? 'owned_active'
-              : latestActiveRequest?.claimMissedAt
+              : latestActiveRequest.claimMissedAt
                 ? 'missed_unclaimed'
                 : 'new_unclaimed',
           waitSeconds:
-            latestActiveRequest?.assignedSupplierProfileId === profile.id
+            latestActiveRequest.assignedSupplierProfileId === profile.id
               ? Math.max(
                   Math.floor(
                     (Date.now() - latestUnreadMessage.createdAt.getTime()) /
@@ -975,16 +979,14 @@ export class NotificationsService {
               : Math.max(
                   Math.floor(
                     (Date.now() -
-                      (latestActiveRequest?.claimRequiredAt?.getTime() ??
+                      (latestActiveRequest.claimRequiredAt?.getTime() ??
                         latestUnreadMessage.createdAt.getTime())) /
                       1000,
                   ),
                   0,
                 ),
-          assignedSupplierProfileId:
-            latestActiveRequest?.assignedSupplierProfileId ?? null,
-          assignedSupplierProfileName:
-            latestActiveRequest?.assignedSupplierProfileName ?? null,
+          assignedSupplierProfileId: latestActiveRequest.assignedSupplierProfileId ?? null,
+          assignedSupplierProfileName: latestActiveRequest.assignedSupplierProfileName ?? null,
           kind: 'message',
         });
       });
@@ -997,7 +999,7 @@ export class NotificationsService {
           assignedSupplierProfileId: null,
           firstResponseAt: null,
           status: {
-            notIn: ['closed', 'cancelled'],
+            notIn: ['closed', 'cancelled', 'resolved'],
           },
         },
         orderBy: {
@@ -1075,7 +1077,7 @@ export class NotificationsService {
           gte: new Date(Date.now() - 45_000),
         },
         status: {
-          notIn: ['closed', 'cancelled'],
+          notIn: ['closed', 'cancelled', 'resolved'],
         },
       },
       select: {

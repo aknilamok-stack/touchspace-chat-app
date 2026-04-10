@@ -2459,11 +2459,7 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
-      return;
-    }
-
-    if (Notification.permission !== "granted") {
+    if (!authReady || typeof window === "undefined") {
       return;
     }
 

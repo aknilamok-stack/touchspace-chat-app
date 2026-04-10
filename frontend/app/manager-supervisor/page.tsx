@@ -2657,11 +2657,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
-      return;
-    }
-
-    if (Notification.permission !== "granted") {
+    if (!authReady || typeof window === "undefined") {
       return;
     }
 

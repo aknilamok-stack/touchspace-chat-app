@@ -848,6 +848,7 @@ export class NotificationsService {
             select: {
               id: true,
               status: true,
+              createdAt: true,
               assignedSupplierProfileId: true,
               assignedSupplierProfileName: true,
               claimRequiredAt: true,
@@ -876,6 +877,23 @@ export class NotificationsService {
           latestActiveRequest.assignedSupplierProfileId !== profile.id
         ) {
           return;
+        }
+
+        if (latestActiveRequest?.assignedSupplierProfileId === profile.id) {
+          const latestManagerActivityAt =
+            latestActiveRequest.lastManagerMessageAt ?? latestUnreadMessage.createdAt;
+          const supplierBaselineAt =
+            latestActiveRequest.lastSupplierReplyAt ??
+            latestActiveRequest.claimedAt ??
+            latestActiveRequest.createdAt;
+
+          if (
+            latestManagerActivityAt &&
+            supplierBaselineAt &&
+            latestManagerActivityAt.getTime() <= supplierBaselineAt.getTime()
+          ) {
+            return;
+          }
         }
 
         items.push({
@@ -932,10 +950,7 @@ export class NotificationsService {
       const requests = await this.prisma.supplierRequest.findMany({
         where: {
           supplierId: supplierScopeId,
-          OR: [
-            { assignedSupplierProfileId: null },
-            { assignedSupplierProfileId: profile.id },
-          ],
+          assignedSupplierProfileId: null,
           firstResponseAt: null,
           status: {
             notIn: ['closed', 'cancelled'],

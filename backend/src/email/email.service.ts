@@ -365,22 +365,16 @@ export class EmailService {
     };
   }
 
-  private buildTicketSubject(ticketTitle: string | null, ticketId: string) {
-    const normalizedTitle = ticketTitle?.trim() || 'Новое сообщение';
-    const marker = `[TouchSpace #ticket_${ticketId}]`;
-    const maxTitleLength = Math.max(191 - marker.length - 1, 0);
-    const safeTitle = normalizedTitle.slice(0, maxTitleLength).trim();
-
-    return `${safeTitle || 'Новое сообщение'} ${marker}`;
+  private buildTicketSubject(_ticketTitle: string | null, _ticketId: string) {
+    return 'Оператор TouchSpace';
   }
 
-  private buildPlainTextBody(content: string, ticketId: string) {
+  private buildPlainTextBody(content: string, _ticketId: string) {
     return [
       content.trim(),
       '',
-      'Ответьте на это письмо, и сообщение попадёт в чат.',
-      '',
-      `TouchSpace ticket: ${ticketId}`,
+      'С уважением,',
+      'Оператор TouchSpace',
     ].join('\n');
   }
 

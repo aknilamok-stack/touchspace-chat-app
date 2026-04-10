@@ -1905,12 +1905,13 @@ export default function SupplierPage() {
     }
 
     const resolvedSupplierId = session.supplierId;
-    const resolvedSupplierCompanyName =
+    const resolvedSupplierCompanyName = formatSupplierCompanyName(
+      resolvedSupplierId,
       session.companyName?.trim() ||
-      formatSupplierCompanyName(
-        resolvedSupplierId,
-        session.supplierName ?? session.fullName ?? "Поставщик"
-      );
+        session.supplierName ||
+        session.fullName ||
+        "Поставщик"
+    );
     const resolvedSupplierEmployeeName =
       session.fullName?.trim() ||
       resolvedSupplierCompanyName;

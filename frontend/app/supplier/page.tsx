@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
+import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
@@ -729,6 +730,39 @@ const getSupplierCardPreview = (card: SupplierRequestCard) => {
 
   return "Диалог создан";
 };
+
+const getSupplierCompletedRequestLabel = (card: SupplierRequestCard) => {
+  const latestManagerRequest = card.requests[0];
+  const requestText = latestManagerRequest?.requestText?.trim();
+
+  return requestText || "Диалог завершён";
+};
+
+const getSupplierFirstResponseLabel = (request: SupplierRequest) => {
+  if (typeof request.responseTime === "number" && request.responseTime >= 0) {
+    return formatDuration(request.responseTime);
+  }
+
+  return "—";
+};
+
+const getSupplierRequestDurationLabel = (request: SupplierRequest) => {
+  const startTime = new Date(request.createdAt).getTime();
+  const endTime = request.closedAt ? new Date(request.closedAt).getTime() : Date.now();
+
+  if (!Number.isFinite(startTime)) {
+    return "—";
+  }
+
+  return formatDuration(Math.max(endTime - startTime, 0));
+};
+
+const getSupplierChannelLabel = (ticket: Ticket | null) =>
+  ticket?.canonicalEmail?.trim() ||
+  ticket?.clientEmail?.trim() ||
+  ticket?.currentUserEmail?.trim() ||
+  ticket?.superuserEmail?.trim() ||
+  "—";
 
 const getSupplierCardTone = (
   request: SupplierRequest,
@@ -3272,7 +3306,17 @@ export default function SupplierPage() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveQueueTab(tab.id)}
+                    onClick={() => {
+                      setActiveQueueTab(tab.id);
+
+                      if (tab.id === "completed") {
+                        setIsChatPaneDismissed(true);
+                        setSelectedRequestId("");
+                        return;
+                      }
+
+                      setIsChatPaneDismissed(false);
+                    }}
                     className={`inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
                       isActive
                         ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
@@ -4678,6 +4722,68 @@ export default function SupplierPage() {
                 />
               </aside>
             </>
+          ) : activeQueueTab === "completed" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto bg-white px-8 py-8">
+              <div className="mx-auto w-full max-w-[1440px]">
+                <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
+                  <div>
+                    <h2 className="text-[22px] font-semibold text-[#1E1E1E]">
+                      Завершённые диалоги
+                    </h2>
+                    <p className="mt-1.5 text-[13px] text-[#8E8E93]">
+                      Найдено {activeTabRequests.length}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[minmax(260px,1.7fr)_140px_150px_110px_170px_minmax(200px,1.6fr)] gap-4 px-4 pb-2 text-[12px] font-medium text-[#9AA3AF]">
+                  <span>Диалог</span>
+                  <span>Ожидание первого ответа</span>
+                  <span>Длительность</span>
+                  <span>Статус</span>
+                  <span>Канал</span>
+                  <span>Обращение</span>
+                </div>
+
+                <div className="space-y-1">
+                  {activeTabRequests.map((card) => {
+                    const tone = getSupplierCardTone(card.request, card.queueTab);
+                    const managerLabel =
+                      card.ticket?.assignedManagerName?.trim() ||
+                      card.ticket?.lastResolvedByManagerName?.trim() ||
+                      (card.managerName !== "Не указан" ? card.managerName : "Не назначен");
+
+                    return (
+                      <DialogListWideRow
+                        key={card.request.id}
+                        onClick={() => {
+                          setIsChatPaneDismissed(false);
+                          setSelectedRequestId(card.request.id);
+                        }}
+                        title={getSupplierCardClientLabel(card.ticket, card.request)}
+                        identityKey={
+                          card.ticket?.clientId ||
+                          card.ticket?.clientName ||
+                          card.ticket?.title ||
+                          card.request.ticketId
+                        }
+                        avatarColor={card.ticket?.avatarColor}
+                        avatarEmoji={card.ticket?.avatarEmoji}
+                        statusDotClassName={tone.dot}
+                        managerLabel={managerLabel}
+                        lastMessageTimeLabel={formatDialogActivityLabel(card.lastActivityAt)}
+                        firstResponseLabel={getSupplierFirstResponseLabel(card.request)}
+                        durationLabel={getSupplierRequestDurationLabel(card.request)}
+                        statusLabel={tone.label}
+                        statusBadgeClassName={tone.pill}
+                        channelLabel={getSupplierChannelLabel(card.ticket)}
+                        topicLabel={getSupplierCompletedRequestLabel(card)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-8">
               <div className="mx-auto flex max-w-[420px] flex-col items-center text-center">

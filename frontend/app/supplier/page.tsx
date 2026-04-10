@@ -1113,7 +1113,8 @@ export default function SupplierPage() {
   const selectedActiveRequest =
     selectedTicketRequests.find(
       (request) => !["closed", "cancelled", "resolved"].includes(request.status)
-    ) ?? selectedRequest;
+    ) ?? null;
+  const selectedRequestDetails = selectedActiveRequest ?? selectedRequest;
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;
@@ -1443,14 +1444,14 @@ export default function SupplierPage() {
   const now = Date.now();
   const supplierPanelStatus = selectedRequest
     ? buildSupplierPanelStatus({
-        request: selectedActiveRequest ?? selectedRequest,
+        request: selectedRequestDetails,
         ticketStatus: selectedTicket?.status,
         queueTab: selectedRequestCard?.queueTab,
       })
     : null;
   const supplierSla = selectedRequest
     ? buildSupplierSlaVisual({
-        request: selectedActiveRequest ?? selectedRequest,
+        request: selectedRequestDetails,
         now,
       })
     : null;
@@ -1485,6 +1486,7 @@ export default function SupplierPage() {
     !isResolvingTicket &&
     selectedTicket?.status !== "resolved" &&
     selectedRequestCard?.queueTab !== "completed";
+  const resolveButtonDisabled = !canSupplierMarkResolved;
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const activeTabRequests = supplierRequestCards.filter((card) => {
     if (card.queueTab !== activeQueueTab) {
@@ -3534,10 +3536,18 @@ export default function SupplierPage() {
                     <div className="relative">
                       <button
                         onClick={handleResolveTicket}
-                        disabled={isResolvingTicket || selectedTicket?.status === "resolved"}
-                        onMouseEnter={() => setHoveredHeaderAction("resolve")}
+                        disabled={resolveButtonDisabled}
+                        onMouseEnter={() => {
+                          if (!resolveButtonDisabled) {
+                            setHoveredHeaderAction("resolve");
+                          }
+                        }}
                         onMouseLeave={() => setHoveredHeaderAction(null)}
-                        className="flex items-center gap-2 rounded-[10px] bg-[#E9F7EF] px-4 py-2 text-sm font-semibold text-[#34C759] transition duration-200 hover:scale-[1.02] active:scale-95 disabled:cursor-default disabled:opacity-80"
+                        className={`flex items-center gap-2 rounded-[10px] px-4 py-2 text-sm font-semibold transition duration-200 active:scale-95 disabled:cursor-default ${
+                          resolveButtonDisabled
+                            ? "bg-[#F2F2F7] text-[#8E8E93]"
+                            : "bg-[#E9F7EF] text-[#34C759] hover:scale-[1.02]"
+                        }`}
                       >
                         <Image
                           src="/icons/reshen.svg"
@@ -3547,7 +3557,9 @@ export default function SupplierPage() {
                           className="h-4 w-4"
                           style={{
                             filter:
-                              "brightness(0) saturate(100%) invert(58%) sepia(78%) saturate(2475%) hue-rotate(317deg) brightness(103%) contrast(98%)",
+                              resolveButtonDisabled
+                                ? "grayscale(1) opacity(0.55)"
+                                : "brightness(0) saturate(100%) invert(58%) sepia(78%) saturate(2475%) hue-rotate(317deg) brightness(103%) contrast(98%)",
                           }}
                         />
                         <span>{isResolvingTicket ? "Сохраняем..." : "Решён"}</span>
@@ -4518,22 +4530,40 @@ export default function SupplierPage() {
                   <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
                     Запрос от менеджера
                   </p>
-                  <div className="mt-4 rounded-[18px] border border-[#CFE0FF] bg-[linear-gradient(135deg,#F4F8FF_0%,#EAF2FF_100%)] p-4 shadow-[0_16px_34px_rgba(10,132,255,0.10)]">
+                  <div
+                    className={`mt-4 rounded-[18px] border p-4 ${
+                      selectedActiveRequest
+                        ? "border-[#CFE0FF] bg-[linear-gradient(135deg,#F4F8FF_0%,#EAF2FF_100%)] shadow-[0_16px_34px_rgba(10,132,255,0.10)]"
+                        : "border-[#E5E5EA] bg-[linear-gradient(135deg,#F8F9FB_0%,#F1F3F6_100%)] shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0A84FF]">
-                        Активный запрос
+                      <p
+                        className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                          selectedActiveRequest ? "text-[#0A84FF]" : "text-[#8E8E93]"
+                        }`}
+                      >
+                        {selectedActiveRequest ? "Активный запрос" : "Активных запросов нет"}
                       </p>
-                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#3267B2]">
-                        Текущий
-                      </span>
+                      {selectedActiveRequest ? (
+                        <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#3267B2]">
+                          Текущий
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#8E8E93]">
+                          Ожидание
+                        </span>
+                      )}
                     </div>
                     <p className="mt-3 text-[15px] font-medium leading-7 text-[#1E1E1E]">
-                      {(selectedActiveRequest ?? selectedRequest).requestText}
+                      {selectedActiveRequest
+                        ? selectedActiveRequest.requestText
+                        : "Поставщик завершил текущий диалог. Новый запрос появится здесь после сообщения от менеджера."}
                     </p>
                   </div>
                   <div className="mt-4 space-y-2 text-sm text-[#6C6C70]">
                     <p>Менеджер: {selectedManagerName}</p>
-                    <p>Передан: {formatDateTimeLabel((selectedActiveRequest ?? selectedRequest).createdAt)}</p>
+                    <p>Передан: {formatDateTimeLabel(selectedRequestDetails.createdAt)}</p>
                   </div>
                   {selectedTicketRequests.length > 1 ? (
                     <div className="mt-4 border-t border-[#EEF0F4] pt-4">

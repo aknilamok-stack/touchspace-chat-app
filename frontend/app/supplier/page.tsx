@@ -1133,6 +1133,7 @@ export default function SupplierPage() {
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const defaultDocumentTitleRef = useRef("");
   const titleFlashIntervalRef = useRef<number | null>(null);
+  const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -1152,6 +1153,14 @@ export default function SupplierPage() {
       ? selectedLatestRequest
       : null;
   const selectedRequestDetails = selectedActiveRequest ?? selectedLatestRequest;
+  const latestUnreadIncomingSupplierMessage =
+    [...visibleSupplierMessages]
+      .reverse()
+      .find(
+        (message) =>
+          (message.senderType === "manager" || message.senderType === "client") &&
+          message.status !== "read"
+      ) ?? null;
   const currentPageViewAgeMs = currentPageView?.visitedAt
     ? (currentTimeMs ?? Date.now()) - new Date(currentPageView.visitedAt).getTime()
     : null;
@@ -1893,24 +1902,31 @@ export default function SupplierPage() {
   }, [supplierProfileId]);
 
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
-    const response = await fetch(
-      apiUrl(
-        `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
-          supplierId
-        )}&markAsRead=true`
-      ),
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error("Не удалось загрузить сообщения тикета");
-    }
-
-    const data = (await response.json()) as TicketMessageApi[];
-    return data.map(formatTicketMessage);
+    return fetchTicketMessagesSnapshot(ticketId, supplierId);
   };
+
+  const markTicketMessagesRead = useCallback(
+    async (ticketId: string) => {
+      const response = await fetch(
+        apiUrl(
+          `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
+            supplierId
+          )}&markAsRead=true`
+        ),
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Не удалось отметить сообщения как прочитанные");
+      }
+
+      const data = (await response.json()) as TicketMessageApi[];
+      return data.map(formatTicketMessage);
+    },
+    [supplierId]
+  );
 
   const fetchTicketContacts = async (ticketId: string): Promise<ChatContactItem[]> => {
     const response = await fetch(
@@ -2387,6 +2403,68 @@ export default function SupplierPage() {
       setShowScrollToLatest(true);
     }
   }, [selectedRequestId, visibleSupplierMessages.length]);
+
+  useEffect(() => {
+    if (
+      !authReady ||
+      !selectedRequest?.ticketId ||
+      !latestUnreadIncomingSupplierMessage ||
+      isSupplierPausedByManager
+    ) {
+      return;
+    }
+
+    if (typeof document !== "undefined") {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      if (typeof document.hasFocus === "function" && !document.hasFocus()) {
+        return;
+      }
+    }
+
+    if (!supplierIsNearBottomRef.current) {
+      return;
+    }
+
+    const lastMarkedMessageId =
+      lastMarkedIncomingMessageIdRef.current[selectedRequest.ticketId];
+
+    if (lastMarkedMessageId === latestUnreadIncomingSupplierMessage.id) {
+      return;
+    }
+
+    lastMarkedIncomingMessageIdRef.current[selectedRequest.ticketId] =
+      latestUnreadIncomingSupplierMessage.id;
+
+    void markTicketMessagesRead(selectedRequest.ticketId)
+      .then((messages) => {
+        setTicketMessages((currentMessages) =>
+          areMessagesEqual(currentMessages, messages) ? currentMessages : messages
+        );
+        setTicketMessagesByTicketId((currentMap) => {
+          const nextMap = {
+            ...currentMap,
+            [selectedRequest.ticketId]: messages,
+          };
+
+          return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
+        });
+        void refreshNotificationCandidates();
+      })
+      .catch((error) => {
+        console.error("Ошибка отметки сообщений поставщика как прочитанных:", error);
+        delete lastMarkedIncomingMessageIdRef.current[selectedRequest.ticketId];
+      });
+  }, [
+    authReady,
+    isSupplierPausedByManager,
+    latestUnreadIncomingSupplierMessage,
+    markTicketMessagesRead,
+    refreshNotificationCandidates,
+    selectedRequest,
+  ]);
 
   useEffect(() => {
     if (!authReady) {

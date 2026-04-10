@@ -4601,15 +4601,19 @@ export default function SupplierPage() {
                         </span>
                       )}
                     </div>
-                    <p className="mt-3 text-[15px] font-medium leading-7 text-[#1E1E1E]">
-                      {selectedActiveRequest
-                        ? selectedActiveRequest.requestText
-                        : "Поставщик завершил текущий диалог. Новый запрос появится здесь после сообщения от менеджера."}
-                    </p>
+                    {selectedActiveRequest ? (
+                      <p className="mt-3 text-[15px] font-medium leading-7 text-[#1E1E1E]">
+                        {selectedActiveRequest.requestText}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="mt-4 space-y-2 text-sm text-[#6C6C70]">
                     <p>Менеджер: {selectedManagerName}</p>
-                    <p>Передан: {formatDateTimeLabel(selectedRequestDetails.createdAt)}</p>
+                    {selectedActiveRequest ? (
+                      <p>Передан: {formatDateTimeLabel(selectedRequestDetails.createdAt)}</p>
+                    ) : (
+                      <p>Последний запрос: {formatDateTimeLabel(selectedRequestDetails.createdAt)}</p>
+                    )}
                   </div>
                   {selectedTicketRequests.length > 1 ? (
                     <div className="mt-4 border-t border-[#EEF0F4] pt-4">

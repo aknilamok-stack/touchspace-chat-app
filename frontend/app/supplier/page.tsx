@@ -1126,6 +1126,9 @@ export default function SupplierPage() {
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
+  const [eventNotificationCandidates, setEventNotificationCandidates] = useState<
+    SupplierNotificationCandidate[]
+  >([]);
   const [notificationNow, setNotificationNow] = useState(() => Date.now());
   const [dismissedNotificationUntil, setDismissedNotificationUntil] = useState<Record<string, number>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
@@ -1155,6 +1158,9 @@ export default function SupplierPage() {
   const defaultDocumentTitleRef = useRef("");
   const titleFlashIntervalRef = useRef<number | null>(null);
   const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
+  const supplierNotificationBaselineReadyRef = useRef(false);
+  const lastSeenSupplierRequestByTicketRef = useRef<Record<string, string>>({});
+  const lastSeenSupplierMessageByTicketRef = useRef<Record<string, string>>({});
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -1431,10 +1437,13 @@ export default function SupplierPage() {
   const effectiveNotificationCandidates = useMemo(
     () =>
       mergeSupplierNotificationCandidates(
-        notificationCandidates,
-        localNotificationCandidates
+        mergeSupplierNotificationCandidates(
+          notificationCandidates,
+          localNotificationCandidates
+        ),
+        eventNotificationCandidates
       ),
-    [notificationCandidates, localNotificationCandidates]
+    [eventNotificationCandidates, localNotificationCandidates, notificationCandidates]
   );
   const supplierTimelineItems = selectedRequest
     ? buildSupplierTimelineItems(
@@ -2467,6 +2476,210 @@ export default function SupplierPage() {
 
     return () => window.clearInterval(intervalId);
   }, [authReady, refreshNotificationCandidates, supplierProfileId]);
+
+  useEffect(() => {
+    if (!authReady || !supplierProfileId) {
+      return;
+    }
+
+    const requestsByTicket = supplierRequests.reduce<Record<string, SupplierRequest[]>>(
+      (accumulator, request) => {
+        if (!accumulator[request.ticketId]) {
+          accumulator[request.ticketId] = [];
+        }
+
+        accumulator[request.ticketId].push(request);
+        return accumulator;
+      },
+      {}
+    );
+
+    const nextSeenRequestsByTicket: Record<string, string> = {};
+    const nextSeenMessagesByTicket: Record<string, string> = {};
+    const nextActiveCandidates: SupplierNotificationCandidate[] = [];
+    const nextEventCandidates: SupplierNotificationCandidate[] = [];
+
+    Object.values(requestsByTicket).forEach((ticketRequests) => {
+      const sortedRequests = [...ticketRequests].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      );
+      const activeRequest =
+        sortedRequests.find(
+          (request) => !COMPLETED_SUPPLIER_REQUEST_STATUSES.has(request.status)
+        ) ?? null;
+
+      if (!activeRequest || activeRequest.supplierSyncPaused) {
+        return;
+      }
+
+      if (
+        activeRequest.assignedSupplierProfileId &&
+        activeRequest.assignedSupplierProfileId !== supplierProfileId
+      ) {
+        return;
+      }
+
+      const ticket = ticketsById[activeRequest.ticketId];
+
+      if (!ticket || ticket.status === "resolved" || ticket.status === "closed") {
+        return;
+      }
+
+      if (!activeRequest.assignedSupplierProfileId) {
+        const requestCandidate: SupplierNotificationCandidate = {
+          notificationKey: `supplier-event-request:${activeRequest.id}`,
+          ticketId: activeRequest.ticketId,
+          requestId: activeRequest.id,
+          title:
+            ticket.tradePointName?.trim() ||
+            ticket.title?.trim() ||
+            ticket.clientName?.trim() ||
+            activeRequest.supplierName?.trim() ||
+            "Новый запрос поставщику",
+          messageId: `request:${activeRequest.id}`,
+          messageText: activeRequest.requestText,
+          createdAt: activeRequest.createdAt,
+          tradePointName: ticket.tradePointName?.trim() || null,
+          avatarColor: ticket.avatarColor ?? null,
+          avatarEmoji: ticket.avatarEmoji ?? null,
+          scopeStatus: activeRequest.claimMissedAt ? "missed_unclaimed" : "new_unclaimed",
+          waitSeconds: Math.max(
+            Math.floor(
+              (Date.now() -
+                new Date(
+                  activeRequest.claimRequiredAt ?? activeRequest.createdAt
+                ).getTime()) /
+                1000
+            ),
+            0
+          ),
+          assignedSupplierProfileId: null,
+          assignedSupplierProfileName: null,
+          kind: "request",
+        };
+
+        nextSeenRequestsByTicket[activeRequest.ticketId] = activeRequest.id;
+        nextActiveCandidates.push(requestCandidate);
+
+        if (
+          supplierNotificationBaselineReadyRef.current &&
+          lastSeenSupplierRequestByTicketRef.current[activeRequest.ticketId] !== activeRequest.id
+        ) {
+          nextEventCandidates.push(requestCandidate);
+        }
+
+        return;
+      }
+
+      const visibleMessagesForRequest = getVisibleMessagesForTicket(
+        [...sortedRequests].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        ),
+        ticketMessagesByTicketId[activeRequest.ticketId] ?? []
+      );
+      const latestIncomingMessage = [...visibleMessagesForRequest].reverse().find(
+        (message) => message.senderType === "manager" || message.senderType === "client"
+      );
+
+      if (!latestIncomingMessage) {
+        return;
+      }
+
+      const latestSupplierMessage = [...visibleMessagesForRequest]
+        .reverse()
+        .find((message) => message.senderType === "supplier");
+      const baselineCandidates = [
+        activeRequest.claimedAt,
+        activeRequest.supplierSyncResumedAt,
+        latestSupplierMessage?.createdAt,
+      ].filter((value): value is string => Boolean(value));
+      const baselineAt =
+        baselineCandidates
+          .map((value) => new Date(value).getTime())
+          .filter(Number.isFinite)
+          .sort((left, right) => right - left)[0] ??
+        new Date(activeRequest.createdAt).getTime();
+
+      if (new Date(latestIncomingMessage.createdAt).getTime() <= baselineAt) {
+        return;
+      }
+
+      const messageCandidate: SupplierNotificationCandidate = {
+        notificationKey: `supplier-event-message:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
+        ticketId: activeRequest.ticketId,
+        requestId: activeRequest.id,
+        title:
+          ticket.tradePointName?.trim() ||
+          ticket.title?.trim() ||
+          ticket.clientName?.trim() ||
+          "Диалог с клиентом",
+        messageId: latestIncomingMessage.id,
+        messageText: latestIncomingMessage.displayContent || latestIncomingMessage.content,
+        createdAt: latestIncomingMessage.createdAt,
+        senderType: latestIncomingMessage.senderType === "client" ? "client" : "manager",
+        tradePointName: ticket.tradePointName?.trim() || null,
+        avatarColor: ticket.avatarColor ?? null,
+        avatarEmoji: ticket.avatarEmoji ?? null,
+        scopeStatus: "owned_active",
+        waitSeconds: Math.max(
+          Math.floor(
+            (Date.now() - new Date(latestIncomingMessage.createdAt).getTime()) / 1000
+          ),
+          0
+        ),
+        assignedSupplierProfileId: activeRequest.assignedSupplierProfileId ?? null,
+        assignedSupplierProfileName: activeRequest.assignedSupplierProfileName ?? null,
+        kind: "message",
+      };
+
+      nextSeenMessagesByTicket[activeRequest.ticketId] = latestIncomingMessage.id;
+      nextActiveCandidates.push(messageCandidate);
+
+      if (
+        supplierNotificationBaselineReadyRef.current &&
+        lastSeenSupplierMessageByTicketRef.current[activeRequest.ticketId] !== latestIncomingMessage.id
+      ) {
+        nextEventCandidates.push(messageCandidate);
+      }
+    });
+
+    if (!supplierNotificationBaselineReadyRef.current) {
+      supplierNotificationBaselineReadyRef.current = true;
+      lastSeenSupplierRequestByTicketRef.current = nextSeenRequestsByTicket;
+      lastSeenSupplierMessageByTicketRef.current = nextSeenMessagesByTicket;
+      setEventNotificationCandidates(nextActiveCandidates);
+      return;
+    }
+
+    lastSeenSupplierRequestByTicketRef.current = nextSeenRequestsByTicket;
+    lastSeenSupplierMessageByTicketRef.current = nextSeenMessagesByTicket;
+
+    setEventNotificationCandidates((currentCandidates) => {
+      const activeKeys = new Set(nextActiveCandidates.map((candidate) => candidate.notificationKey));
+      const merged = new Map<string, SupplierNotificationCandidate>();
+
+      currentCandidates
+        .filter((candidate) => activeKeys.has(candidate.notificationKey))
+        .forEach((candidate) => {
+          merged.set(candidate.notificationKey, candidate);
+        });
+
+      nextActiveCandidates.forEach((candidate) => {
+        merged.set(candidate.notificationKey, candidate);
+      });
+
+      nextEventCandidates.forEach((candidate) => {
+        merged.set(candidate.notificationKey, candidate);
+      });
+
+      return [...merged.values()].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      );
+    });
+  }, [authReady, supplierProfileId, supplierRequests, ticketMessagesByTicketId, ticketsById]);
 
   useEffect(() => {
     if (!authReady || !selectedRequest?.ticketId) {

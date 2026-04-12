@@ -70,6 +70,7 @@ type SupplierNotificationRequestRecord = {
   status: string;
   createdAt: Date;
   ticketId: string;
+  supplierId?: string | null;
   supplierName: string;
   requestText: string;
   assignedSupplierProfileId: string | null;
@@ -79,6 +80,7 @@ type SupplierNotificationRequestRecord = {
   claimedAt: Date | null;
   lastManagerMessageAt: Date | null;
   lastSupplierReplyAt: Date | null;
+  respondedAt?: Date | null;
   closedAt: Date | null;
   ticket: {
     status: string | null;
@@ -87,6 +89,8 @@ type SupplierNotificationRequestRecord = {
     clientName: string | null;
     avatarColor: string | null;
     avatarEmoji: string | null;
+    supplierId?: string | null;
+    supplierName?: string | null;
   } | null;
 };
 
@@ -837,6 +841,7 @@ export class NotificationsService {
       select: {
         id: true,
         ticketId: true,
+        supplierId: true,
         supplierName: true,
         requestText: true,
         status: true,
@@ -848,6 +853,7 @@ export class NotificationsService {
         assignedSupplierProfileName: true,
         lastManagerMessageAt: true,
         lastSupplierReplyAt: true,
+        respondedAt: true,
         closedAt: true,
         ticket: {
           select: {
@@ -857,6 +863,8 @@ export class NotificationsService {
             clientName: true,
             avatarColor: true,
             avatarEmoji: true,
+            supplierId: true,
+            supplierName: true,
           },
         },
       },
@@ -891,7 +899,7 @@ export class NotificationsService {
                 in: ticketIds,
               },
               senderType: {
-                in: ['manager', 'client'],
+                in: ['manager', 'client', 'supplier'],
               },
             },
             select: {
@@ -954,7 +962,7 @@ export class NotificationsService {
         id: string;
         content: string;
         createdAt: Date;
-        senderType: 'manager' | 'client';
+        senderType: 'manager' | 'client' | 'supplier';
       }>
     > = chatMessages.reduce((accumulator, message) => {
       if (!accumulator[message.ticketId]) {
@@ -963,10 +971,17 @@ export class NotificationsService {
 
       accumulator[message.ticketId].push({
         ...message,
-        senderType: message.senderType === 'client' ? 'client' : 'manager',
+        senderType:
+          message.senderType === 'client'
+            ? 'client'
+            : message.senderType === 'supplier'
+              ? 'supplier'
+              : 'manager',
       });
       return accumulator;
     }, {});
+
+    const repairOperations: Array<Promise<unknown>> = [];
 
     requests.forEach((request) => {
       const ticket = request.ticket;
@@ -1057,25 +1072,114 @@ export class NotificationsService {
         requestIndex < ticketRequests.length - 1
           ? ticketRequests[requestIndex + 1].createdAt.getTime()
           : Number.POSITIVE_INFINITY;
+      const requestWindowMessages = (chatMessagesByTicketId[request.ticketId] ?? []).filter(
+        (message) => {
+          const createdAtMs = message.createdAt.getTime();
+
+          return (
+            createdAtMs >= request.createdAt.getTime() &&
+            createdAtMs < nextRequestStartedAt
+          );
+        },
+      );
+      const latestSupplierMessage =
+        requestWindowMessages.filter((message) => message.senderType === 'supplier').at(-1) ??
+        null;
+      const latestManagerMessage =
+        requestWindowMessages.filter((message) => message.senderType === 'manager').at(-1) ??
+        null;
       const baselineAt = Math.max(
         request.claimedAt?.getTime() ?? Number.NEGATIVE_INFINITY,
-        request.lastSupplierReplyAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+        latestSupplierMessage?.createdAt.getTime() ??
+          request.lastSupplierReplyAt?.getTime() ??
+          Number.NEGATIVE_INFINITY,
         syncState.lastResumedAt
           ? new Date(syncState.lastResumedAt).getTime()
           : Number.NEGATIVE_INFINITY,
         request.createdAt.getTime(),
       );
       const latestIncomingMessage =
-        (chatMessagesByTicketId[request.ticketId] ?? [])
-          .filter((message) => {
-            const createdAtMs = message.createdAt.getTime();
-
-            return (
-              createdAtMs >= request.createdAt.getTime() &&
-              createdAtMs < nextRequestStartedAt
-            );
-          })
+        requestWindowMessages
+          .filter(
+            (
+              message,
+            ): message is typeof message & {
+              senderType: 'manager' | 'client';
+            } => message.senderType !== 'supplier',
+          )
           .at(-1) ?? null;
+
+      if (request.assignedSupplierProfileId === profile.id) {
+        const repairedSupplierReplyAt = latestSupplierMessage?.createdAt ?? null;
+        const repairedManagerMessageAt = latestManagerMessage?.createdAt ?? null;
+        const needsSupplierReplyRepair =
+          repairedSupplierReplyAt &&
+          repairedSupplierReplyAt.getTime() >
+            (request.lastSupplierReplyAt?.getTime() ?? Number.NEGATIVE_INFINITY);
+        const needsManagerMessageRepair =
+          repairedManagerMessageAt &&
+          repairedManagerMessageAt.getTime() >
+            (request.lastManagerMessageAt?.getTime() ?? Number.NEGATIVE_INFINITY);
+        const normalizedRequestSupplierId = request.supplierId?.trim() || normalizedSupplierScopeId;
+        const normalizedTicketSupplierId = request.ticket?.supplierId?.trim() || null;
+        const needsTicketScopeRepair =
+          normalizedRequestSupplierId &&
+          normalizedTicketSupplierId !== normalizedRequestSupplierId;
+
+        if (
+          needsSupplierReplyRepair ||
+          needsManagerMessageRepair ||
+          needsTicketScopeRepair
+        ) {
+          repairOperations.push(
+            (async () => {
+              if (needsSupplierReplyRepair || needsManagerMessageRepair) {
+                await this.prisma.supplierRequest.update({
+                  where: { id: request.id },
+                  data: {
+                    ...(needsSupplierReplyRepair
+                      ? {
+                          lastSupplierReplyAt: repairedSupplierReplyAt,
+                          respondedAt:
+                            repairedSupplierReplyAt &&
+                            (!request.respondedAt ||
+                              repairedSupplierReplyAt.getTime() >
+                                request.respondedAt.getTime())
+                              ? repairedSupplierReplyAt
+                              : undefined,
+                        }
+                      : {}),
+                    ...(needsManagerMessageRepair
+                      ? {
+                          lastManagerMessageAt: repairedManagerMessageAt,
+                        }
+                      : {}),
+                  },
+                });
+              }
+
+              if (needsTicketScopeRepair) {
+                await this.prisma.ticket.updateMany({
+                  where: {
+                    id: request.ticketId,
+                    OR: [
+                      { supplierId: null },
+                      { supplierId: normalizedTicketSupplierId ?? undefined },
+                    ],
+                  },
+                  data: {
+                    supplierId: normalizedRequestSupplierId,
+                    supplierName:
+                      request.supplierName?.trim() ||
+                      request.ticket?.supplierName?.trim() ||
+                      undefined,
+                  },
+                });
+              }
+            })(),
+          );
+        }
+      }
 
       if (
         !latestIncomingMessage ||
@@ -1181,6 +1285,10 @@ export class NotificationsService {
     items.sort(
       (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
     );
+
+    if (repairOperations.length > 0) {
+      await Promise.allSettled(repairOperations);
+    }
 
     return {
       items,

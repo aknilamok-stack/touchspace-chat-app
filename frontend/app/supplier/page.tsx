@@ -1161,6 +1161,8 @@ export default function SupplierPage() {
   const supplierNotificationBaselineReadyRef = useRef(false);
   const lastSeenSupplierRequestByTicketRef = useRef<Record<string, string>>({});
   const lastSeenSupplierMessageByTicketRef = useRef<Record<string, string>>({});
+  const lastDeliveredSupplierRequestByTicketRef = useRef<Record<string, string>>({});
+  const lastDeliveredSupplierMessageByTicketRef = useRef<Record<string, string>>({});
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
@@ -1180,6 +1182,8 @@ export default function SupplierPage() {
       ? selectedLatestRequest
       : null;
   const selectedRequestDetails = selectedActiveRequest ?? selectedLatestRequest;
+  const visibleSupplierMessages =
+    selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
   const latestUnreadIncomingSupplierMessage =
     [...visibleSupplierMessages]
       .reverse()
@@ -1279,8 +1283,6 @@ export default function SupplierPage() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
-  const visibleSupplierMessages =
-    selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
   const localNotificationCandidates = useMemo<SupplierNotificationCandidate[]>(() => {
     if (!authReady || !supplierProfileId) {
       return [];
@@ -1298,7 +1300,7 @@ export default function SupplierPage() {
       {}
     );
 
-    return Object.values(requestsByTicket).flatMap((ticketRequests) => {
+    return Object.values(requestsByTicket).flatMap<SupplierNotificationCandidate>((ticketRequests) => {
       const sortedRequests = [...ticketRequests].sort(
         (left, right) =>
           new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
@@ -2092,6 +2094,61 @@ export default function SupplierPage() {
     }
   }, [supplierProfileId]);
 
+  const emitSupplierCandidateNotification = useCallback(
+    (candidate: SupplierNotificationCandidate) => {
+      const notificationTitle =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Запрос уже взят в работу"
+          : candidate.kind === "request"
+          ? `Новый запрос: ${candidate.title || "поставщик"}`
+          : candidate.senderType === "client"
+            ? `Клиент: ${candidate.title || "диалог"}`
+            : `Менеджер: ${candidate.title || "диалог"}`;
+      const notificationBody =
+        candidate.messageText.length > 80
+          ? `${candidate.messageText.slice(0, 80)}...`
+          : candidate.messageText;
+      const notificationMeta =
+        candidate.scopeStatus === "missed_unclaimed"
+          ? "Пропущенный запрос более 10 минут"
+          : candidate.scopeStatus === "owned_active"
+            ? candidate.kind === "request"
+              ? "Новый supplier request"
+              : "Новое сообщение в вашем диалоге"
+            : candidate.waitSeconds > 0
+              ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+              : null;
+      const notificationPrimaryLabel =
+        candidate.scopeStatus === "claimed_by_other_recently"
+          ? "Открыть"
+          : candidate.scopeStatus === "new_unclaimed" ||
+              candidate.scopeStatus === "missed_unclaimed"
+            ? "Взять в работу"
+            : "Ответить";
+
+      lastNotificationAtRef.current[candidate.notificationKey] = Date.now();
+      lastNotificationMessageIdRef.current[candidate.notificationKey] = candidate.messageId;
+      playNotificationSound();
+      void showDesktopNotification(notificationTitle, notificationBody, {
+        tag: candidate.notificationKey,
+        ticketId: candidate.ticketId,
+        requestId: candidate.requestId,
+        metaLabel: notificationMeta,
+        primaryLabel: notificationPrimaryLabel,
+        secondaryLabel: "Позже",
+        avatarEmoji: candidate.avatarEmoji,
+        avatarColor: candidate.avatarColor,
+        tone:
+          candidate.scopeStatus === "missed_unclaimed"
+            ? "amber"
+            : candidate.scopeStatus === "claimed_by_other_recently"
+              ? "blue"
+              : "green",
+      });
+    },
+    [showDesktopNotification]
+  );
+
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     return fetchTicketMessagesSnapshot(ticketId, supplierId);
   };
@@ -2682,6 +2739,195 @@ export default function SupplierPage() {
   }, [authReady, supplierProfileId, supplierRequests, ticketMessagesByTicketId, ticketsById]);
 
   useEffect(() => {
+    if (!authReady || !supplierProfileId) {
+      return;
+    }
+
+    const requestsByTicket = supplierRequests.reduce<Record<string, SupplierRequest[]>>(
+      (accumulator, request) => {
+        if (!accumulator[request.ticketId]) {
+          accumulator[request.ticketId] = [];
+        }
+
+        accumulator[request.ticketId].push(request);
+        return accumulator;
+      },
+      {}
+    );
+
+    const nextDeliveredRequestIds: Record<string, string> = {};
+    const nextDeliveredMessageIds: Record<string, string> = {};
+    const fallbackCandidates: SupplierNotificationCandidate[] = [];
+
+    Object.values(requestsByTicket).forEach((ticketRequests) => {
+      const sortedRequests = [...ticketRequests].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      );
+      const activeRequest =
+        sortedRequests.find(
+          (request) => !COMPLETED_SUPPLIER_REQUEST_STATUSES.has(request.status)
+        ) ?? null;
+
+      if (!activeRequest || activeRequest.supplierSyncPaused) {
+        return;
+      }
+
+      if (
+        activeRequest.assignedSupplierProfileId &&
+        activeRequest.assignedSupplierProfileId !== supplierProfileId
+      ) {
+        return;
+      }
+
+      const ticket = ticketsById[activeRequest.ticketId];
+
+      if (!ticket || ticket.status === "resolved" || ticket.status === "closed") {
+        return;
+      }
+
+      if (!activeRequest.assignedSupplierProfileId) {
+        nextDeliveredRequestIds[activeRequest.ticketId] = activeRequest.id;
+
+        const requestCandidate: SupplierNotificationCandidate = {
+          notificationKey: `supplier-request:${activeRequest.id}`,
+          ticketId: activeRequest.ticketId,
+          requestId: activeRequest.id,
+          title:
+            ticket.tradePointName?.trim() ||
+            ticket.title?.trim() ||
+            ticket.clientName?.trim() ||
+            activeRequest.supplierName?.trim() ||
+            "Новый запрос поставщику",
+          messageId: `request:${activeRequest.id}`,
+          messageText: activeRequest.requestText,
+          createdAt: activeRequest.createdAt,
+          tradePointName: ticket.tradePointName?.trim() || null,
+          avatarColor: ticket.avatarColor ?? null,
+          avatarEmoji: ticket.avatarEmoji ?? null,
+          scopeStatus: activeRequest.claimMissedAt ? "missed_unclaimed" : "new_unclaimed",
+          waitSeconds: Math.max(
+            Math.floor(
+              (Date.now() -
+                new Date(activeRequest.claimRequiredAt ?? activeRequest.createdAt).getTime()) /
+                1000
+            ),
+            0
+          ),
+          assignedSupplierProfileId: null,
+          assignedSupplierProfileName: null,
+          kind: "request",
+        };
+
+        if (
+          supplierNotificationBaselineReadyRef.current &&
+          lastDeliveredSupplierRequestByTicketRef.current[activeRequest.ticketId] !== activeRequest.id
+        ) {
+          fallbackCandidates.push(requestCandidate);
+        }
+
+        return;
+      }
+
+      const visibleMessagesForRequest = getVisibleMessagesForTicket(
+        [...sortedRequests].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        ),
+        ticketMessagesByTicketId[activeRequest.ticketId] ?? []
+      );
+      const latestIncomingMessage = [...visibleMessagesForRequest].reverse().find(
+        (message) => message.senderType === "manager" || message.senderType === "client"
+      );
+
+      if (!latestIncomingMessage) {
+        return;
+      }
+
+      const latestSupplierMessage = [...visibleMessagesForRequest]
+        .reverse()
+        .find((message) => message.senderType === "supplier");
+      const baselineCandidates = [
+        activeRequest.claimedAt,
+        activeRequest.supplierSyncResumedAt,
+        latestSupplierMessage?.createdAt,
+      ].filter((value): value is string => Boolean(value));
+      const baselineAt =
+        baselineCandidates
+          .map((value) => new Date(value).getTime())
+          .filter(Number.isFinite)
+          .sort((left, right) => right - left)[0] ??
+        new Date(activeRequest.createdAt).getTime();
+
+      if (new Date(latestIncomingMessage.createdAt).getTime() <= baselineAt) {
+        return;
+      }
+
+      nextDeliveredMessageIds[activeRequest.ticketId] = latestIncomingMessage.id;
+
+      if (
+        !supplierNotificationBaselineReadyRef.current ||
+        lastDeliveredSupplierMessageByTicketRef.current[activeRequest.ticketId] === latestIncomingMessage.id
+      ) {
+        return;
+      }
+
+      fallbackCandidates.push({
+        notificationKey: `supplier-message:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
+        ticketId: activeRequest.ticketId,
+        requestId: activeRequest.id,
+        title:
+          ticket.tradePointName?.trim() ||
+          ticket.title?.trim() ||
+          ticket.clientName?.trim() ||
+          "Диалог с клиентом",
+        messageId: latestIncomingMessage.id,
+        messageText: latestIncomingMessage.displayContent || latestIncomingMessage.content,
+        createdAt: latestIncomingMessage.createdAt,
+        senderType: latestIncomingMessage.senderType === "client" ? "client" : "manager",
+        tradePointName: ticket.tradePointName?.trim() || null,
+        avatarColor: ticket.avatarColor ?? null,
+        avatarEmoji: ticket.avatarEmoji ?? null,
+        scopeStatus: "owned_active",
+        waitSeconds: Math.max(
+          Math.floor((Date.now() - new Date(latestIncomingMessage.createdAt).getTime()) / 1000),
+          0
+        ),
+        assignedSupplierProfileId: activeRequest.assignedSupplierProfileId ?? null,
+        assignedSupplierProfileName: activeRequest.assignedSupplierProfileName ?? null,
+        kind: "message",
+      });
+    });
+
+    if (!supplierNotificationBaselineReadyRef.current) {
+      lastDeliveredSupplierRequestByTicketRef.current = nextDeliveredRequestIds;
+      lastDeliveredSupplierMessageByTicketRef.current = nextDeliveredMessageIds;
+      return;
+    }
+
+    lastDeliveredSupplierRequestByTicketRef.current = nextDeliveredRequestIds;
+    lastDeliveredSupplierMessageByTicketRef.current = nextDeliveredMessageIds;
+
+    if (fallbackCandidates.length === 0) {
+      return;
+    }
+
+    setEventNotificationCandidates((currentCandidates) =>
+      mergeSupplierNotificationCandidates(currentCandidates, fallbackCandidates)
+    );
+    fallbackCandidates.forEach((candidate) => {
+      emitSupplierCandidateNotification(candidate);
+    });
+  }, [
+    authReady,
+    emitSupplierCandidateNotification,
+    supplierProfileId,
+    supplierRequests,
+    ticketMessagesByTicketId,
+    ticketsById,
+  ]);
+
+  useEffect(() => {
     if (!authReady || !selectedRequest?.ticketId) {
       return;
     }
@@ -2920,10 +3166,10 @@ export default function SupplierPage() {
         : candidate.messageText,
     tone:
       candidate.scopeStatus === "missed_unclaimed"
-        ? "amber"
+        ? ("amber" as const)
         : candidate.scopeStatus === "claimed_by_other_recently"
-          ? "blue"
-          : "green",
+          ? ("blue" as const)
+          : ("green" as const),
     avatarEmoji: candidate.avatarEmoji,
     avatarColor: candidate.avatarColor,
     metaLabel:

@@ -2472,7 +2472,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void refreshNotificationCandidates();
-    }, 5000);
+    }, 1000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, refreshNotificationCandidates, supplierProfileId]);

@@ -6,6 +6,10 @@ import {
   isManagerRole,
   isSupplierRole,
 } from './role.utils';
+import {
+  getSupplierRequestSyncState,
+  SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+} from './supplier-requests/supplier-request-sync.util';
 
 type NotificationPreferencesInput = {
   notificationPushEnabled?: boolean;
@@ -61,36 +65,29 @@ type SupplierNotificationCandidate = {
   kind: 'message' | 'request';
 };
 
-type SupplierNotificationMessageRecord = {
-  id: string;
-  content: string;
-  createdAt: Date;
-  senderType: 'manager' | 'client';
-};
-
 type SupplierNotificationRequestRecord = {
   id: string;
   status: string;
   createdAt: Date;
+  ticketId: string;
+  supplierName: string;
+  requestText: string;
   assignedSupplierProfileId: string | null;
   assignedSupplierProfileName: string | null;
   claimRequiredAt: Date | null;
   claimMissedAt: Date | null;
   claimedAt: Date | null;
   lastManagerMessageAt: Date | null;
-  supplierSyncPaused: boolean | null;
   lastSupplierReplyAt: Date | null;
-};
-
-type SupplierNotificationTicketRecord = {
-  id: string;
-  title: string | null;
-  tradePointName: string | null;
-  clientName: string | null;
-  avatarColor: string | null;
-  avatarEmoji: string | null;
-  messages: SupplierNotificationMessageRecord[];
-  supplierRequests: SupplierNotificationRequestRecord[];
+  closedAt: Date | null;
+  ticket: {
+    status: string | null;
+    title: string | null;
+    tradePointName: string | null;
+    clientName: string | null;
+    avatarColor: string | null;
+    avatarEmoji: string | null;
+  } | null;
 };
 
 @Injectable()
@@ -824,227 +821,212 @@ export class NotificationsService {
     }
 
     const items: SupplierNotificationCandidate[] = [];
+    const requests = await this.prisma.supplierRequest.findMany({
+      where: {
+        supplierId: supplierScopeId,
+        status: {
+          notIn: ['closed', 'cancelled', 'resolved'],
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        ticketId: true,
+        supplierName: true,
+        requestText: true,
+        status: true,
+        createdAt: true,
+        claimRequiredAt: true,
+        claimMissedAt: true,
+        claimedAt: true,
+        assignedSupplierProfileId: true,
+        assignedSupplierProfileName: true,
+        lastManagerMessageAt: true,
+        lastSupplierReplyAt: true,
+        closedAt: true,
+        ticket: {
+          select: {
+            status: true,
+            tradePointName: true,
+            title: true,
+            clientName: true,
+            avatarColor: true,
+            avatarEmoji: true,
+          },
+        },
+      },
+    });
 
-    if (profile.notifySupplierChats) {
-      const tickets = (await this.prisma.ticket.findMany({
-        where: {
-          status: {
-            notIn: ['resolved', 'closed'],
-          },
-          OR: [
-            { supplierId: supplierScopeId },
-            {
-              supplierRequests: {
-                some: {
-                  supplierId: supplierScopeId,
-                },
-              },
-            },
-          ],
-          messages: {
-            some: {
-              senderType: {
-                in: ['manager', 'client'],
-              },
-            },
-          },
-        },
-        orderBy: {
-          lastMessageAt: 'desc',
-        },
-        select: {
-          id: true,
-          title: true,
-          tradePointName: true,
-          clientName: true,
-          avatarColor: true,
-          avatarEmoji: true,
-          messages: {
+    const ticketIds = [...new Set(requests.map((request) => request.ticketId))];
+    const [rawControlMessages, rawChatMessages] = await Promise.all([
+      ticketIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.message.findMany({
             where: {
-              senderType: {
-                in: ['manager', 'client'],
+              ticketId: {
+                in: ticketIds,
               },
+              messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+            },
+            select: {
+              ticketId: true,
+              content: true,
+              createdAt: true,
+              messageType: true,
             },
             orderBy: {
-              createdAt: 'desc',
+              createdAt: 'asc',
             },
-            take: 1,
+          }),
+      ticketIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.message.findMany({
+            where: {
+              ticketId: {
+                in: ticketIds,
+              },
+              senderType: {
+                in: ['manager', 'client'],
+              },
+            },
             select: {
               id: true,
+              ticketId: true,
               content: true,
               createdAt: true,
               senderType: true,
             },
-          },
-          supplierRequests: {
-            where: {
-              supplierId: supplierScopeId,
-            },
             orderBy: {
-              createdAt: 'desc',
+              createdAt: 'asc',
             },
-            take: 5,
-            select: {
-              id: true,
-              status: true,
-              createdAt: true,
-              assignedSupplierProfileId: true,
-              assignedSupplierProfileName: true,
-              claimRequiredAt: true,
-              claimMissedAt: true,
-              claimedAt: true,
-              lastManagerMessageAt: true,
-              supplierSyncPaused: true,
-              lastSupplierReplyAt: true,
-            },
-          },
-        },
-      })) as SupplierNotificationTicketRecord[];
+          }),
+    ]);
 
-      tickets.forEach((ticket) => {
-        const latestUnreadMessage = ticket.messages[0];
-        const latestActiveRequest =
-          ticket.supplierRequests.find(
-            (request) =>
-              !['closed', 'cancelled', 'resolved'].includes(request.status),
-          ) ?? null;
+    const controlMessages = rawControlMessages as Array<{
+      ticketId: string;
+      content: string;
+      createdAt: Date;
+      messageType: string | null;
+    }>;
+    const chatMessages = rawChatMessages as Array<{
+      id: string;
+      ticketId: string;
+      content: string;
+      createdAt: Date;
+      senderType: 'manager' | 'client' | string;
+    }>;
 
-        if (!latestUnreadMessage) {
-          return;
-        }
+    const requestsByTicketId = requests.reduce<
+      Record<string, SupplierNotificationRequestRecord[]>
+    >((accumulator, request) => {
+      if (!accumulator[request.ticketId]) {
+        accumulator[request.ticketId] = [];
+      }
 
-        if (!latestActiveRequest) {
-          return;
-        }
+      accumulator[request.ticketId].push(request);
+      return accumulator;
+    }, {});
 
-        if (
-          latestActiveRequest.assignedSupplierProfileId &&
-          latestActiveRequest.assignedSupplierProfileId !== profile.id
-        ) {
-          return;
-        }
+    const controlMessagesByTicketId: Record<
+      string,
+      Array<{
+        content: string;
+        createdAt: Date;
+        messageType: string | null;
+      }>
+    > = controlMessages.reduce((accumulator, message) => {
+      if (!accumulator[message.ticketId]) {
+        accumulator[message.ticketId] = [];
+      }
 
-        if (latestActiveRequest.supplierSyncPaused) {
-          return;
-        }
+      accumulator[message.ticketId].push(message);
+      return accumulator;
+    }, {});
 
-        if (latestActiveRequest.assignedSupplierProfileId === profile.id) {
-          const latestIncomingActivityAt = latestUnreadMessage.createdAt;
-          const supplierBaselineAt =
-            latestActiveRequest.lastSupplierReplyAt ??
-            latestActiveRequest.claimedAt ??
-            latestActiveRequest.createdAt;
+    const chatMessagesByTicketId: Record<
+      string,
+      Array<{
+        id: string;
+        content: string;
+        createdAt: Date;
+        senderType: 'manager' | 'client';
+      }>
+    > = chatMessages.reduce((accumulator, message) => {
+      if (!accumulator[message.ticketId]) {
+        accumulator[message.ticketId] = [];
+      }
 
-          if (
-            latestIncomingActivityAt &&
-            supplierBaselineAt &&
-            latestIncomingActivityAt.getTime() <= supplierBaselineAt.getTime()
-          ) {
-            return;
-          }
-        }
-
-        items.push({
-          notificationKey: `supplier-message:${ticket.id}:${latestUnreadMessage.id}`,
-          ticketId: ticket.id,
-          requestId: latestActiveRequest.id,
-          title:
-            ticket.tradePointName?.trim() ||
-            ticket.title?.trim() ||
-            ticket.clientName?.trim() ||
-            'Диалог с клиентом',
-          messageId: latestUnreadMessage.id,
-          messageText: latestUnreadMessage.content,
-          createdAt: latestUnreadMessage.createdAt,
-          senderType:
-            latestUnreadMessage.senderType === 'client' ? 'client' : 'manager',
-          tradePointName: ticket.tradePointName?.trim() || null,
-          avatarColor: ticket.avatarColor,
-          avatarEmoji: ticket.avatarEmoji,
-          scopeStatus:
-            latestActiveRequest.assignedSupplierProfileId === profile.id
-              ? 'owned_active'
-              : latestActiveRequest.claimMissedAt
-                ? 'missed_unclaimed'
-                : 'new_unclaimed',
-          waitSeconds:
-            latestActiveRequest.assignedSupplierProfileId === profile.id
-              ? Math.max(
-                  Math.floor(
-                    (Date.now() - latestUnreadMessage.createdAt.getTime()) /
-                      1000,
-                  ),
-                  0,
-                )
-              : Math.max(
-                  Math.floor(
-                    (Date.now() -
-                      (latestActiveRequest.claimRequiredAt?.getTime() ??
-                        latestUnreadMessage.createdAt.getTime())) /
-                      1000,
-                  ),
-                  0,
-                ),
-          assignedSupplierProfileId: latestActiveRequest.assignedSupplierProfileId ?? null,
-          assignedSupplierProfileName: latestActiveRequest.assignedSupplierProfileName ?? null,
-          kind: 'message',
-        });
+      accumulator[message.ticketId].push({
+        ...message,
+        senderType: message.senderType === 'client' ? 'client' : 'manager',
       });
-    }
+      return accumulator;
+    }, {});
 
-    if (profile.notifySupplierRequests) {
-      const requests = await this.prisma.supplierRequest.findMany({
-        where: {
-          supplierId: supplierScopeId,
-          assignedSupplierProfileId: null,
-          firstResponseAt: null,
-          status: {
-            notIn: ['closed', 'cancelled', 'resolved'],
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        select: {
-          id: true,
-          ticketId: true,
-          supplierName: true,
-          requestText: true,
-          createdAt: true,
-          claimRequiredAt: true,
-          claimMissedAt: true,
-          claimedAt: true,
-          assignedSupplierProfileId: true,
-          assignedSupplierProfileName: true,
-          ticket: {
-            select: {
-              tradePointName: true,
-              title: true,
-              clientName: true,
-              avatarColor: true,
-              avatarEmoji: true,
-            },
-          },
-        },
-      });
+    requests.forEach((request) => {
+      const ticket = request.ticket;
 
-      requests.forEach((request) => {
+      if (
+        !ticket ||
+        ticket.status === 'resolved' ||
+        ticket.status === 'closed'
+      ) {
+        return;
+      }
+
+      const ticketRequests = [...(requestsByTicketId[request.ticketId] ?? [])].sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      );
+      const requestIndex = ticketRequests.findIndex(
+        (ticketRequest) => ticketRequest.id === request.id,
+      );
+
+      if (requestIndex < 0) {
+        return;
+      }
+
+      const syncState = getSupplierRequestSyncState(
+        ticketRequests,
+        controlMessagesByTicketId[request.ticketId] ?? [],
+        request.id,
+      );
+
+      if (syncState.isPaused) {
+        return;
+      }
+
+      if (
+        request.assignedSupplierProfileId &&
+        request.assignedSupplierProfileId !== profile.id
+      ) {
+        return;
+      }
+
+      const title =
+        ticket.tradePointName?.trim() ||
+        ticket.title?.trim() ||
+        ticket.clientName?.trim() ||
+        request.supplierName?.trim() ||
+        'Диалог с клиентом';
+
+      if (!request.assignedSupplierProfileId) {
+        if (!profile.notifySupplierRequests) {
+          return;
+        }
+
         items.push({
           notificationKey: `supplier-request:${request.id}:${request.createdAt.toISOString()}`,
           ticketId: request.ticketId,
           requestId: request.id,
-          title:
-            request.ticket?.tradePointName?.trim() ||
-            request.ticket?.title?.trim() ||
-            request.ticket?.clientName?.trim() ||
-            request.supplierName?.trim() ||
-            'Новый запрос поставщику',
+          title,
           messageId: `request:${request.id}`,
           messageText: request.requestText,
           createdAt: request.createdAt,
-          tradePointName: request.ticket?.tradePointName?.trim() || null,
-          avatarColor: request.ticket?.avatarColor,
-          avatarEmoji: request.ticket?.avatarEmoji,
+          tradePointName: ticket.tradePointName?.trim() || null,
+          avatarColor: ticket.avatarColor,
+          avatarEmoji: ticket.avatarEmoji,
           scopeStatus: request.claimMissedAt
             ? 'missed_unclaimed'
             : 'new_unclaimed',
@@ -1057,12 +1039,72 @@ export class NotificationsService {
             ),
             0,
           ),
-          assignedSupplierProfileId: request.assignedSupplierProfileId,
-          assignedSupplierProfileName: request.assignedSupplierProfileName,
+          assignedSupplierProfileId: null,
+          assignedSupplierProfileName: null,
           kind: 'request',
         });
+        return;
+      }
+
+      if (!profile.notifySupplierChats) {
+        return;
+      }
+
+      const nextRequestStartedAt =
+        requestIndex < ticketRequests.length - 1
+          ? ticketRequests[requestIndex + 1].createdAt.getTime()
+          : Number.POSITIVE_INFINITY;
+      const baselineAt = Math.max(
+        request.claimedAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+        request.lastSupplierReplyAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+        syncState.lastResumedAt
+          ? new Date(syncState.lastResumedAt).getTime()
+          : Number.NEGATIVE_INFINITY,
+        request.createdAt.getTime(),
+      );
+      const latestIncomingMessage =
+        (chatMessagesByTicketId[request.ticketId] ?? [])
+          .filter((message) => {
+            const createdAtMs = message.createdAt.getTime();
+
+            return (
+              createdAtMs >= request.createdAt.getTime() &&
+              createdAtMs < nextRequestStartedAt
+            );
+          })
+          .at(-1) ?? null;
+
+      if (
+        !latestIncomingMessage ||
+        latestIncomingMessage.createdAt.getTime() <= baselineAt
+      ) {
+        return;
+      }
+
+      items.push({
+        notificationKey: `supplier-message:${request.ticketId}:${latestIncomingMessage.id}`,
+        ticketId: request.ticketId,
+        requestId: request.id,
+        title,
+        messageId: latestIncomingMessage.id,
+        messageText: latestIncomingMessage.content,
+        createdAt: latestIncomingMessage.createdAt,
+        senderType: latestIncomingMessage.senderType,
+        tradePointName: ticket.tradePointName?.trim() || null,
+        avatarColor: ticket.avatarColor,
+        avatarEmoji: ticket.avatarEmoji,
+        scopeStatus: 'owned_active',
+        waitSeconds: Math.max(
+          Math.floor(
+            (Date.now() - latestIncomingMessage.createdAt.getTime()) / 1000,
+          ),
+          0,
+        ),
+        assignedSupplierProfileId: request.assignedSupplierProfileId,
+        assignedSupplierProfileName: request.assignedSupplierProfileName,
+        kind: 'message',
       });
-    }
+    });
 
     const recentlyClaimedByOther = await this.prisma.supplierRequest.findMany({
       where: {

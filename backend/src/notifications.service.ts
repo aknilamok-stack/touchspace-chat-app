@@ -806,7 +806,6 @@ export class NotificationsService {
 
     if (
       !profile.chatAccessEnabled ||
-      !profile.notificationPushEnabled ||
       (!profile.notifySupplierChats && !profile.notifySupplierRequests)
     ) {
       return {
@@ -1021,7 +1020,7 @@ export class NotificationsService {
         }
 
         items.push({
-          notificationKey: `supplier-request:${request.id}:${request.createdAt.toISOString()}`,
+          notificationKey: `supplier-request:${request.id}`,
           ticketId: request.ticketId,
           requestId: request.id,
           title,

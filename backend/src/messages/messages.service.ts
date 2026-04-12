@@ -563,6 +563,18 @@ export class MessagesService {
           throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
         }
 
+        const supplierActorProfile =
+          senderType === 'supplier' && actorId
+            ? await tx.profile.findUnique({
+                where: { id: actorId },
+                select: {
+                  supplierId: true,
+                  companyName: true,
+                  fullName: true,
+                },
+              })
+            : null;
+
         if (senderType === 'manager') {
           const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
           const canManagerWrite =
@@ -741,8 +753,15 @@ export class MessagesService {
         }
 
         if (senderType === 'supplier') {
-          ticketUpdateData.supplierId = actorId ?? ticket.supplierId;
-          ticketUpdateData.supplierName = actorName ?? ticket.supplierName;
+          ticketUpdateData.supplierId =
+            supplierActorProfile?.supplierId?.trim() ||
+            ticket.supplierId ||
+            actorId ||
+            null;
+          ticketUpdateData.supplierName =
+            supplierActorProfile?.companyName?.trim() ||
+            actorName ||
+            ticket.supplierName;
         }
 
         if (senderType === 'manager') {
@@ -794,7 +813,6 @@ export class MessagesService {
           const activeSupplierRequest = await tx.supplierRequest.findFirst({
             where: {
               ticketId,
-              firstResponseAt: null,
               status: {
                 notIn: ['closed', 'cancelled'],
               },
@@ -816,11 +834,15 @@ export class MessagesService {
             await tx.supplierRequest.update({
               where: { id: activeSupplierRequest.id },
               data: {
-                firstResponseAt: message.createdAt,
-                respondedAt: message.createdAt,
                 lastSupplierReplyAt: message.createdAt,
-                responseTime: durationMs,
-                responseBreached: durationMs > 60 * 60 * 1000,
+                respondedAt: message.createdAt,
+                ...(activeSupplierRequest.firstResponseAt
+                  ? {}
+                  : {
+                      firstResponseAt: message.createdAt,
+                      responseTime: durationMs,
+                      responseBreached: durationMs > 60 * 60 * 1000,
+                    }),
               },
             });
           }
@@ -905,6 +927,63 @@ export class MessagesService {
         .catch((error) =>
           console.error('Ошибка push-уведомления для менеджеров:', error),
         );
+
+      void this.prisma.supplierRequest
+        .findFirst({
+          where: {
+            ticketId,
+            status: { notIn: ['closed', 'cancelled'] },
+            assignedSupplierProfileId: { not: null },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            supplierId: true,
+            assignedSupplierProfileId: true,
+          },
+        })
+        .then(async (activeRequest) => {
+          if (!activeRequest) return null;
+
+          const ticketRequests = await this.prisma.supplierRequest.findMany({
+            where: { ticketId },
+            select: { id: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          const controlMessages = await this.prisma.message.findMany({
+            where: { ticketId, messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE },
+            select: { content: true, createdAt: true, messageType: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          const syncState = getSupplierRequestSyncState(
+            ticketRequests,
+            controlMessages,
+            activeRequest.id,
+          );
+
+          return syncState.isPaused ? null : activeRequest;
+        })
+        .then((activeRequest) =>
+          activeRequest
+            ? this.pushService.sendToProfiles(
+                [activeRequest.assignedSupplierProfileId!],
+                {
+                  title: 'Новое сообщение от клиента',
+                  body:
+                    content.length > 120
+                      ? `${content.slice(0, 120)}...`
+                      : content,
+                  url: `/supplier?ticket=${ticketId}`,
+                  tag: `supplier-ticket-${ticketId}`,
+                },
+                'supplier_chats',
+                actorId,
+              )
+            : undefined,
+        )
+        .catch((error) =>
+          console.error('Ошибка push-уведомления поставщику (клиент):', error),
+        );
     } else if (senderType === 'supplier') {
       const managerTargets = [
         ticketSnapshot.assignedManagerId,
@@ -930,12 +1009,11 @@ export class MessagesService {
             error,
           ),
         );
-    } else if (senderType === 'manager' && ticketSnapshot.supplierId) {
+    } else if (senderType === 'manager') {
       void this.prisma.supplierRequest
         .findFirst({
           where: {
             ticketId,
-            supplierId: ticketSnapshot.supplierId,
             status: {
               notIn: ['closed', 'cancelled'],
             },
@@ -945,6 +1023,7 @@ export class MessagesService {
           },
           select: {
             id: true,
+            supplierId: true,
             assignedSupplierProfileId: true,
           },
         })
@@ -1016,7 +1095,7 @@ export class MessagesService {
             ? []
             : activeRequest.assignedSupplierProfileId
             ? [activeRequest.assignedSupplierProfileId]
-            : this.pushService.getActiveSupplierProfileIds(ticketSnapshot.supplierId),
+            : this.pushService.getActiveSupplierProfileIds(activeRequest.supplierId),
         )
         .then((supplierTargets) =>
           this.pushService.sendToProfiles(

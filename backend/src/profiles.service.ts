@@ -298,7 +298,7 @@ export class ProfilesService {
       id: normalizedId,
       role: resolvedRole,
       fullName,
-      supplierId: existingProfile?.supplierId?.trim() || normalizedId,
+      supplierId: existingProfile?.supplierId?.trim() || undefined,
       supplierStatus: normalizedStatus,
       supplierPresenceHeartbeatAt:
         normalizedStatus === 'offline' ? null : new Date(),

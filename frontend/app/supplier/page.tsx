@@ -1332,7 +1332,7 @@ export default function SupplierPage() {
       if (!activeRequest.assignedSupplierProfileId) {
         return [
           {
-            notificationKey: `supplier-request-local:${activeRequest.id}`,
+            notificationKey: `supplier-request:${activeRequest.id}`,
             ticketId: activeRequest.ticketId,
             requestId: activeRequest.id,
             title:
@@ -1404,7 +1404,7 @@ export default function SupplierPage() {
 
       return [
         {
-          notificationKey: `supplier-message-local:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
+          notificationKey: `supplier-message:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
           ticketId: activeRequest.ticketId,
           requestId: activeRequest.id,
           title:
@@ -2528,7 +2528,7 @@ export default function SupplierPage() {
 
       if (!activeRequest.assignedSupplierProfileId) {
         const requestCandidate: SupplierNotificationCandidate = {
-          notificationKey: `supplier-event-request:${activeRequest.id}`,
+          notificationKey: `supplier-request:${activeRequest.id}`,
           ticketId: activeRequest.ticketId,
           requestId: activeRequest.id,
           title:
@@ -2607,7 +2607,7 @@ export default function SupplierPage() {
       }
 
       const messageCandidate: SupplierNotificationCandidate = {
-        notificationKey: `supplier-event-message:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
+        notificationKey: `supplier-message:${activeRequest.ticketId}:${latestIncomingMessage.id}`,
         ticketId: activeRequest.ticketId,
         requestId: activeRequest.id,
         title:

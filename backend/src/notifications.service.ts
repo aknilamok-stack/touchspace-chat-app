@@ -795,10 +795,14 @@ export class NotificationsService {
     };
   }
 
-  async getSupplierNotificationCandidates(profileId: string) {
+  async getSupplierNotificationCandidates(
+    profileId: string,
+    supplierId?: string,
+  ) {
     const profile = await this.ensureSettingsProfile(profileId, 'supplier');
     await this.ensureSupplierOperationalState();
-    const supplierScopeId = profile.supplierId || profile.id;
+    const normalizedSupplierScopeId =
+      supplierId?.trim() || profile.supplierId?.trim() || profile.id;
 
     if (
       !profile.chatAccessEnabled ||
@@ -811,7 +815,7 @@ export class NotificationsService {
     }
 
     const activeSupplierIds = new Set(
-      await this.getActiveSupplierIds(profile.supplierId || profile.id),
+      await this.getActiveSupplierIds(normalizedSupplierScopeId),
     );
 
     if (!activeSupplierIds.has(profile.id)) {
@@ -823,7 +827,7 @@ export class NotificationsService {
     const items: SupplierNotificationCandidate[] = [];
     const requests = await this.prisma.supplierRequest.findMany({
       where: {
-        supplierId: supplierScopeId,
+        supplierId: normalizedSupplierScopeId,
         status: {
           notIn: ['closed', 'cancelled', 'resolved'],
         },
@@ -1108,7 +1112,7 @@ export class NotificationsService {
 
     const recentlyClaimedByOther = await this.prisma.supplierRequest.findMany({
       where: {
-        supplierId: supplierScopeId,
+        supplierId: normalizedSupplierScopeId,
         assignedSupplierProfileId: {
           not: null,
         },

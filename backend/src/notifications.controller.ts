@@ -29,9 +29,13 @@ export class NotificationsController {
   }
 
   @Get('supplier-candidates')
-  getSupplierNotificationCandidates(@Query('profileId') profileId: string) {
+  getSupplierNotificationCandidates(
+    @Query('profileId') profileId: string,
+    @Query('supplierId') supplierId?: string,
+  ) {
     return this.notificationsService.getSupplierNotificationCandidates(
       profileId,
+      supplierId,
     );
   }
 

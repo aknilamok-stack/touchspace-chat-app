@@ -2071,7 +2071,7 @@ export default function SupplierPage() {
       apiUrl(
         `/notifications/supplier-candidates?profileId=${encodeURIComponent(
           supplierProfileId
-        )}`
+        )}&supplierId=${encodeURIComponent(supplierId)}`
       )
     );
 

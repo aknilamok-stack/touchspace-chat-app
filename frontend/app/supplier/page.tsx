@@ -2614,6 +2614,53 @@ export default function SupplierPage() {
       return hiddenUntil <= notificationNow;
     })
     .slice(0, 3);
+  const floatingNotificationItems = visibleFloatingNotifications.map((candidate) => ({
+    id: candidate.notificationKey,
+    title:
+      candidate.tradePointName?.trim() ||
+      candidate.title ||
+      "Запрос поставщику",
+    subtitle:
+      candidate.scopeStatus === "claimed_by_other_recently"
+        ? candidate.assignedSupplierProfileName
+          ? `Уже ведёт ${candidate.assignedSupplierProfileName}`
+          : "Запрос уже забрал коллега"
+        : candidate.kind === "request"
+          ? "Новый запрос поставщику"
+          : candidate.senderType === "client"
+            ? "Новое сообщение от клиента"
+            : "Новое сообщение от менеджера",
+    preview:
+      candidate.scopeStatus === "claimed_by_other_recently"
+        ? candidate.assignedSupplierProfileName
+          ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
+          : "Сейчас этот запрос ведёт другой сотрудник поставщика"
+        : candidate.messageText,
+    tone:
+      candidate.scopeStatus === "missed_unclaimed"
+        ? "amber"
+        : candidate.scopeStatus === "claimed_by_other_recently"
+          ? "blue"
+          : "green",
+    avatarEmoji: candidate.avatarEmoji,
+    avatarColor: candidate.avatarColor,
+    metaLabel:
+      candidate.scopeStatus === "missed_unclaimed"
+        ? "Пропущенный запрос более 10 минут"
+        : candidate.scopeStatus === "owned_active"
+          ? "Новое сообщение в вашем запросе"
+          : candidate.waitSeconds > 0
+            ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+            : null,
+    primaryLabel:
+      candidate.scopeStatus === "claimed_by_other_recently"
+        ? "Открыть"
+        : candidate.scopeStatus === "new_unclaimed" ||
+            candidate.scopeStatus === "missed_unclaimed"
+          ? "Взять в работу"
+          : "Ответить",
+    secondaryLabel: "Позже",
+  }));
 
   const dismissFloatingNotification = (notificationKey: string) => {
     setDismissedNotificationUntil((current) => ({
@@ -3628,61 +3675,15 @@ export default function SupplierPage() {
         </aside>
 
         <section className="relative flex min-w-0 flex-1 overflow-hidden bg-[#F7F7FA]">
+          <IncomingAlertStack
+            items={floatingNotificationItems}
+            onClose={dismissFloatingNotification}
+            onSecondary={dismissFloatingNotification}
+            onPrimary={handlePrimaryFloatingNotification}
+          />
           {selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
-                <IncomingAlertStack
-                  items={visibleFloatingNotifications.map((candidate) => ({
-                    id: candidate.notificationKey,
-                    title:
-                      candidate.tradePointName?.trim() ||
-                      candidate.title ||
-                      "Запрос поставщику",
-                    subtitle:
-                      candidate.scopeStatus === "claimed_by_other_recently"
-                        ? candidate.assignedSupplierProfileName
-                          ? `Уже ведёт ${candidate.assignedSupplierProfileName}`
-                          : "Запрос уже забрал коллега"
-                        : candidate.kind === "request"
-                          ? "Новый запрос поставщику"
-                          : candidate.senderType === "client"
-                            ? "Новое сообщение от клиента"
-                            : "Новое сообщение от менеджера",
-                    preview:
-                      candidate.scopeStatus === "claimed_by_other_recently"
-                        ? candidate.assignedSupplierProfileName
-                          ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
-                          : "Сейчас этот запрос ведёт другой сотрудник поставщика"
-                        : candidate.messageText,
-                    tone:
-                      candidate.scopeStatus === "missed_unclaimed"
-                        ? "amber"
-                        : candidate.scopeStatus === "claimed_by_other_recently"
-                          ? "blue"
-                          : "green",
-                    avatarEmoji: candidate.avatarEmoji,
-                    avatarColor: candidate.avatarColor,
-                    metaLabel:
-                      candidate.scopeStatus === "missed_unclaimed"
-                        ? "Пропущенный запрос более 10 минут"
-                        : candidate.scopeStatus === "owned_active"
-                          ? "Новое сообщение в вашем запросе"
-                          : candidate.waitSeconds > 0
-                            ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
-                            : null,
-                    primaryLabel:
-                      candidate.scopeStatus === "claimed_by_other_recently"
-                        ? "Открыть"
-                        : candidate.scopeStatus === "new_unclaimed" ||
-                            candidate.scopeStatus === "missed_unclaimed"
-                          ? "Взять в работу"
-                          : "Ответить",
-                    secondaryLabel: "Позже",
-                  }))}
-                  onClose={dismissFloatingNotification}
-                  onSecondary={dismissFloatingNotification}
-                  onPrimary={handlePrimaryFloatingNotification}
-                  />
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                   <div className="min-w-0">
                     <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">

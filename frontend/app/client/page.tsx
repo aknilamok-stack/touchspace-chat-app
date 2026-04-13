@@ -915,13 +915,26 @@ export default function ClientPage() {
       }
 
       const newTicket = (await ticketResponse.json()) as Ticket;
+      const bootstrapMessage: Message = {
+        id: `temp-bootstrap-${Date.now()}`,
+        content: firstMessage,
+        senderType: "client",
+        messageType: "text",
+        status: "sent",
+        ticketId: newTicket.id,
+        createdAt: new Date().toISOString(),
+      };
+
       setActiveTicket(newTicket);
+      setMessages((currentMessages) =>
+        currentMessages.length > 0 ? currentMessages : [bootstrapMessage]
+      );
       setIsWidgetOpen(true);
       window.localStorage.setItem(clientActiveTicketStorageKey, newTicket.id);
-      await loadTicketContext(newTicket, true);
       setDraftText("");
       setAttachmentName("");
       setSelectedFiles([]);
+      void loadTicketContext(newTicket, true);
       return newTicket;
     } catch (createError) {
       console.error("Ошибка создания обращения:", createError);

@@ -1646,8 +1646,41 @@ export class TicketsService {
   }
 
   async findAll(viewer?: TicketViewer) {
+    const ticketWhere = this.buildTicketWhere(viewer);
+
+    if (viewer?.viewerType?.trim() === 'client') {
+      return this.prisma.ticket.findMany({
+        where: ticketWhere,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          aiEnabled: true,
+          currentHandlerType: true,
+          conversationMode: true,
+          lastResolvedByRole: true,
+          lastResolvedByManagerName: true,
+          managerRating: true,
+          managerRatingSubmittedAt: true,
+          lastMessageAt: true,
+          resolvedAt: true,
+          closedAt: true,
+          tradePointName: true,
+          clientEmail: true,
+          currentUserEmail: true,
+          superuserEmail: true,
+          canonicalEmail: true,
+        },
+        orderBy: [
+          { pinned: 'desc' },
+          { lastMessageAt: 'desc' },
+          { updatedAt: 'desc' },
+        ],
+      });
+    }
+
     return this.prisma.ticket.findMany({
-      where: this.buildTicketWhere(viewer),
+      where: ticketWhere,
       include: {
         messages: {
           select: {

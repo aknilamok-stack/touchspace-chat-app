@@ -1928,11 +1928,7 @@ export default function SupplierPage() {
 
   const fetchSupplierRequests = async (): Promise<SupplierRequest[]> => {
     const response = await fetch(
-      apiUrl(
-        `/supplier-requests?supplierName=${encodeURIComponent(
-          supplierName
-        )}&supplierId=${encodeURIComponent(supplierId)}`
-      ),
+      apiUrl(`/supplier-requests?supplierId=${encodeURIComponent(supplierId)}`),
       {
         cache: "no-store",
       }

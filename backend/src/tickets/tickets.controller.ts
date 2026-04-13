@@ -114,10 +114,14 @@ export class TicketsController {
   findAll(
     @Query('viewerType') viewerType?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('viewerEmail') viewerEmail?: string,
+    @Query('tradePointName') tradePointName?: string,
   ) {
     return this.ticketsService.findAll({
       viewerType,
       viewerId,
+      viewerEmail,
+      tradePointName,
     });
   }
 
@@ -143,10 +147,14 @@ export class TicketsController {
     @Param('id') id: string,
     @Query('viewerType') viewerType?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('viewerEmail') viewerEmail?: string,
+    @Query('tradePointName') tradePointName?: string,
   ) {
     return this.ticketsService.getContacts(id, {
       viewerType,
       viewerId,
+      viewerEmail,
+      tradePointName,
     });
   }
 
@@ -176,10 +184,14 @@ export class TicketsController {
     @Param('id') id: string,
     @Query('viewerType') viewerType?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('viewerEmail') viewerEmail?: string,
+    @Query('tradePointName') tradePointName?: string,
   ) {
     return this.ticketsService.getPageViews(id, {
       viewerType,
       viewerId,
+      viewerEmail,
+      tradePointName,
     });
   }
 

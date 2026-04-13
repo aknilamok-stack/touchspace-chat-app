@@ -20,6 +20,8 @@ import {
 type MessageViewer = {
   viewerType?: string;
   viewerId?: string;
+  viewerEmail?: string;
+  tradePointName?: string;
 };
 
 type ManagerMessageSuggestionItem = {
@@ -304,8 +306,10 @@ export class MessagesService {
   private async assertTicketAccess(ticketId: string, viewer?: MessageViewer) {
     const viewerType = viewer?.viewerType?.trim();
     const viewerId = viewer?.viewerId?.trim();
+    const viewerEmail = viewer?.viewerEmail?.trim().toLowerCase();
+    const tradePointName = viewer?.tradePointName?.trim().replace(/\s+/g, ' ');
 
-    if (!viewerType || !viewerId) {
+    if (!viewerType) {
       return;
     }
 
@@ -313,6 +317,11 @@ export class MessagesService {
       where: { id: ticketId },
       select: {
         clientId: true,
+        tradePointName: true,
+        canonicalEmail: true,
+        clientEmail: true,
+        currentUserEmail: true,
+        superuserEmail: true,
         supplierId: true,
         assignedManagerId: true,
         invitedManagerIds: true,
@@ -330,8 +339,31 @@ export class MessagesService {
 
     const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
 
-    if (viewerType === 'client' && ticket.clientId === viewerId) {
-      return;
+    if (viewerType === 'client') {
+      const ticketTradePointName =
+        ticket.tradePointName?.trim().replace(/\s+/g, ' ') ?? '';
+      const ticketEmails = [
+        ticket.canonicalEmail,
+        ticket.clientEmail,
+        ticket.currentUserEmail,
+        ticket.superuserEmail,
+      ]
+        .map((value) => value?.trim().toLowerCase())
+        .filter((value): value is string => Boolean(value));
+
+      if (ticket.clientId === viewerId) {
+        return;
+      }
+
+      if (
+        viewerEmail &&
+        tradePointName &&
+        ticketTradePointName &&
+        tradePointName.toLowerCase() === ticketTradePointName.toLowerCase() &&
+        ticketEmails.includes(viewerEmail)
+      ) {
+        return;
+      }
     }
 
     if (
@@ -1446,14 +1478,12 @@ export class MessagesService {
 
   async findByTicket(
     ticketId: string,
-    viewerType?: string,
+    viewer?: MessageViewer,
     markAsRead = false,
-    viewerId?: string,
   ) {
-    await this.assertTicketAccess(ticketId, {
-      viewerType,
-      viewerId,
-    });
+    await this.assertTicketAccess(ticketId, viewer);
+
+    const viewerType = viewer?.viewerType?.trim();
 
     return this.prisma.$transaction(async (tx) => {
       if (viewerType) {

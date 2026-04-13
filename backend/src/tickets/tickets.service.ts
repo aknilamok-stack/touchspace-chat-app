@@ -17,6 +17,8 @@ import { resolveTicketClientContext } from './client-context.util';
 type TicketViewer = {
   viewerType?: string;
   viewerId?: string;
+  viewerEmail?: string;
+  tradePointName?: string;
 };
 
 type ContactType = 'email' | 'phone';
@@ -169,13 +171,38 @@ export class TicketsService {
   private buildTicketWhere(viewer?: TicketViewer) {
     const viewerId = viewer?.viewerId?.trim();
     const viewerType = viewer?.viewerType?.trim();
+    const viewerEmail = this.normalizeEmailForMatching(viewer?.viewerEmail);
+    const tradePointName = viewer?.tradePointName?.trim();
 
-    if (!viewerType || !viewerId) {
+    if (!viewerType) {
       return undefined;
     }
 
     if (viewerType === 'client') {
-      return { clientId: viewerId };
+      const orConditions: Record<string, unknown>[] = [];
+
+      if (viewerId) {
+        orConditions.push({ clientId: viewerId });
+      }
+
+      if (viewerEmail && tradePointName) {
+        orConditions.push(
+          { tradePointName, canonicalEmail: viewerEmail },
+          { tradePointName, clientEmail: viewerEmail },
+          { tradePointName, currentUserEmail: viewerEmail },
+          { tradePointName, superuserEmail: viewerEmail },
+        );
+      }
+
+      if (orConditions.length === 0) {
+        return undefined;
+      }
+
+      return orConditions.length === 1 ? orConditions[0] : { OR: orConditions };
+    }
+
+    if (!viewerId) {
+      return undefined;
     }
 
     if (viewerType === 'supplier') {

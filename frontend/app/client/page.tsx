@@ -197,16 +197,36 @@ export default function ClientPage() {
     }, 1800);
   };
 
+  const buildClientViewerQuery = () => {
+    const params = new URLSearchParams();
+    params.set("viewerType", "client");
+    params.set("viewerId", clientSession.clientId);
+
+    const viewerEmail =
+      clientSession.canonicalEmail ||
+      clientSession.email ||
+      clientSession.currentUserEmail ||
+      "";
+    const tradePointName =
+      clientSession.tradePointName || clientSession.clientName || "";
+
+    if (viewerEmail) {
+      params.set("viewerEmail", viewerEmail);
+    }
+
+    if (tradePointName) {
+      params.set("tradePointName", tradePointName);
+    }
+
+    return params.toString();
+  };
+
   const fetchTicketById = async (ticketId: string): Promise<Ticket | null> => {
     if (!clientSession.clientId) {
       return null;
     }
 
-    const response = await fetch(
-      apiUrl(
-        `/tickets?viewerType=client&viewerId=${encodeURIComponent(clientSession.clientId)}`
-      )
-    );
+    const response = await fetch(apiUrl(`/tickets?${buildClientViewerQuery()}`));
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить список обращений");
@@ -271,9 +291,7 @@ export default function ClientPage() {
       fetchTicketById(activeTicket.id),
       fetch(
         apiUrl(
-          `/tickets/${activeTicket.id}/messages?viewerType=client&viewerId=${encodeURIComponent(
-            clientSession.clientId
-          )}`
+          `/tickets/${activeTicket.id}/messages?${buildClientViewerQuery()}`
         )
       ).then(async (messagesResponse) => {
         if (!messagesResponse.ok) {
@@ -433,9 +451,9 @@ export default function ClientPage() {
     try {
       const messagesResponse = await fetch(
         apiUrl(
-          `/tickets/${ticket.id}/messages?viewerType=client&viewerId=${encodeURIComponent(
-            clientSession.clientId
-          )}&markAsRead=${markAsRead ? "true" : "false"}`
+          `/tickets/${ticket.id}/messages?${buildClientViewerQuery()}&markAsRead=${
+            markAsRead ? "true" : "false"
+          }`
         )
       );
 
@@ -644,9 +662,7 @@ export default function ClientPage() {
     const restoreLatestTicket = async () => {
       try {
         const response = await fetch(
-          apiUrl(
-            `/tickets?viewerType=client&viewerId=${encodeURIComponent(clientSession.clientId)}`
-          )
+          apiUrl(`/tickets?${buildClientViewerQuery()}`)
         );
 
         if (!response.ok) {

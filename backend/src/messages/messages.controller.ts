@@ -185,12 +185,18 @@ export class MessagesController {
     @Query('viewerType') viewerType?: string,
     @Query('markAsRead') markAsRead?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('viewerEmail') viewerEmail?: string,
+    @Query('tradePointName') tradePointName?: string,
   ) {
     return this.messagesService.findByTicket(
       id,
-      viewerType,
+      {
+        viewerType,
+        viewerId,
+        viewerEmail,
+        tradePointName,
+      },
       markAsRead === 'true',
-      viewerId,
     );
   }
 }

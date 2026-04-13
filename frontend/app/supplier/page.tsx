@@ -2294,12 +2294,17 @@ export default function SupplierPage() {
       setRequestsError("");
 
       try {
-        const [data, ticketsMap] = await Promise.all([
-          fetchSupplierRequests(),
-          fetchTicketsMap(supplierId),
-        ]);
+        const data = await fetchSupplierRequests();
         syncSupplierRequests(data);
-        setTicketsById(ticketsMap);
+        setIsLoadingRequests(false);
+
+        void fetchTicketsMap(supplierId)
+          .then((ticketsMap) => {
+            setTicketsById(ticketsMap);
+          })
+          .catch((error) => {
+            console.error("Ошибка фоновой загрузки тикетов поставщика:", error);
+          });
 
         void fetchMessagesMapForRequests(data, supplierId)
           .then((messagesMap) => {
@@ -2483,18 +2488,22 @@ export default function SupplierPage() {
     const intervalId = window.setInterval(() => {
       const refreshSupplierWorkspace = async () => {
         try {
-          const [requests, ticketsMap] = await Promise.all([
-            fetchSupplierRequests(),
-            fetchTicketsMap(supplierId),
-          ]);
+          const requests = await fetchSupplierRequests();
           const nextRequestCards = buildSupplierRequestCards(
             requests,
             ticketMessagesByTicketId,
             pinnedRequestIds,
-            ticketsMap
+            ticketsById
           );
           syncSupplierRequests(requests);
-          setTicketsById(ticketsMap);
+
+          void fetchTicketsMap(supplierId)
+            .then((ticketsMap) => {
+              setTicketsById(ticketsMap);
+            })
+            .catch((error) => {
+              console.error("Ошибка фонового обновления тикетов поставщика:", error);
+            });
 
           void fetchMessagesMapForRequests(requests, supplierId)
             .then((messagesMap) => {

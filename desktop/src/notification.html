@@ -85,14 +85,14 @@
       }
 
       .tone-blue {
-        --card-bg: linear-gradient(180deg, #eaf4ff 0%, #d8ebff 100%);
+        --card-bg: linear-gradient(180deg, #2994ff 0%, #2994ff 100%);
         --card-shadow: none;
-        --text-primary: #123b63;
-        --text-subtle: rgba(18, 59, 99, 0.9);
-        --text-meta: rgba(18, 59, 99, 0.82);
-        --footer-bg: rgba(255, 255, 255, 0.3);
-        --footer-border: #c1dbf7;
-        --action-hover: rgba(255, 255, 255, 0.55);
+        --text-primary: #ffffff;
+        --text-subtle: rgba(255, 255, 255, 0.9);
+        --text-meta: rgba(255, 255, 255, 0.8);
+        --footer-bg: rgba(0, 0, 0, 0.1);
+        --footer-border: rgba(255, 255, 255, 0.12);
+        --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .card-button {
@@ -222,7 +222,7 @@
   </head>
   <body>
     <div class="shell">
-      <section class="card tone-green" id="card">
+      <section class="card tone-blue" id="card">
         <div class="header">
           <p class="header-label" id="header">Входящее сообщение</p>
           <button class="card-button close" id="close" aria-label="Закрыть уведомление">×</button>
@@ -291,7 +291,7 @@
         currentUrl = payload?.url || "";
         avatarElement.textContent = payload?.avatarEmoji || resolveAvatar(payload?.title);
         avatarElement.style.backgroundColor = payload?.avatarColor || "rgba(255, 255, 255, 0.24)";
-        setTone(payload?.tone || "green");
+        setTone(payload?.tone || "blue");
       });
 
       const handlePrimary = () => {

@@ -91,6 +91,33 @@ const formatMessageDayLabel = (createdAt: string) =>
     year: "numeric",
   });
 
+const extractApiErrorMessage = async (
+  response: Response,
+  fallback: string
+): Promise<string> => {
+  const responseText = await response.text();
+
+  if (!responseText) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(responseText) as { message?: string | string[] };
+
+    if (Array.isArray(parsed.message)) {
+      return parsed.message.join(", ");
+    }
+
+    if (typeof parsed.message === "string" && parsed.message.trim()) {
+      return parsed.message;
+    }
+  } catch {
+    return responseText;
+  }
+
+  return responseText;
+};
+
 export default function ClientPage() {
   const [clientSession, setClientSession] = useState(() => getOrCreateClientSession());
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
@@ -865,7 +892,9 @@ export default function ClientPage() {
       });
 
       if (!ticketResponse.ok) {
-        throw new Error("Не удалось создать обращение");
+        throw new Error(
+          await extractApiErrorMessage(ticketResponse, "Не удалось создать обращение")
+        );
       }
 
       const newTicket = (await ticketResponse.json()) as Ticket;
@@ -904,9 +933,6 @@ export default function ClientPage() {
     let textAlreadyUsedForBootstrap = false;
 
     if (!targetTicket && hasTextToSend && !hasAttachmentToSend) {
-      setDraftText("");
-      setAttachmentName("");
-      setSelectedFiles([]);
       setShowEmojiPicker(false);
       await handleCreateTicket(contentToSend);
       return;
@@ -1012,7 +1038,9 @@ export default function ClientPage() {
         });
 
         if (!response.ok) {
-          throw new Error("Не удалось отправить сообщение");
+          throw new Error(
+            await extractApiErrorMessage(response, "Не удалось отправить сообщение")
+          );
         }
 
         createdTextMessage = (await response.json()) as Message;
@@ -1089,7 +1117,12 @@ export default function ClientPage() {
         });
 
         if (!attachmentResponse.ok) {
-          throw new Error("Не удалось отправить вложение");
+          throw new Error(
+            await extractApiErrorMessage(
+              attachmentResponse,
+              "Не удалось отправить вложение"
+            )
+          );
         }
 
         const createdAttachmentMessage = (await attachmentResponse.json()) as Message;
@@ -1130,7 +1163,18 @@ export default function ClientPage() {
             message.id !== optimisticAttachmentMessageId
         )
       );
-      setError("Не удалось отправить сообщение");
+      if (hasTextToSend) {
+        setDraftText(contentToSend);
+      }
+      if (hasAttachmentToSend) {
+        setSelectedFiles(selectedFiles);
+        setAttachmentName(
+          attachmentName || getChatAttachmentSelectionSummary(selectedFiles)
+        );
+      }
+      setError(
+        sendError instanceof Error ? sendError.message : "Не удалось отправить сообщение"
+      );
     } finally {
       setIsSendingMessage(false);
     }

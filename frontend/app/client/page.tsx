@@ -504,7 +504,8 @@ export default function ClientPage() {
     const params = new URLSearchParams(window.location.search);
     setIsEmbeddedWidget(params.get("embed") === "1");
 
-    const tradePointId = params.get("tradePointId")?.trim();
+    const tradePointId =
+      params.get("tradePointId")?.trim() || params.get("currentUserId")?.trim();
     const tradePointExternalId = params.get("tradePointExternalId")?.trim();
     const tradePointName = params.get("tradePointName")?.trim();
     const platformUserId = params.get("userId")?.trim();

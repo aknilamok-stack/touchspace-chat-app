@@ -146,7 +146,9 @@
 
   var fallbackTradePointId = pickFirst(
     configuredTradePointId,
-    cleanValue(config.clientId)
+    cleanValue(config.clientId),
+    configuredCurrentUserId,
+    cleanValue(config.userId)
   );
 
   var fallbackUserName = pickFirst(

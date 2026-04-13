@@ -2298,14 +2298,22 @@ export default function SupplierPage() {
       setRequestsError("");
 
       try {
-        const data = await fetchSupplierRequests();
-        const ticketsMap = await fetchTicketsMap(supplierId);
-        const messagesMap = await fetchMessagesMapForRequests(data, supplierId);
+        const [data, ticketsMap] = await Promise.all([
+          fetchSupplierRequests(),
+          fetchTicketsMap(supplierId),
+        ]);
         syncSupplierRequests(data);
         setTicketsById(ticketsMap);
-        setTicketMessagesByTicketId((currentMap) =>
-          areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-        );
+
+        void fetchMessagesMapForRequests(data, supplierId)
+          .then((messagesMap) => {
+            setTicketMessagesByTicketId((currentMap) =>
+              areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
+            );
+          })
+          .catch((error) => {
+            console.error("Ошибка фоновой загрузки сообщений поставщика:", error);
+          });
       } catch (error) {
         console.error("Ошибка загрузки supplier requests:", error);
         setRequestsError("Не удалось загрузить запросы поставщику");
@@ -2479,20 +2487,28 @@ export default function SupplierPage() {
     const intervalId = window.setInterval(() => {
       const refreshSupplierWorkspace = async () => {
         try {
-          const requests = await fetchSupplierRequests();
-          const ticketsMap = await fetchTicketsMap(supplierId);
-          const messagesMap = await fetchMessagesMapForRequests(requests, supplierId);
+          const [requests, ticketsMap] = await Promise.all([
+            fetchSupplierRequests(),
+            fetchTicketsMap(supplierId),
+          ]);
           const nextRequestCards = buildSupplierRequestCards(
             requests,
-            messagesMap,
+            ticketMessagesByTicketId,
             pinnedRequestIds,
             ticketsMap
           );
           syncSupplierRequests(requests);
           setTicketsById(ticketsMap);
-          setTicketMessagesByTicketId((currentMap) =>
-            areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-          );
+
+          void fetchMessagesMapForRequests(requests, supplierId)
+            .then((messagesMap) => {
+              setTicketMessagesByTicketId((currentMap) =>
+                areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
+              );
+            })
+            .catch((error) => {
+              console.error("Ошибка фонового обновления сообщений поставщика:", error);
+            });
 
           const freshSelectedRequest =
             requests.find((request) => request.id === selectedRequestId) ??

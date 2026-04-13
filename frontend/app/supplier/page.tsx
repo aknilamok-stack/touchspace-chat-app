@@ -2028,7 +2028,7 @@ export default function SupplierPage() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: options?.tone ?? "green",
+        tone: options?.tone ?? "blue",
       });
       return;
     }
@@ -3185,7 +3185,7 @@ export default function SupplierPage() {
         ? ("amber" as const)
         : candidate.scopeStatus === "claimed_by_other_recently"
           ? ("blue" as const)
-          : ("green" as const),
+          : ("blue" as const),
     avatarEmoji: candidate.avatarEmoji,
     avatarColor: candidate.avatarColor,
     metaLabel:
@@ -3318,7 +3318,7 @@ export default function SupplierPage() {
             ? "amber"
             : candidate.scopeStatus === "claimed_by_other_recently"
               ? "blue"
-              : "green",
+              : "blue",
       });
     });
   }, [effectiveNotificationCandidates, authReady]);

@@ -56,15 +56,6 @@ export function IncomingAlertStack({
           <section
             key={item.id}
             className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${tone.card}`}
-            onClick={() => onPrimary?.(item.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onPrimary?.(item.id);
-              }
-            }}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>
@@ -74,6 +65,9 @@ export function IncomingAlertStack({
                   event.stopPropagation();
                   onClose(item.id);
                 }}
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                }}
                 className="text-[36px] leading-none opacity-90 transition hover:opacity-100"
                 aria-label="Закрыть уведомление"
               >
@@ -81,7 +75,18 @@ export function IncomingAlertStack({
               </button>
             </div>
 
-            <div className="flex gap-4 px-5 pb-5">
+            <div
+              className="flex cursor-pointer gap-4 px-5 pb-5"
+              onClick={() => onPrimary?.(item.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onPrimary?.(item.id);
+                }
+              }}
+            >
               <div
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]"
                 style={{ backgroundColor: item.avatarColor || "rgba(255,255,255,0.24)" }}

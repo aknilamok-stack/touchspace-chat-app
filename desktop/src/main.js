@@ -294,7 +294,7 @@ function createNotificationWindow() {
     skipTaskbar: true,
     hasShadow: false,
     alwaysOnTop: true,
-    focusable: true,
+    focusable: false,
     roundedCorners: false,
     backgroundColor: "#00000000",
     webPreferences: {
@@ -310,6 +310,7 @@ function createNotificationWindow() {
   notificationWindow.setVisibleOnAllWorkspaces(true, {
     visibleOnFullScreen: true,
   });
+  notificationWindow.setFocusable(false);
 
   notificationWindow.on("close", (event) => {
     if (isAppQuitting) {

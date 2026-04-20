@@ -443,6 +443,18 @@ export default function NotificationSettingsPage() {
         email: payload.email ?? session.email,
       };
 
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              profile: {
+                ...current.profile,
+                fullName: payload.fullName,
+                email: payload.email ?? current.profile.email,
+              },
+            }
+          : current,
+      );
       setSession(nextSession);
       writeAuthSession(nextSession);
       setFullName(payload.fullName);

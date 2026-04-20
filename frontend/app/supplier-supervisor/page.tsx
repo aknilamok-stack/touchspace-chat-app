@@ -1068,6 +1068,7 @@ export default function SupplierPage() {
     useState<SupplierRequestHistoryFilter>("all");
   const [requestHistoryCustomDate, setRequestHistoryCustomDate] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [supplierStatuses, setSupplierStatuses] = useState<Record<string, ManagerPresence>>({});
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
@@ -1209,6 +1210,32 @@ export default function SupplierPage() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
+  const onlineCompanySuppliers = Array.from(
+    new Map(
+      [
+        {
+          id: supplierProfileId,
+          name: resolvedSupplierEmployeeName,
+          status: supplierStatuses[supplierProfileId] ?? supplierStatus,
+        },
+        ...supplierRequests
+          .filter(
+            (request) =>
+              request.supplierId === supplierId &&
+              Boolean(request.assignedSupplierProfileId) &&
+              Boolean(request.assignedSupplierProfileName)
+          )
+          .map((request) => ({
+            id: request.assignedSupplierProfileId as string,
+            name: request.assignedSupplierProfileName as string,
+            status:
+              supplierStatuses[request.assignedSupplierProfileId as string] ?? "offline",
+          })),
+      ]
+        .filter((supplier) => supplier.id && supplier.name)
+        .map((supplier) => [supplier.id, supplier])
+    ).values()
+  ).filter((supplier) => supplier.status === "online");
   const visibleSupplierMessages =
     selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
   const supplierTimelineItems = selectedRequest
@@ -1358,16 +1385,24 @@ export default function SupplierPage() {
     const loadSupplierStatuses = async () => {
       try {
         const statuses = await fetchSupplierStatuses();
+        setSupplierStatuses(statuses);
         const nextStatus = statuses[supplierProfileId] ?? "online";
         setSupplierStatus(nextStatus);
       } catch (error) {
         console.error("Ошибка загрузки статусов поставщиков:", error);
+        setSupplierStatuses({});
         setSupplierStatus("online");
       }
     };
 
     void loadSupplierStatuses();
-  }, [authReady, supplierProfileId]);
+
+    const intervalId = window.setInterval(() => {
+      void loadSupplierStatuses();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady || !supplierProfileId) {
@@ -3401,6 +3436,30 @@ export default function SupplierPage() {
                 className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
                 placeholder="Поиск по клиенту, диалогу или запросу..."
               />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
+              <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
+                Онлайн: {onlineCompanySuppliers.length}
+              </span>
+              {onlineCompanySuppliers.length > 0 ? (
+                onlineCompanySuppliers.map((supplier) => (
+                  <span
+                    key={supplier.id}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[#34C759]" />
+                    <span>
+                      {supplier.name}
+                      {supplier.id === supplierProfileId ? " (Вы)" : ""}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
+                  Нет поставщиков со статусом online
+                </span>
+              )}
             </div>
 
             {isLoadingRequests && (

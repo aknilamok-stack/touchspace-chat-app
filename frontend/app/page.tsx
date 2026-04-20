@@ -4396,32 +4396,6 @@ export default function Home() {
             </div>
           </div>
 
-          {!isAllOverview ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
-              <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
-                Онлайн: {onlineManagers.length}
-              </span>
-              {onlineManagers.length > 0 ? (
-                onlineManagers.map((manager) => (
-                  <span
-                    key={manager.id}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
-                  >
-                    <span className="h-2 w-2 rounded-full bg-[#34C759]" />
-                    <span>
-                      {manager.name}
-                      {manager.id === currentManagerId ? " (Вы)" : ""}
-                    </span>
-                  </span>
-                ))
-              ) : (
-                <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
-                  Нет менеджеров со статусом online
-                </span>
-              )}
-            </div>
-          ) : null}
-
           <div className="mb-4">
             <input
               value={searchQuery}

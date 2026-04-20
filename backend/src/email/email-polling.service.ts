@@ -51,6 +51,21 @@ export class EmailPollingService implements OnModuleInit, OnModuleDestroy {
 
     this.isPolling = true;
 
+    if (this.emailService.isImapNtlmEnabled()) {
+      try {
+        await this.pollInboxViaNtlm();
+      } catch (error) {
+        this.logger.error(
+          'IMAP NTLM polling failed',
+          error instanceof Error ? error.stack : undefined,
+        );
+      } finally {
+        this.isPolling = false;
+      }
+
+      return;
+    }
+
     const client = this.emailService.getImapClient();
 
     try {
@@ -110,6 +125,50 @@ export class EmailPollingService implements OnModuleInit, OnModuleDestroy {
       );
     } finally {
       this.isPolling = false;
+      await client.logout().catch(() => undefined);
+    }
+  }
+
+  private async pollInboxViaNtlm() {
+    const client = this.emailService.createImapNtlmClient();
+
+    try {
+      await client.connect();
+      await client.authenticate();
+      await client.selectInbox();
+
+      const unreadUids = await client.searchUnreadUids();
+      const normalizedUids = unreadUids.sort((left, right) => left - right);
+
+      if (normalizedUids.length === 0) {
+        return;
+      }
+
+      this.logger.log(
+        `Found ${normalizedUids.length} unread email(s) in inbox`,
+      );
+
+      const processedUids: number[] = [];
+
+      for (const uid of normalizedUids) {
+        const source = await client.fetchMessageSourceByUid(uid);
+
+        if (!source) {
+          continue;
+        }
+
+        const processed = await this.processIncomingMessage({
+          uid,
+          source,
+        });
+
+        if (processed) {
+          processedUids.push(uid);
+        }
+      }
+
+      await client.markSeen(processedUids);
+    } finally {
       await client.logout().catch(() => undefined);
     }
   }

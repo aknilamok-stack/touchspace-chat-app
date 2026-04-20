@@ -26,6 +26,7 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@node-ntlm/core": "^0.3.2",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/adapter-mariadb": "^7.5.0",
     "@prisma/adapter-pg": "^7.5.0",

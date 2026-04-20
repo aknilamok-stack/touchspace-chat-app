@@ -10,6 +10,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { simpleParser } from 'mailparser';
+import { ImapNtlmClient } from './imap-ntlm-client';
 import { PrismaService } from '../prisma.service';
 
 type EmailAddressValue =
@@ -57,6 +58,10 @@ export class EmailService {
     return this.imapEnabled;
   }
 
+  isImapNtlmEnabled() {
+    return this.imapEnabled && this.getImapAuthMode() === 'ntlm';
+  }
+
   getPollingIntervalMs() {
     return 45_000;
   }
@@ -83,6 +88,26 @@ export class EmailService {
         pass: this.requireEnv('IMAP_PASS'),
       },
       logger: false,
+    });
+  }
+
+  createImapNtlmClient() {
+    if (!this.isImapNtlmEnabled()) {
+      throw new ServiceUnavailableException(
+        'IMAP NTLM polling is disabled because configuration is incomplete',
+      );
+    }
+
+    return new ImapNtlmClient({
+      host: this.requireEnv('IMAP_HOST'),
+      port: this.getNumberEnv('IMAP_PORT', 993),
+      secure: this.getBooleanEnv('IMAP_TLS', true),
+      user: this.requireEnv('IMAP_USER'),
+      password: this.requireEnv('IMAP_PASS'),
+      domain: this.requireEnv('IMAP_NTLM_DOMAIN'),
+      workstation:
+        this.configService.get<string>('IMAP_NTLM_WORKSTATION')?.trim() ||
+        undefined,
     });
   }
 
@@ -312,7 +337,13 @@ export class EmailService {
 
   private hasImapConfig() {
     if (this.getImapAuthMode() === 'ntlm') {
-      return false;
+      return [
+        'IMAP_HOST',
+        'IMAP_PORT',
+        'IMAP_USER',
+        'IMAP_PASS',
+        'IMAP_NTLM_DOMAIN',
+      ].every((key) => Boolean(this.configService.get<string>(key)?.trim()));
     }
 
     return ['IMAP_HOST', 'IMAP_PORT', 'IMAP_USER', 'IMAP_PASS'].every((key) =>

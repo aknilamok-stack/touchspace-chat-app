@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { ImapFlow } from 'imapflow';
 import nodemailer, { type Transporter } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { simpleParser } from 'mailparser';
 import { PrismaService } from '../prisma.service';
 
@@ -29,6 +30,9 @@ type OutboundEmailResult = {
   references: string | null;
 };
 
+type SmtpAuthMode = 'basic' | 'ntlm';
+type ImapAuthMode = 'basic' | 'ntlm';
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -42,17 +46,7 @@ export class EmailService {
   ) {
     this.smtpEnabled = this.hasSmtpConfig();
     this.imapEnabled = this.hasImapConfig();
-    this.transporter = this.smtpEnabled
-      ? nodemailer.createTransport({
-          host: this.requireEnv('SMTP_HOST'),
-          port: this.getNumberEnv('SMTP_PORT', 465),
-          secure: this.getBooleanEnv('SMTP_SECURE', true),
-          auth: {
-            user: this.requireEnv('SMTP_USER'),
-            pass: this.requireEnv('SMTP_PASS'),
-          },
-        })
-      : null;
+    this.transporter = this.smtpEnabled ? this.createSmtpTransport() : null;
   }
 
   isSmtpEnabled() {
@@ -71,6 +65,12 @@ export class EmailService {
     if (!this.imapEnabled) {
       throw new ServiceUnavailableException(
         'IMAP polling is disabled because configuration is incomplete',
+      );
+    }
+
+    if (this.getImapAuthMode() === 'ntlm') {
+      throw new ServiceUnavailableException(
+        'IMAP NTLM is not configured in the current mail integration',
       );
     }
 
@@ -273,7 +273,7 @@ export class EmailService {
   logStartupStatus() {
     if (this.smtpEnabled) {
       this.logger.log(
-        `SMTP enabled for ${this.requireEnv('SMTP_HOST')}:${this.getNumberEnv('SMTP_PORT', 465)}`,
+        `SMTP enabled (${this.getSmtpAuthMode()}) for ${this.requireEnv('SMTP_HOST')}:${this.getNumberEnv('SMTP_PORT', 465)}`,
       );
     } else {
       this.logger.warn('SMTP disabled: mail env is incomplete');
@@ -281,7 +281,11 @@ export class EmailService {
 
     if (this.imapEnabled) {
       this.logger.log(
-        `IMAP polling enabled for ${this.requireEnv('IMAP_HOST')}:${this.getNumberEnv('IMAP_PORT', 993)}`,
+        `IMAP polling enabled (${this.getImapAuthMode()}) for ${this.requireEnv('IMAP_HOST')}:${this.getNumberEnv('IMAP_PORT', 993)}`,
+      );
+    } else if (this.getImapAuthMode() === 'ntlm') {
+      this.logger.warn(
+        'IMAP polling disabled: NTLM mode is not implemented in the current mail integration',
       );
     } else {
       this.logger.warn('IMAP polling disabled: mail env is incomplete');
@@ -289,19 +293,104 @@ export class EmailService {
   }
 
   private hasSmtpConfig() {
-    return [
+    const requiredKeys = [
       'SMTP_HOST',
       'SMTP_PORT',
       'SMTP_USER',
       'SMTP_PASS',
       'SMTP_FROM_EMAIL',
-    ].every((key) => Boolean(this.configService.get<string>(key)?.trim()));
+    ];
+
+    if (this.getSmtpAuthMode() === 'ntlm') {
+      requiredKeys.push('SMTP_NTLM_DOMAIN');
+    }
+
+    return requiredKeys.every((key) =>
+      Boolean(this.configService.get<string>(key)?.trim()),
+    );
   }
 
   private hasImapConfig() {
+    if (this.getImapAuthMode() === 'ntlm') {
+      return false;
+    }
+
     return ['IMAP_HOST', 'IMAP_PORT', 'IMAP_USER', 'IMAP_PASS'].every((key) =>
       Boolean(this.configService.get<string>(key)?.trim()),
     );
+  }
+
+  private createSmtpTransport() {
+    const transportOptions: SMTPTransport.Options = {
+      host: this.requireEnv('SMTP_HOST'),
+      port: this.getNumberEnv('SMTP_PORT', 465),
+      secure: this.getBooleanEnv('SMTP_SECURE', true),
+      ...this.buildSmtpAuthOptions(),
+    };
+
+    return nodemailer.createTransport(transportOptions);
+  }
+
+  private buildSmtpAuthOptions():
+    | Pick<SMTPTransport.Options, 'auth'>
+    | Pick<SMTPTransport.Options, 'auth' | 'customAuth'> {
+    const user = this.requireEnv('SMTP_USER');
+    const pass = this.requireEnv('SMTP_PASS');
+
+    if (this.getSmtpAuthMode() !== 'ntlm') {
+      return {
+        auth: {
+          user,
+          pass,
+        },
+      };
+    }
+
+    let nodemailerNtlmAuth: unknown;
+
+    try {
+      nodemailerNtlmAuth = require('nodemailer-ntlm-auth');
+    } catch {
+      throw new ServiceUnavailableException(
+        'SMTP NTLM requires the "nodemailer-ntlm-auth" package to be installed',
+      );
+    }
+
+    return {
+      auth: {
+        type: 'custom',
+        method: 'NTLM',
+        user,
+        pass,
+        options: {
+          domain: this.requireEnv('SMTP_NTLM_DOMAIN'),
+          workstation:
+            this.configService.get<string>('SMTP_NTLM_WORKSTATION')?.trim() ||
+            undefined,
+        },
+      },
+      customAuth: {
+        NTLM: nodemailerNtlmAuth as (
+          ctx: unknown,
+        ) => Promise<void> | void,
+      },
+    };
+  }
+
+  private getSmtpAuthMode(): SmtpAuthMode {
+    const value =
+      this.configService.get<string>('SMTP_AUTH_MODE')?.trim().toLowerCase() ||
+      'basic';
+
+    return value === 'ntlm' ? 'ntlm' : 'basic';
+  }
+
+  private getImapAuthMode(): ImapAuthMode {
+    const value =
+      this.configService.get<string>('IMAP_AUTH_MODE')?.trim().toLowerCase() ||
+      'basic';
+
+    return value === 'ntlm' ? 'ntlm' : 'basic';
   }
 
   private requireEnv(key: string) {

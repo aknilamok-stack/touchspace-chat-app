@@ -37,6 +37,7 @@
     "mailparser": "^3.9.6",
     "mariadb": "^3.5.2",
     "nodemailer": "^8.0.4",
+    "nodemailer-ntlm-auth": "^1.0.4",
     "openai": "^6.32.0",
     "pg": "^8.20.0",
     "prisma": "^7.5.0",

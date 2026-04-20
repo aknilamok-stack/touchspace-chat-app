@@ -1626,7 +1626,10 @@ export default function SupplierPage() {
     if (isNearBottom) {
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
+      return;
     }
+
+    setShowScrollToLatest(true);
   };
 
   const readSupplierStatus = (): ManagerPresence => {

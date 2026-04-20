@@ -226,7 +226,10 @@ export default function ClientPage() {
     if (isNearBottom) {
       setShowScrollToLatest(false);
       setPendingIncomingMessageCount(0);
+      return;
     }
+
+    setShowScrollToLatest(true);
   };
 
   const buildClientViewerQuery = () => {
@@ -1438,7 +1441,7 @@ export default function ClientPage() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col bg-[#F7F8FB]">
+          <div className="relative flex min-h-0 flex-1 flex-col bg-[#F7F8FB]">
             <div
               ref={messagesViewportRef}
               onScroll={updateClientScrollState}

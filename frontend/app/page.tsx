@@ -1971,7 +1971,10 @@ export default function Home() {
     if (isNearBottom) {
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
+      return;
     }
+
+    setShowScrollToLatest(true);
   }, []);
 
   useEffect(() => {

@@ -5859,6 +5859,358 @@ export default function Home() {
             onDelete={handleDeleteContact}
           />
 
+          <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-[#1E1E1E]">Поставщик</p>
+              {activeChat?.supplierRequests.length ? (
+                <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs text-[#6C6C70]">
+                  {activeChat.supplierRequests.length}
+                </span>
+              ) : null}
+            </div>
+
+            <button
+              onClick={() => setIsSupplierFormOpen(!isSupplierFormOpen)}
+              className={`w-full rounded-2xl py-3 text-sm font-medium text-white ${
+                hasOpenSupplierRequest ? "bg-[#A0A7B4]" : "bg-[#0A84FF]"
+              }`}
+            >
+              {isSupplierFormOpen
+                ? "Скрыть форму"
+                : hasOpenSupplierRequest
+                  ? "Активный запрос уже открыт"
+                  : "Запросить поставщика"}
+            </button>
+
+            {isSupplierFormOpen && (
+              <div className="mt-4 space-y-3 border-t border-[#F0F0F2] pt-4">
+                {activeSupplierRequest ? (
+                  <>
+                    <div className="rounded-[18px] border border-[#E8ECF3] bg-[#F8FAFD] p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                        Активный запрос
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-[#1E1E1E]">
+                        {activeSupplierRequest.supplierName}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#5A6270]">
+                        {activeSupplierRequest.requestText}
+                      </p>
+                      {isActiveSupplierRequestPaused ? (
+                        <p className="mt-3 inline-flex rounded-full bg-[#FFF4DE] px-3 py-1 text-xs font-semibold text-[#B7791F]">
+                          Поставщик на паузе
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <button
+                      onClick={handleToggleSupplierSync}
+                      disabled={isTogglingSupplierSync}
+                      className={`w-full rounded-xl py-3 font-medium text-white ${
+                        isActiveSupplierRequestPaused ? "bg-[#0A84FF]" : "bg-[#6C6C70]"
+                      }`}
+                    >
+                      {isTogglingSupplierSync
+                        ? "Сохраняем..."
+                        : isActiveSupplierRequestPaused
+                          ? "Возобновить"
+                          : "Пауза"}
+                    </button>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Напомнить или уточнить поставщику
+                      </label>
+                      <textarea
+                        value={supplierFollowUpText}
+                        onChange={(e) => setSupplierFollowUpText(e.target.value)}
+                        className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
+                        placeholder="Например: клиент ждёт ответ сегодня до 16:00. Это сообщение увидит только поставщик."
+                      />
+                      <p className="mt-2 text-xs text-[#8E8E93]">
+                        Это внутренний комментарий. Клиент его не увидит.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleSendSupplierFollowUp}
+                      disabled={isSendingSupplierFollowUp}
+                      className="w-full rounded-xl bg-[#C1812B] py-3 font-medium text-white"
+                    >
+                      {isSendingSupplierFollowUp
+                        ? "Отправляем..."
+                        : "Отправить комментарий поставщику"}
+                    </button>
+
+                    {supplierFollowUpError ? (
+                      <p className="text-sm text-red-500">{supplierFollowUpError}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Поставщик
+                      </label>
+                      <select
+                        value={selectedSupplier}
+                        onChange={(e) => setSelectedSupplier(e.target.value)}
+                        className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm outline-none"
+                      >
+                        {supplierCompanies.length === 0 ? (
+                          <option value="">Нет доступных компаний поставщиков</option>
+                        ) : null}
+                        {supplierCompanies.map((supplier) => (
+                          <option key={supplier.supervisorProfileId} value={supplier.companyName}>
+                            {supplier.companyName}
+                          </option>
+                        ))}
+                      </select>
+                      {supplierCompaniesError ? (
+                        <p className="mt-2 text-xs text-red-500">{supplierCompaniesError}</p>
+                      ) : supplierCompanies.length === 0 ? (
+                        <p className="mt-2 text-xs text-[#8E8E93]">
+                          Сначала создайте управленца поставщика с нужной компанией в админке.
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-[#1E1E1E]">
+                        Комментарий
+                      </label>
+                      <textarea
+                        value={supplierRequestText}
+                        onChange={(e) => setSupplierRequestText(e.target.value)}
+                        className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
+                        placeholder="Например: подтвердите наличие и срок поставки по заказу..."
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleCreateSupplierRequest}
+                      disabled={isCreatingSupplierRequest}
+                      className="w-full rounded-xl bg-[#111827] py-3 font-medium text-white"
+                    >
+                      {isCreatingSupplierRequest
+                        ? "Отправляем..."
+                        : "Отправить запрос поставщику"}
+                    </button>
+
+                    {createSupplierRequestError && (
+                      <p className="text-sm text-red-500">{createSupplierRequestError}</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[24px] border border-[#E5E5EA] bg-white shadow-sm">
+            <div className="sticky top-0 z-10 rounded-t-[24px] border-b border-[#F0F0F2] bg-white/95 px-4 py-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[#1E1E1E]">Запросы поставщикам</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#8E8E93]">
+                    {filteredSupplierRequests.length}
+                  </span>
+                  <div ref={supplierRequestsFilterRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIsSupplierRequestsFilterOpen((current) => !current)
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-[#E5E5EA] bg-[#F7F8FB] px-3 py-2 text-xs font-medium text-[#4B5563] transition hover:bg-[#EEF4FF]"
+                    >
+                      <span>Фильтр</span>
+                      {supplierRequestActiveFilterCount > 0 ? (
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 text-[11px] font-semibold text-white">
+                          {supplierRequestActiveFilterCount}
+                        </span>
+                      ) : null}
+                    </button>
+
+                    {isSupplierRequestsFilterOpen ? (
+                      <div className="absolute right-0 top-[calc(100%+10px)] z-30 w-[280px] rounded-[20px] border border-[#E5E5EA] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-[#1E1E1E]">Фильтры</p>
+                          {supplierRequestActiveFilterCount > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierRequestSupplierFilter("all");
+                                setSupplierRequestStatusFilter("all");
+                                setSupplierRequestPeriodFilter("all");
+                              }}
+                              className="text-[11px] font-medium text-[#0A84FF]"
+                            >
+                              Сбросить
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {(availableSupplierRequestSuppliers.length > 0 ||
+                          availableSupplierRequestStatuses.length > 0) && (
+                          <div className="space-y-3">
+                            {availableSupplierRequestSuppliers.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                  Поставщик
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSupplierRequestSupplierFilter("all")}
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestSupplierFilter === "all"
+                                        ? "bg-[#0A84FF] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    Все
+                                  </button>
+                                  {availableSupplierRequestSuppliers.map((supplierName) => (
+                                    <button
+                                      key={supplierName}
+                                      type="button"
+                                      onClick={() => setSupplierRequestSupplierFilter(supplierName)}
+                                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                        supplierRequestSupplierFilter === supplierName
+                                          ? "bg-[#0A84FF] text-white"
+                                          : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                      }`}
+                                    >
+                                      {supplierName}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {availableSupplierRequestStatuses.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                  Статус
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSupplierRequestStatusFilter("all")}
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestStatusFilter === "all"
+                                        ? "bg-[#111827] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    Все
+                                  </button>
+                                  {availableSupplierRequestStatuses.map((status) => (
+                                    <button
+                                      key={status}
+                                      type="button"
+                                      onClick={() => setSupplierRequestStatusFilter(status)}
+                                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                        supplierRequestStatusFilter === status
+                                          ? "bg-[#111827] text-white"
+                                          : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                      }`}
+                                    >
+                                      {getStatusLabel(status)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div>
+                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                                Период
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  ["today", "Сегодня"],
+                                  ["yesterday", "Вчера"],
+                                  ["week", "За неделю"],
+                                  ["month", "За месяц"],
+                                  ["all", "Все"],
+                                ].map(([value, label]) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() =>
+                                      setSupplierRequestPeriodFilter(
+                                        value as SupplierRequestPeriodFilter
+                                      )
+                                    }
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                      supplierRequestPeriodFilter === value
+                                        ? "bg-[#34C759] text-white"
+                                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={`px-4 py-4 ${
+                filteredSupplierRequests.length > 3
+                  ? "max-h-[440px] overflow-y-auto pr-3"
+                  : ""
+              }`}
+            >
+              <div className="space-y-4">
+                {isLoadingSupplierRequests && (
+                  <p className="text-sm text-gray-500">Загружаем запросы...</p>
+                )}
+
+                {supplierRequestsError && (
+                  <p className="text-sm text-red-500">{supplierRequestsError}</p>
+                )}
+
+                {filteredSupplierRequests.length ? (
+                  filteredSupplierRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="space-y-3 rounded-[20px] border border-[#ECECF1] bg-[#FCFCFD] p-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium text-[#1E1E1E]">{request.supplierName}</p>
+                          <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] text-[#6C6C70]">
+                            {getStatusLabel(request.status)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Создан: {request.createdAt}
+                        </p>
+                        <p className="mt-2 text-xs text-gray-500">
+                          {request.requestText}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : !isLoadingSupplierRequests && !supplierRequestsError ? (
+                  <p className="text-sm text-gray-500">
+                    {(activeChat?.supplierRequests.length ?? 0) > 0
+                      ? "По выбранным фильтрам запросов не найдено"
+                      : "Пока нет запросов поставщикам"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
         </aside>
         ) : null}
       </div>

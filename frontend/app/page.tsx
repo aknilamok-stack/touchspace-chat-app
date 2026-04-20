@@ -220,6 +220,7 @@ type ChatSupplierRequest = {
 };
 
 type SupplierRequestPeriodFilter = "today" | "yesterday" | "week" | "month" | "all";
+type ChatDateFilterMode = "day" | "period";
 
 type ChatItem = {
   id: string;
@@ -695,6 +696,24 @@ const formatMessageDayLabel = (createdAt: string) =>
     year: "numeric",
   });
 
+const getDateInputValue = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
 const getManagerMessageAuthorLabel = (message: ChatMessage) => {
   if (message.isInternal || message.from === "ai" || message.from === "supplier") {
     return "";
@@ -1049,6 +1068,12 @@ export default function Home() {
   const [supplierRequestPeriodFilter, setSupplierRequestPeriodFilter] =
     useState<SupplierRequestPeriodFilter>("all");
   const [isSupplierRequestsFilterOpen, setIsSupplierRequestsFilterOpen] = useState(false);
+  const [isChatFiltersOpen, setIsChatFiltersOpen] = useState(false);
+  const [chatStatusFilter, setChatStatusFilter] = useState<string>("all");
+  const [chatDateFilterMode, setChatDateFilterMode] = useState<ChatDateFilterMode>("day");
+  const [chatDateFilterDay, setChatDateFilterDay] = useState("");
+  const [chatDateFilterFrom, setChatDateFilterFrom] = useState("");
+  const [chatDateFilterTo, setChatDateFilterTo] = useState("");
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
@@ -1124,6 +1149,7 @@ export default function Home() {
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const quickRepliesRef = useRef<HTMLDivElement | null>(null);
   const managerMenuRef = useRef<HTMLDivElement | null>(null);
+  const chatFiltersRef = useRef<HTMLDivElement | null>(null);
   const supplierRequestsFilterRef = useRef<HTMLDivElement | null>(null);
   const managerSuggestionsRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1855,7 +1881,49 @@ export default function Home() {
     );
   });
 
+  const chatFilterActiveCount =
+    (chatStatusFilter !== "all" ? 1 : 0) +
+    ((chatDateFilterMode === "day" && chatDateFilterDay) ||
+    (chatDateFilterMode === "period" && (chatDateFilterFrom || chatDateFilterTo))
+      ? 1
+      : 0);
+
   const searchedChats = filteredChats.filter((chat) => {
+    if (chatStatusFilter !== "all" && chat.rawStatus !== chatStatusFilter) {
+      return false;
+    }
+
+    if (
+      (chatDateFilterMode === "day" && chatDateFilterDay) ||
+      (chatDateFilterMode === "period" && (chatDateFilterFrom || chatDateFilterTo))
+    ) {
+      const activityAt =
+        chat.lastMessageAt ??
+        getLastNonSystemMessage(chat)?.createdAt ??
+        chat.resolvedAt ??
+        null;
+
+      if (!activityAt) {
+        return false;
+      }
+
+      const activityDay = getDateInputValue(activityAt);
+
+      if (chatDateFilterMode === "day") {
+        if (activityDay !== chatDateFilterDay) {
+          return false;
+        }
+      } else {
+        if (chatDateFilterFrom && activityDay < chatDateFilterFrom) {
+          return false;
+        }
+
+        if (chatDateFilterTo && activityDay > chatDateFilterTo) {
+          return false;
+        }
+      }
+    }
+
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     if (!normalizedQuery) {
@@ -2820,6 +2888,28 @@ export default function Home() {
       document.removeEventListener("mousedown", handlePointerDown);
     };
   }, [isSupplierRequestsFilterOpen]);
+
+  useEffect(() => {
+    if (!isChatFiltersOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!chatFiltersRef.current) {
+        return;
+      }
+
+      if (!chatFiltersRef.current.contains(event.target as Node)) {
+        setIsChatFiltersOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isChatFiltersOpen]);
 
   useEffect(() => {
     if (!composerTextareaRef.current) {
@@ -4176,6 +4266,134 @@ export default function Home() {
             >
               Все
             </button>
+
+            <div ref={chatFiltersRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsChatFiltersOpen((current) => !current)}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm text-[#6C6C70] shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:bg-[#F4F8FF]"
+              >
+                <span>Фильтр</span>
+                {chatFilterActiveCount > 0 ? (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 text-[11px] font-semibold text-white">
+                    {chatFilterActiveCount}
+                  </span>
+                ) : null}
+              </button>
+
+              {isChatFiltersOpen ? (
+                <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[320px] rounded-[20px] border border-[#E5E5EA] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#1E1E1E]">Фильтр чатов</p>
+                    {chatFilterActiveCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatStatusFilter("all");
+                          setChatDateFilterMode("day");
+                          setChatDateFilterDay("");
+                          setChatDateFilterFrom("");
+                          setChatDateFilterTo("");
+                        }}
+                        className="text-[11px] font-medium text-[#0A84FF]"
+                      >
+                        Сбросить
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Статус
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        ["all", "Все"],
+                        ["new", "Новый"],
+                        ["in_progress", "В работе"],
+                        ["waiting_client", "Ждём клиента"],
+                        ["waiting_supplier", "Ждём поставщика"],
+                        ["resolved", "Решён"],
+                        ["closed", "Закрыт"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setChatStatusFilter(value)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                            chatStatusFilter === value
+                              ? "bg-[#0A84FF] text-white"
+                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                      Дата активности
+                    </p>
+                    <div className="mb-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setChatDateFilterMode("day")}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          chatDateFilterMode === "day"
+                            ? "bg-[#111827] text-white"
+                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                        }`}
+                      >
+                        День
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChatDateFilterMode("period")}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          chatDateFilterMode === "period"
+                            ? "bg-[#111827] text-white"
+                            : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#E5E5EA]"
+                        }`}
+                      >
+                        Период
+                      </button>
+                    </div>
+
+                    {chatDateFilterMode === "day" ? (
+                      <input
+                        type="date"
+                        value={chatDateFilterDay}
+                        onChange={(event) => setChatDateFilterDay(event.target.value)}
+                        className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="mb-1 text-xs text-[#8E8E93]">С</p>
+                          <input
+                            type="date"
+                            value={chatDateFilterFrom}
+                            onChange={(event) => setChatDateFilterFrom(event.target.value)}
+                            className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs text-[#8E8E93]">По</p>
+                          <input
+                            type="date"
+                            value={chatDateFilterTo}
+                            onChange={(event) => setChatDateFilterTo(event.target.value)}
+                            className="w-full rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {!isAllOverview ? (

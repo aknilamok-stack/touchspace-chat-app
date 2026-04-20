@@ -5019,7 +5019,7 @@ export default function Home() {
           ) : null}
 
           {showScrollToLatest ? (
-            <div className="pointer-events-none absolute bottom-[118px] right-[360px] z-30">
+            <div className="pointer-events-none absolute bottom-[118px] right-6 z-30">
               <button
                 type="button"
                 onClick={() => scrollManagerChatToBottom("smooth")}

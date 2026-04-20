@@ -4691,7 +4691,7 @@ export default function SupplierPage() {
                 ) : null}
 
                 {showScrollToLatest ? (
-                  <div className="pointer-events-none absolute bottom-[118px] right-[344px] z-30">
+                  <div className="pointer-events-none absolute bottom-[118px] right-6 z-30">
                     <button
                       type="button"
                       onClick={() => scrollSupplierChatToBottom("smooth")}

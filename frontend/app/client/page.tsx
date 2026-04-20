@@ -140,14 +140,19 @@ export default function ClientPage() {
   const [isManagerTyping, setIsManagerTyping] = useState(false);
   const [isRatingPromptDismissed, setIsRatingPromptDismissed] = useState(false);
   const [hasOnlineManagers, setHasOnlineManagers] = useState(true);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [pendingIncomingMessageCount, setPendingIncomingMessageCount] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
+  const clientIsNearBottomRef = useRef(true);
+  const previousVisibleMessageCountRef = useRef(0);
 
   const isResolved = activeTicket?.status === "resolved";
   const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
@@ -195,6 +200,32 @@ export default function ClientPage() {
     highlightedReplyTimeoutRef.current = window.setTimeout(() => {
       setHighlightedReplyMessageId("");
     }, 1800);
+  };
+
+  const scrollClientChatToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    clientIsNearBottomRef.current = true;
+    setShowScrollToLatest(false);
+    setPendingIncomingMessageCount(0);
+  };
+
+  const updateClientScrollState = () => {
+    const viewport = messagesViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const isNearBottom = distanceToBottom < 96;
+
+    clientIsNearBottomRef.current = isNearBottom;
+
+    if (isNearBottom) {
+      setShowScrollToLatest(false);
+      setPendingIncomingMessageCount(0);
+    }
   };
 
   const buildClientViewerQuery = () => {
@@ -823,8 +854,40 @@ export default function ClientPage() {
   }, [activeTicket?.id, activeTicket?.status]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isWidgetOpen, isManagerTyping]);
+    const currentMessageCount = messages.length;
+    const previousMessageCount = previousVisibleMessageCountRef.current;
+
+    if (currentMessageCount <= previousMessageCount) {
+      previousVisibleMessageCountRef.current = currentMessageCount;
+      return;
+    }
+
+    const newlyArrivedMessages = messages.slice(previousMessageCount, currentMessageCount);
+
+    previousVisibleMessageCountRef.current = currentMessageCount;
+
+    if (clientIsNearBottomRef.current) {
+      scrollClientChatToBottom("smooth");
+      return;
+    }
+
+    const incomingMessagesCount = newlyArrivedMessages.filter(
+      (message) => message.senderType !== "client"
+    ).length;
+
+    if (incomingMessagesCount > 0) {
+      setPendingIncomingMessageCount((current) => current + incomingMessagesCount);
+      setShowScrollToLatest(true);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (!isWidgetOpen) {
+      return;
+    }
+
+    scrollClientChatToBottom("auto");
+  }, [activeTicket?.id, isWidgetOpen]);
 
   useEffect(() => {
     return () => {
@@ -1352,7 +1415,11 @@ export default function ClientPage() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col bg-[#F7F8FB]">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            <div
+              ref={messagesViewportRef}
+              onScroll={updateClientScrollState}
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+            >
               {!hasOnlineManagers ? (
                 <div className="rounded-[18px] border border-[#CFE3FF] bg-[#F3F8FF] px-4 py-3 text-sm leading-5 text-[#0A63CE] shadow-[0_10px_24px_rgba(10,132,255,0.08)]">
                   Менеджеры сейчас не в сети. Как только кто-то появится, мы сразу ответим.
@@ -1654,6 +1721,23 @@ export default function ClientPage() {
 
               <div ref={messagesEndRef} />
             </div>
+
+            {showScrollToLatest ? (
+              <div className="pointer-events-none absolute bottom-[118px] right-4 z-30">
+                <button
+                  type="button"
+                  onClick={() => scrollClientChatToBottom("smooth")}
+                  className="pointer-events-auto inline-flex h-12 items-center gap-2 rounded-full bg-[#0A84FF] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(10,132,255,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0077F2]"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
+                    ↓
+                  </span>
+                  {pendingIncomingMessageCount > 1
+                    ? `${pendingIncomingMessageCount} новых сообщений`
+                    : "Новое сообщение"}
+                </button>
+              </div>
+            ) : null}
 
             {showQuickActions ? (
               <div className="border-t border-[#E7E9EF] bg-white px-4 py-3">

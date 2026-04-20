@@ -27,6 +27,7 @@ const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 let mainWindow = null;
 let notificationWindow = null;
 let notificationWindowReady = false;
+let notificationWindowPendingShow = false;
 let pendingNotificationPayload = null;
 let lastUnreadAttentionCount = 0;
 let lastDockBounceId = -1;
@@ -324,6 +325,7 @@ function createNotificationWindow() {
   notificationWindow.on("closed", () => {
     notificationWindow = null;
     notificationWindowReady = false;
+    notificationWindowPendingShow = false;
   });
 
   notificationWindow.webContents.on("did-finish-load", () => {
@@ -337,6 +339,7 @@ function createNotificationWindow() {
 
 function showOverlayNotificationWindow(payload) {
   pendingNotificationPayload = payload;
+  notificationWindowPendingShow = true;
   const overlay = createNotificationWindow();
 
   if (!overlay) {
@@ -346,7 +349,6 @@ function showOverlayNotificationWindow(payload) {
   const bounds = getOverlayNotificationBounds();
   overlay.setBounds(bounds);
   sendOverlayNotificationPayload();
-  overlay.showInactive();
   return true;
 }
 
@@ -613,6 +615,19 @@ app.whenReady().then(() => {
 
     hideOverlayNotificationWindow();
     return true;
+  });
+
+  ipcMain.on("desktop:overlay-notification-rendered", () => {
+    if (
+      !notificationWindowPendingShow ||
+      !notificationWindow ||
+      notificationWindow.isDestroyed()
+    ) {
+      return;
+    }
+
+    notificationWindowPendingShow = false;
+    notificationWindow.showInactive();
   });
 
   ipcMain.on("desktop:auth-storage:get", (event) => {

@@ -39,6 +39,11 @@
 
       body {
         overflow: hidden;
+        opacity: 0;
+      }
+
+      body.is-ready {
+        opacity: 1;
       }
 
       .shell {
@@ -292,6 +297,10 @@
         avatarElement.textContent = payload?.avatarEmoji || resolveAvatar(payload?.title);
         avatarElement.style.backgroundColor = payload?.avatarColor || "rgba(255, 255, 255, 0.24)";
         setTone(payload?.tone || "blue");
+        document.body.classList.add("is-ready");
+        requestAnimationFrame(() => {
+          window.touchspaceDesktopNotification.rendered();
+        });
       });
 
       const handlePrimary = () => {

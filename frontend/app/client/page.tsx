@@ -153,6 +153,7 @@ export default function ClientPage() {
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const clientIsNearBottomRef = useRef(true);
   const previousVisibleMessageCountRef = useRef(0);
+  const shouldForceScrollToBottomRef = useRef(false);
 
   const isResolved = activeTicket?.status === "resolved";
   const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
@@ -857,6 +858,13 @@ export default function ClientPage() {
     const currentMessageCount = messages.length;
     const previousMessageCount = previousVisibleMessageCountRef.current;
 
+    if (shouldForceScrollToBottomRef.current) {
+      previousVisibleMessageCountRef.current = currentMessageCount;
+      shouldForceScrollToBottomRef.current = false;
+      scrollClientChatToBottom("auto");
+      return;
+    }
+
     if (currentMessageCount <= previousMessageCount) {
       previousVisibleMessageCountRef.current = currentMessageCount;
       return;
@@ -888,6 +896,22 @@ export default function ClientPage() {
 
     scrollClientChatToBottom("auto");
   }, [activeTicket?.id, isWidgetOpen]);
+
+  useEffect(() => {
+    if (!isEmbeddedWidget || !hostWidgetOpen) {
+      return;
+    }
+
+    shouldForceScrollToBottomRef.current = true;
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollClientChatToBottom("auto");
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeTicket?.id, hostWidgetOpen, isEmbeddedWidget]);
 
   useEffect(() => {
     return () => {

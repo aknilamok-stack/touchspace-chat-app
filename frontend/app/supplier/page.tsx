@@ -1147,6 +1147,7 @@ export default function SupplierPage() {
   const supplierIsNearBottomRef = useRef(true);
   const previousSelectedRequestIdRef = useRef("");
   const previousVisibleMessageCountRef = useRef(0);
+  const pendingInitialScrollRequestIdRef = useRef("");
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -2340,6 +2341,11 @@ export default function SupplierPage() {
       return;
     }
 
+    const cachedMessages = ticketMessagesByTicketId[selectedRequest.ticketId] ?? [];
+    setTicketMessages((currentMessages) =>
+      areMessagesEqual(currentMessages, cachedMessages) ? currentMessages : cachedMessages
+    );
+
     const loadMessages = async () => {
       setIsLoadingMessages(true);
       setMessagesError("");
@@ -3023,15 +3029,28 @@ export default function SupplierPage() {
     if (requestChanged) {
       previousSelectedRequestIdRef.current = currentRequestId;
       previousVisibleMessageCountRef.current = currentMessageCount;
+      pendingInitialScrollRequestIdRef.current = currentRequestId;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
 
-      if (currentRequestId) {
-        requestAnimationFrame(() => {
-          scrollSupplierChatToBottom("auto");
-        });
+      return;
+    }
+
+    if (
+      currentRequestId &&
+      pendingInitialScrollRequestIdRef.current === currentRequestId
+    ) {
+      if (isLoadingMessages) {
+        previousVisibleMessageCountRef.current = currentMessageCount;
+        return;
       }
 
+      pendingInitialScrollRequestIdRef.current = "";
+      previousVisibleMessageCountRef.current = currentMessageCount;
+
+      requestAnimationFrame(() => {
+        scrollSupplierChatToBottom("auto");
+      });
       return;
     }
 
@@ -3064,7 +3083,7 @@ export default function SupplierPage() {
       setPendingClientMessageCount((current) => current + newClientMessagesCount);
       setShowScrollToLatest(true);
     }
-  }, [selectedRequestId, visibleSupplierMessages.length]);
+  }, [isLoadingMessages, selectedRequestId, visibleSupplierMessages.length]);
 
   useEffect(() => {
     if (

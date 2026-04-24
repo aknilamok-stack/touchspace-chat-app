@@ -5214,18 +5214,20 @@ export default function Home() {
           ) : null}
 
           {showScrollToLatest ? (
-            <div className="pointer-events-none absolute bottom-[118px] right-6 z-30">
+            <div className="pointer-events-none absolute bottom-[168px] left-1/2 z-30 -translate-x-1/2">
               <button
                 type="button"
                 onClick={() => scrollManagerChatToBottom("smooth")}
-                className="pointer-events-auto inline-flex h-12 items-center gap-2 rounded-full bg-[#0A84FF] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(10,132,255,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0077F2]"
+                aria-label={
+                  pendingClientMessageCount > 0
+                    ? `Прокрутить чат вниз, новых сообщений: ${pendingClientMessageCount}`
+                    : "Прокрутить чат вниз"
+                }
+                className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#0A84FF] text-lg font-semibold text-white shadow-[0_16px_30px_rgba(10,132,255,0.28)] transition hover:-translate-y-0.5 hover:bg-[#0077F2]"
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/18 animate-pulse">
                   ↓
                 </span>
-                {pendingClientMessageCount > 1
-                  ? `${pendingClientMessageCount} новых сообщений`
-                  : "Новое сообщение"}
               </button>
             </div>
           ) : null}

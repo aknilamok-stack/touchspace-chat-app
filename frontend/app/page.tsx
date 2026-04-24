@@ -1089,6 +1089,7 @@ export default function Home() {
   const [supplierRequestsError, setSupplierRequestsError] = useState("");
   const [isCreatingSupplierRequest, setIsCreatingSupplierRequest] = useState(false);
   const [isSendingSupplierFollowUp, setIsSendingSupplierFollowUp] = useState(false);
+  const [isResolvingSupplierRequest, setIsResolvingSupplierRequest] = useState(false);
   const [isTogglingSupplierSync, setIsTogglingSupplierSync] = useState(false);
   const [createSupplierRequestError, setCreateSupplierRequestError] = useState("");
   const [supplierFollowUpError, setSupplierFollowUpError] = useState("");
@@ -3686,6 +3687,70 @@ export default function Home() {
     }
   };
 
+  const handleResolveSupplierRequest = async () => {
+    if (!activeChatId || !activeSupplierRequest) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Принудительно завершить чат поставщика? У поставщика сработает тот же сценарий, как если бы он сам нажал кнопку «Решён»."
+      )
+    ) {
+      return;
+    }
+
+    setIsResolvingSupplierRequest(true);
+    setSupplierFollowUpError("");
+
+    try {
+      const response = await fetch(
+        apiUrl(`/supplier-requests/${activeSupplierRequest.id}/status`),
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: "closed",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await extractApiErrorMessage(
+            response,
+            "Не удалось завершить чат поставщика"
+          )
+        );
+      }
+
+      const [messages, supplierRequests] = await Promise.all([
+        fetchMessages(activeChatId),
+        fetchSupplierRequests(activeChatId),
+      ]);
+
+      applyMessagesToTicket(activeChatId, messages);
+      applySupplierRequestsToTicket(activeChatId, supplierRequests);
+      setSupplierFollowUpText("");
+      setToast({
+        message: "Чат поставщика завершён",
+        tone: "success",
+      });
+    } catch (error) {
+      console.error("Ошибка принудительного завершения чата поставщика:", error);
+      setSupplierFollowUpError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось завершить чат поставщика"
+      );
+    } finally {
+      setIsResolvingSupplierRequest(false);
+    }
+  };
+
   const handleSupplierResumeDecision = async (action: "resume" | "resume_defer") => {
     if (!activeChatId || !activeSupplierRequest) {
       return;
@@ -5927,6 +5992,16 @@ export default function Home() {
                         : isActiveSupplierRequestPaused
                           ? "Возобновить"
                           : "Пауза"}
+                    </button>
+
+                    <button
+                      onClick={handleResolveSupplierRequest}
+                      disabled={isResolvingSupplierRequest}
+                      className="w-full rounded-xl bg-[#C1812B] py-3 font-medium text-white"
+                    >
+                      {isResolvingSupplierRequest
+                        ? "Завершаем..."
+                        : "Завершить чат поставщика"}
                     </button>
 
                     <div>

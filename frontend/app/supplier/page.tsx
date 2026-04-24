@@ -558,7 +558,10 @@ const getVisibleMessagesForTicket = (
         return isSupplierResolvedSystemMessage && messageCreatedAt - requestClosedAt <= 10_000;
       }
 
-      if (message.senderType === "manager" || message.senderType === "client") {
+      if (
+        (message.senderType === "manager" && !message.isInternal) ||
+        message.senderType === "client"
+      ) {
         const syncState = getSupplierRequestSyncState(sortedRequests, messages, request.id);
 
         return syncState.visibleIntervals.some(
@@ -4538,10 +4541,10 @@ export default function SupplierPage() {
                                   className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
                                     message.senderType === "supplier"
                                       ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
-                                      : message.senderType === "manager"
-                                        ? "bg-[#EAF8EF] text-[#166534] shadow-[0_10px_24px_rgba(31,139,76,0.14)]"
                                       : message.isInternal
                                         ? "border border-[#E4D5B7] bg-[#FFF8EE] text-[#6B4F1D] shadow-[0_10px_24px_rgba(193,129,43,0.12)]"
+                                      : message.senderType === "manager"
+                                        ? "bg-[#EAF8EF] text-[#166534] shadow-[0_10px_24px_rgba(31,139,76,0.14)]"
                                       : "border border-[#E6EAF2] bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
                                   }`}
                                 >
@@ -4551,11 +4554,11 @@ export default function SupplierPage() {
                                         className={`mb-1 text-[11px] font-semibold ${
                                           message.senderType === "supplier"
                                             ? "text-white/78"
-                                            : message.senderType === "manager"
-                                              ? "text-[#1F8B4C]"
                                             : message.isInternal
                                               ? "text-[#C1812B]"
-                                              : "text-[#7A8495]"
+                                            : message.senderType === "manager"
+                                              ? "text-[#1F8B4C]"
+                                            : "text-[#7A8495]"
                                         }`}
                                       >
                                         {authorLabel}
@@ -4577,10 +4580,10 @@ export default function SupplierPage() {
                                         className={`mb-2 block min-w-0 max-w-full rounded-[16px] px-2.5 py-2 text-left transition ${
                                           message.senderType === "supplier"
                                             ? "hover:bg-white/10"
-                                            : message.senderType === "manager"
-                                              ? "hover:bg-[#DCF3E3]"
                                             : message.isInternal
                                               ? "hover:bg-[#FFF3E3]"
+                                            : message.senderType === "manager"
+                                              ? "hover:bg-[#DCF3E3]"
                                             : "hover:bg-[#F2F7FF]"
                                         }`}
                                       >
@@ -4589,10 +4592,10 @@ export default function SupplierPage() {
                                             className={`mt-0.5 h-[20px] w-[3px] shrink-0 rounded-full ${
                                               message.senderType === "supplier"
                                                 ? "bg-white/55"
-                                                : message.senderType === "manager"
-                                                  ? "bg-[#1F8B4C]"
                                                 : message.isInternal
                                                   ? "bg-[#C1812B]"
+                                                : message.senderType === "manager"
+                                                  ? "bg-[#1F8B4C]"
                                                 : "bg-[#0A84FF]"
                                             }`}
                                           />
@@ -4601,10 +4604,10 @@ export default function SupplierPage() {
                                             className={`text-[11px] font-semibold ${
                                               message.senderType === "supplier"
                                                 ? "text-white/78"
-                                                : message.senderType === "manager"
-                                                  ? "text-[#1F8B4C]"
                                                 : message.isInternal
                                                   ? "text-[#C1812B]"
+                                                : message.senderType === "manager"
+                                                  ? "text-[#1F8B4C]"
                                                 : "text-[#0A84FF]"
                                             }`}
                                           >
@@ -4614,10 +4617,10 @@ export default function SupplierPage() {
                                             className={`mt-1 line-clamp-2 text-[13px] leading-[18px] [overflow-wrap:break-word] [word-break:normal] ${
                                               message.senderType === "supplier"
                                                 ? "text-white/82"
-                                                : message.senderType === "manager"
-                                                  ? "text-[#2F6B45]"
                                                 : message.isInternal
                                                   ? "text-[#8A6A35]"
+                                                : message.senderType === "manager"
+                                                  ? "text-[#2F6B45]"
                                                 : "text-[#5A6270]"
                                             }`}
                                           >
@@ -4648,10 +4651,10 @@ export default function SupplierPage() {
                                       className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                         message.senderType === "supplier"
                                           ? "text-white/65"
-                                          : message.senderType === "manager"
-                                            ? "text-[#4F8B66]"
                                           : message.isInternal
                                             ? "text-[#8B6A33]"
+                                          : message.senderType === "manager"
+                                            ? "text-[#4F8B66]"
                                           : "text-[#8E8E93]"
                                       }`}
                                     >

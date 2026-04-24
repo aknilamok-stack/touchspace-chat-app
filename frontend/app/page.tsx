@@ -3564,6 +3564,16 @@ export default function Home() {
       return;
     }
 
+    if (
+      activeSupplierRequest.supplierSyncPaused &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Поставщик сейчас на паузе. Отправить внутренний комментарий всё равно? Его увидит только поставщик, клиент не увидит."
+      )
+    ) {
+      return;
+    }
+
     setIsSendingSupplierFollowUp(true);
     setSupplierFollowUpError("");
 

@@ -4332,7 +4332,7 @@ export default function SupplierPage() {
                       : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
                   }`}
                 >
-                  <span>Менеджер</span>
+                  <span>Менеджеры</span>
                   {managerSectionUnreadCount > 0 ? (
                     <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-[0_6px_12px_rgba(10,132,255,0.24)]">
                       {managerSectionUnreadCount > 99 ? "99+" : managerSectionUnreadCount}

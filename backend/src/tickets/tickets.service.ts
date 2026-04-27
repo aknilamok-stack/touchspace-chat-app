@@ -221,7 +221,19 @@ export class TicketsService {
     }
 
     if (viewerType === 'manager') {
-      return undefined;
+      return {
+        OR: [
+          {
+            conversationMode: {
+              not: 'direct_supplier',
+            },
+          },
+          {
+            conversationMode: 'direct_supplier',
+            assignedManagerId: viewerId,
+          },
+        ],
+      };
     }
 
     return undefined;
@@ -275,6 +287,10 @@ export class TicketsService {
 
   private normalizeTradePointForMatching(value?: string | null) {
     return value?.trim().replace(/\s+/g, ' ').toLowerCase() || '';
+  }
+
+  private buildDirectSupplierDialogTitle(supplierName: string) {
+    return `Поставщик: ${supplierName}`;
   }
 
   private async findExistingTicketByTradePointAndEmail(
@@ -350,7 +366,9 @@ export class TicketsService {
     };
   }
 
-  private normalizeClientVisualIdentityKey(...values: Array<string | null | undefined>) {
+  private normalizeClientVisualIdentityKey(
+    ...values: Array<string | null | undefined>
+  ) {
     const sourceValue = values.find((value) => value?.trim())?.trim();
 
     if (!sourceValue) {
@@ -360,7 +378,9 @@ export class TicketsService {
     return sourceValue.toLowerCase().replace(/\s+/g, ' ');
   }
 
-  private getClientVisualIdentityDisplayName(...values: Array<string | null | undefined>) {
+  private getClientVisualIdentityDisplayName(
+    ...values: Array<string | null | undefined>
+  ) {
     return values.find((value) => value?.trim())?.trim() ?? null;
   }
 
@@ -401,7 +421,9 @@ export class TicketsService {
       },
     });
     const usedPairKeys = new Set(
-      usedPairs.map(({ avatarColor, avatarEmoji }) => `${avatarColor}::${avatarEmoji}`),
+      usedPairs.map(
+        ({ avatarColor, avatarEmoji }) => `${avatarColor}::${avatarEmoji}`,
+      ),
     );
 
     let avatarColor = '';
@@ -426,7 +448,8 @@ export class TicketsService {
     if (!avatarColor || !avatarEmoji) {
       const fallbackIndex = usedPairs.length;
       avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
-      avatarEmoji = CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
+      avatarEmoji =
+        CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
     }
 
     await tx.clientVisualIdentity.create({
@@ -1134,11 +1157,12 @@ export class TicketsService {
     });
 
     return this.prisma.$transaction(async (tx) => {
-      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
-        tx,
-        clientVisualIdentityKey,
-        clientVisualDisplayName,
-      );
+      const { avatarColor, avatarEmoji } =
+        await this.ensureClientVisualIdentity(
+          tx,
+          clientVisualIdentityKey,
+          clientVisualDisplayName,
+        );
 
       return tx.ticket.create({
         data: {
@@ -1232,11 +1256,12 @@ export class TicketsService {
     );
 
     return this.prisma.$transaction(async (tx) => {
-      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
-        tx,
-        clientVisualIdentityKey,
-        clientVisualDisplayName,
-      );
+      const { avatarColor, avatarEmoji } =
+        await this.ensureClientVisualIdentity(
+          tx,
+          clientVisualIdentityKey,
+          clientVisualDisplayName,
+        );
 
       const ticket = await tx.ticket.create({
         data: {
@@ -1401,11 +1426,12 @@ export class TicketsService {
         });
       }
 
-      const { avatarColor, avatarEmoji } = await this.ensureClientVisualIdentity(
-        tx,
-        clientVisualIdentityKey,
-        clientVisualDisplayName,
-      );
+      const { avatarColor, avatarEmoji } =
+        await this.ensureClientVisualIdentity(
+          tx,
+          clientVisualIdentityKey,
+          clientVisualDisplayName,
+        );
 
       if (matchedTicket?.id && senderType === 'client') {
         const existingTicket = await tx.ticket.findUnique({
@@ -1444,7 +1470,8 @@ export class TicketsService {
         }
 
         const isReopened =
-          existingTicket.status === 'resolved' || existingTicket.status === 'closed';
+          existingTicket.status === 'resolved' ||
+          existingTicket.status === 'closed';
 
         if (isReopened) {
           await tx.ticket.update({
@@ -1625,7 +1652,11 @@ export class TicketsService {
       }
 
       if (isClientStart) {
-        await this.maybeCreateOfflineManagerAutoReply(tx, ticket.id, message.createdAt);
+        await this.maybeCreateOfflineManagerAutoReply(
+          tx,
+          ticket.id,
+          message.createdAt,
+        );
       }
 
       return {
@@ -1732,6 +1763,157 @@ export class TicketsService {
     });
   }
 
+  async findOrCreateManagerSupplierDialogs(
+    managerId?: string,
+    managerName?: string,
+  ) {
+    const normalizedManagerId = managerId?.trim();
+    const normalizedManagerName = managerName?.trim();
+
+    if (!normalizedManagerId || !normalizedManagerName) {
+      throw new BadRequestException('managerId and managerName are required');
+    }
+
+    await this.profilesService.ensureProfile({
+      id: normalizedManagerId,
+      fullName: normalizedManagerName,
+      role: 'manager',
+    });
+
+    const suppliers = await this.prisma.profile.findMany({
+      where: {
+        role: 'supplier_supervisor',
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        companyName: {
+          not: null,
+        },
+      },
+      orderBy: [{ companyName: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        companyName: true,
+        supplierId: true,
+        fullName: true,
+      },
+    });
+
+    const seenSupplierScopes = new Set<string>();
+    const supplierScopes = suppliers
+      .map((supplier) => {
+        const supplierName = supplier.companyName?.trim();
+        const supplierScopeId = supplier.supplierId?.trim() || supplier.id;
+
+        if (!supplierName || seenSupplierScopes.has(supplierScopeId)) {
+          return null;
+        }
+
+        seenSupplierScopes.add(supplierScopeId);
+
+        return {
+          supplierId: supplierScopeId,
+          supplierName,
+        };
+      })
+      .filter(
+        (supplier): supplier is { supplierId: string; supplierName: string } =>
+          Boolean(supplier),
+      );
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const supplier of supplierScopes) {
+        const existingDialog = await tx.ticket.findFirst({
+          where: {
+            conversationMode: 'direct_supplier',
+            assignedManagerId: normalizedManagerId,
+            supplierId: supplier.supplierId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (existingDialog) {
+          continue;
+        }
+
+        await tx.ticket.create({
+          data: {
+            title: this.buildDirectSupplierDialogTitle(supplier.supplierName),
+            status: 'in_progress',
+            conversationMode: 'direct_supplier',
+            currentHandlerType: 'manager',
+            aiEnabled: false,
+            aiResolved: false,
+            invitedManagerIds: [],
+            invitedManagerNames: [],
+            assignedManagerId: normalizedManagerId,
+            assignedManagerName: normalizedManagerName,
+            supplierId: supplier.supplierId,
+            supplierName: supplier.supplierName,
+            clientId: null,
+            clientName: supplier.supplierName,
+            tradePointName: supplier.supplierName,
+            claimRequiredAt: null,
+            claimedAt: new Date(),
+            firstResponseStartedAt: null,
+            firstResponseAt: null,
+            firstResponseTime: null,
+            firstResponseBreached: false,
+            lastMessageAt: null,
+          },
+        });
+      }
+    });
+
+    return this.findDirectSupplierDialogs({
+      assignedManagerId: normalizedManagerId,
+    });
+  }
+
+  async findSupplierManagerDialogs(supplierId?: string) {
+    const normalizedSupplierId = supplierId?.trim();
+
+    if (!normalizedSupplierId) {
+      throw new BadRequestException('supplierId is required');
+    }
+
+    return this.findDirectSupplierDialogs({
+      supplierId: normalizedSupplierId,
+    });
+  }
+
+  private async findDirectSupplierDialogs(where: {
+    assignedManagerId?: string;
+    supplierId?: string;
+  }) {
+    return this.prisma.ticket.findMany({
+      where: {
+        conversationMode: 'direct_supplier',
+        ...where,
+      },
+      include: {
+        messages: {
+          select: {
+            id: true,
+            content: true,
+            senderType: true,
+            senderProfileId: true,
+            replyToMessageId: true,
+            replyToContent: true,
+            messageType: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    });
+  }
+
   async updateTyping(id: string, senderType: string, previewText?: string) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
@@ -1812,15 +1994,16 @@ export class TicketsService {
       );
     }
 
-    const hasActiveSupplierRequest = await this.prisma.supplierRequest.findFirst({
-      where: {
-        ticketId: id,
-        status: {
-          notIn: ['closed', 'cancelled', 'resolved'],
+    const hasActiveSupplierRequest =
+      await this.prisma.supplierRequest.findFirst({
+        where: {
+          ticketId: id,
+          status: {
+            notIn: ['closed', 'cancelled', 'resolved'],
+          },
         },
-      },
-      select: { id: true },
-    });
+        select: { id: true },
+      });
 
     if (hasActiveSupplierRequest) {
       throw new BadRequestException(

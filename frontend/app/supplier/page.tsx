@@ -220,6 +220,9 @@ type Ticket = {
   assignedManagerName?: string | null;
   lastResolvedByManagerName?: string | null;
   lastMessageAt?: string | null;
+  conversationMode?: string;
+  supplierName?: string | null;
+  messages?: TicketMessageApi[];
   invitedManagerNames?: string[];
 };
 
@@ -1066,6 +1069,9 @@ export default function SupplierPage() {
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
   const [pinnedRequestIds, setPinnedRequestIds] = useState<string[]>([]);
   const [ticketsById, setTicketsById] = useState<Record<string, Ticket>>({});
+  const [directManagerTickets, setDirectManagerTickets] = useState<Ticket[]>([]);
+  const [activeSupplierSection, setActiveSupplierSection] = useState<"requests" | "manager">("requests");
+  const [selectedManagerTicketId, setSelectedManagerTicketId] = useState("");
   const [activeQueueTab, setActiveQueueTab] = useState<SupplierQueueTab>("new");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
@@ -1167,6 +1173,9 @@ export default function SupplierPage() {
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
+  const selectedManagerTicket =
+    directManagerTickets.find((ticket) => ticket.id === selectedManagerTicketId) ?? null;
+  const directManagerMessages = selectedManagerTicket?.messages?.map(formatTicketMessage) ?? [];
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
   const selectedTicketRequests = selectedRequest
     ? supplierRequests
@@ -2153,6 +2162,19 @@ export default function SupplierPage() {
     return fetchTicketMessagesSnapshot(ticketId, supplierId);
   };
 
+  const fetchDirectManagerTickets = async (): Promise<Ticket[]> => {
+    const response = await fetch(
+      apiUrl(`/tickets/supplier-manager-dialogs?supplierId=${encodeURIComponent(supplierId)}`),
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить чаты с менеджерами");
+    }
+
+    return response.json();
+  };
+
   const markTicketMessagesRead = useCallback(
     async (ticketId: string) => {
       const response = await fetch(
@@ -2329,6 +2351,41 @@ export default function SupplierPage() {
 
     void loadSupplierRequests();
   }, [authReady, supplierId, supplierProfileId]);
+
+  useEffect(() => {
+    if (!authReady || !supplierId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDirectDialogs = async () => {
+      try {
+        const tickets = await fetchDirectManagerTickets();
+
+        if (cancelled) {
+          return;
+        }
+
+        setDirectManagerTickets(tickets);
+        setSelectedManagerTicketId((currentId) =>
+          currentId && tickets.some((ticket) => ticket.id === currentId)
+            ? currentId
+            : tickets[0]?.id ?? ""
+        );
+      } catch (error) {
+        console.error("Ошибка загрузки прямых чатов с менеджерами:", error);
+      }
+    };
+
+    void loadDirectDialogs();
+    const intervalId = window.setInterval(loadDirectDialogs, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [authReady, supplierId]);
 
   useEffect(() => {
     if (!authReady || !supplierId || !supplierProfileId) {
@@ -3666,6 +3723,48 @@ export default function SupplierPage() {
   };
 
   const handleSendReply = async () => {
+    if (activeSupplierSection === "manager") {
+      if (!selectedManagerTicket || !replyText.trim()) {
+        return;
+      }
+
+      setIsSendingReply(true);
+      setReplyError("");
+
+      try {
+        const response = await fetch(apiUrl("/messages"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticketId: selectedManagerTicket.id,
+            content: replyText,
+            senderType: "supplier",
+            transport: "chat",
+            senderId: supplierProfileId,
+            senderName: resolvedSupplierEmployeeName,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Не удалось отправить сообщение менеджеру");
+        }
+
+        setReplyText("");
+        const tickets = await fetchDirectManagerTickets();
+        setDirectManagerTickets(tickets);
+      } catch (error) {
+        setReplyError(
+          error instanceof Error ? error.message : "Не удалось отправить сообщение менеджеру"
+        );
+      } finally {
+        setIsSendingReply(false);
+      }
+
+      return;
+    }
+
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
     const isEmailMode = sendMode === "email";
@@ -4032,6 +4131,61 @@ export default function SupplierPage() {
           <div className="mt-6 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             <div className="rounded-[12px] bg-[#F2F2F5] p-1">
               <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveSupplierSection("requests")}
+                  className={`rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                    activeSupplierSection === "requests"
+                      ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
+                      : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  Клиенты
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSupplierSection("manager");
+                    setSelectedRequestId("");
+                  }}
+                  className={`rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                    activeSupplierSection === "manager"
+                      ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
+                      : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  Менеджер
+                </button>
+              </div>
+            </div>
+
+            {activeSupplierSection === "manager" ? (
+              <>
+                {directManagerTickets.map((ticket) => (
+                  <DialogListCard
+                    key={ticket.id}
+                    active={selectedManagerTicketId === ticket.id}
+                    onClick={() => setSelectedManagerTicketId(ticket.id)}
+                    title={ticket.assignedManagerName?.trim() || "Менеджер"}
+                    identityKey={ticket.assignedManagerId || ticket.id}
+                    preview={ticket.messages?.at(-1)?.content?.trim() || "Прямой чат без клиента"}
+                    managerLabel="Прямой чат"
+                    timeLabel={formatDialogActivityLabel(ticket.lastMessageAt ?? null)}
+                    statusLabel="Менеджер"
+                    statusDotClassName="bg-[#0A84FF]"
+                    statusBadgeClassName="bg-[#EAF3FF] text-[#0A84FF]"
+                  />
+                ))}
+                {directManagerTickets.length === 0 ? (
+                  <div className="rounded-[22px] border border-dashed border-[#D8D8DE] bg-white/70 p-5 text-sm leading-6 text-[#8E8E93]">
+                    Чаты с менеджерами появятся после создания прямого диалога менеджером.
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+            <div className="rounded-[12px] bg-[#F2F2F5] p-1">
+              <div className="grid grid-cols-2 gap-1">
               {supplierQueueTabs.map((tab) => {
                 const isActive = activeQueueTab === tab.id;
                 const count = queueCounts[tab.id];
@@ -4154,11 +4308,85 @@ export default function SupplierPage() {
                   Для этого поставщика пока нет назначенных запросов.
                 </p>
               )}
+              </>
+            )}
           </div>
         </aside>
 
         <section className="relative flex min-w-0 flex-1 overflow-hidden bg-[#F7F7FA]">
-          {selectedRequest ? (
+          {activeSupplierSection === "manager" && selectedManagerTicket ? (
+            <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
+              <div className="border-b border-[#E5E5EA] bg-white px-6 py-5">
+                <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
+                  {selectedManagerTicket.assignedManagerName?.trim() || "Менеджер"}
+                </p>
+                <p className="mt-1 text-[13px] text-[#8E8E93]">
+                  Прямой чат с менеджером без клиента
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
+                {directManagerMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.senderType === "supplier" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[72%] rounded-[22px] px-4 py-3 text-sm leading-6 shadow-[0_8px_20px_rgba(15,23,42,0.05)] ${
+                        message.senderType === "supplier"
+                          ? "bg-[#0A84FF] text-white"
+                          : "bg-white text-[#1E1E1E]"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{message.displayContent || message.content}</p>
+                      <p
+                        className={`mt-1 text-[11px] ${
+                          message.senderType === "supplier" ? "text-white/70" : "text-[#8E8E93]"
+                        }`}
+                      >
+                        {formatTimeLabel(message.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {directManagerMessages.length === 0 ? (
+                  <p className="text-sm text-[#8E8E93]">Сообщений пока нет.</p>
+                ) : null}
+              </div>
+
+              <div className="border-t border-[#E5E5EA] bg-white px-6 py-4">
+                {replyError ? <p className="mb-2 text-sm text-red-500">{replyError}</p> : null}
+                <div className="flex items-end gap-3 rounded-[24px] border border-[#E3E5EA] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <textarea
+                    value={replyText}
+                    onChange={(event) => setReplyText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSendReply();
+                      }
+                    }}
+                    rows={1}
+                    className="min-h-[40px] flex-1 resize-none bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                    placeholder="Напишите сообщение менеджеру..."
+                  />
+                  <button
+                    onClick={handleSendReply}
+                    disabled={isSendingReply || !replyText.trim()}
+                    className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:bg-[#0077F2] disabled:opacity-45"
+                  >
+                    <Image
+                      src="/icons/otpravit.svg"
+                      alt="Отправить"
+                      width={19}
+                      height={19}
+                      className="h-[19px] w-[19px]"
+                    />
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
@@ -4864,7 +5092,7 @@ export default function SupplierPage() {
                       </div>
                     ) : null}
 
-                    {canSupplierReply ? (
+                    {canSupplierReply || (activeSupplierSection === "manager" && selectedManagerTicket) ? (
                       <>
                       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7]/0 bg-transparent px-0 py-0">
                         <button

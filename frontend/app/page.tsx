@@ -136,6 +136,8 @@ type ApiTicket = {
   superuserEmail?: string | null;
   superuserPhone?: string | null;
   canonicalEmail?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
   status?: string;
@@ -262,6 +264,8 @@ type ChatItem = {
   superuserEmail: string | null;
   superuserPhone: string | null;
   canonicalEmail: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
   avatarColor: string | null;
   avatarEmoji: string | null;
   messages: ChatMessage[];
@@ -906,6 +910,8 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   superuserEmail: ticket.superuserEmail?.trim() || null,
   superuserPhone: ticket.superuserPhone?.trim() || null,
   canonicalEmail: ticket.canonicalEmail?.trim() || null,
+  supplierId: ticket.supplierId?.trim() || null,
+  supplierName: ticket.supplierName?.trim() || null,
   avatarColor: ticket.avatarColor ?? null,
   avatarEmoji: ticket.avatarEmoji ?? null,
   messages: Array.isArray(ticket.messages)
@@ -1077,7 +1083,7 @@ export default function Home() {
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"incoming" | "in_progress" | "all">("incoming");
+  const [filter, setFilter] = useState<"incoming" | "in_progress" | "supplier" | "all">("incoming");
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
 
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
@@ -1557,15 +1563,33 @@ export default function Home() {
   };
 
   const fetchTickets = async (): Promise<ApiTicket[]> => {
-    const response = await fetch(
-      apiUrl(
-        `/tickets?viewerType=manager&viewerId=${encodeURIComponent(currentManagerId)}`
-      )
-    );
-    if (!response.ok) {
+    const [ticketsResponse, directDialogsResponse] = await Promise.all([
+      fetch(
+        apiUrl(
+          `/tickets?viewerType=manager&viewerId=${encodeURIComponent(currentManagerId)}`
+        )
+      ),
+      fetch(
+        apiUrl(
+          `/tickets/manager-supplier-dialogs?managerId=${encodeURIComponent(
+            currentManagerId
+          )}&managerName=${encodeURIComponent(currentManagerName)}`
+        )
+      ),
+    ]);
+
+    if (!ticketsResponse.ok) {
       throw new Error("Не удалось загрузить тикеты");
     }
-    return response.json();
+
+    const tickets = (await ticketsResponse.json()) as ApiTicket[];
+    const directDialogs = directDialogsResponse.ok
+      ? ((await directDialogsResponse.json()) as ApiTicket[])
+      : [];
+
+    return [...tickets, ...directDialogs].filter(
+      (ticket, index, items) => items.findIndex((item) => item.id === ticket.id) === index
+    );
   };
 
   const fetchManagerNotificationCandidates = async (): Promise<NotificationCandidate[]> => {
@@ -1869,6 +1893,16 @@ export default function Home() {
   );
 
   const filteredChats = chatData.filter((chat) => {
+    const isDirectSupplierDialog = chat.conversationMode === "direct_supplier";
+
+    if (filter === "supplier") {
+      return isDirectSupplierDialog;
+    }
+
+    if (isDirectSupplierDialog) {
+      return false;
+    }
+
     if (filter === "all") return true;
 
     if (filter === "in_progress") {
@@ -4332,6 +4366,17 @@ export default function Home() {
             </button>
 
             <button
+              onClick={() => setFilter("supplier")}
+              className={`rounded-full px-3 py-1.5 text-sm ${
+                filter === "supplier"
+                  ? "bg-[#0A84FF] text-white"
+                  : "bg-white text-[#6C6C70]"
+              }`}
+            >
+              Поставщик
+            </button>
+
+            <button
               onClick={() => setFilter("all")}
               className={`rounded-full px-3 py-1.5 text-sm ${
                 filter === "all"
@@ -4505,12 +4550,20 @@ export default function Home() {
                         setIsSupplierFormOpen(false);
                       }}
                       title={getChatClientDisplayName(chat)}
-                      identityKey={chat.clientId || chat.clientName || chat.id}
+                      identityKey={
+                        chat.conversationMode === "direct_supplier"
+                          ? chat.supplierId || chat.supplierName || chat.id
+                          : chat.clientId || chat.clientName || chat.id
+                      }
                       avatarColor={chat.avatarColor}
                       avatarEmoji={chat.avatarEmoji}
                       statusDotClassName={chatTone.dot}
                       preview={getChatPreview(chat)}
-                      managerLabel={getManagerDisplayName(chat)}
+                      managerLabel={
+                        chat.conversationMode === "direct_supplier"
+                          ? "Прямой чат"
+                          : getManagerDisplayName(chat)
+                      }
                       timeLabel={formatDialogActivityLabel(
                         chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
                       )}

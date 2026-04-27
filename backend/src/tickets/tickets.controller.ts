@@ -125,6 +125,22 @@ export class TicketsController {
     });
   }
 
+  @Get('manager-supplier-dialogs')
+  findManagerSupplierDialogs(
+    @Query('managerId') managerId?: string,
+    @Query('managerName') managerName?: string,
+  ) {
+    return this.ticketsService.findOrCreateManagerSupplierDialogs(
+      managerId,
+      managerName,
+    );
+  }
+
+  @Get('supplier-manager-dialogs')
+  findSupplierManagerDialogs(@Query('supplierId') supplierId?: string) {
+    return this.ticketsService.findSupplierManagerDialogs(supplierId);
+  }
+
   @Post(':id/typing')
   updateTyping(
     @Param('id') id: string,

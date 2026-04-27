@@ -138,6 +138,8 @@ type ApiTicket = {
   canonicalEmail?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
   status?: string;
@@ -266,6 +268,8 @@ type ChatItem = {
   canonicalEmail: string | null;
   supplierId: string | null;
   supplierName: string | null;
+  supplierCompanyName: string | null;
+  supplierContactName: string | null;
   avatarColor: string | null;
   avatarEmoji: string | null;
   messages: ChatMessage[];
@@ -912,6 +916,11 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   canonicalEmail: ticket.canonicalEmail?.trim() || null,
   supplierId: ticket.supplierId?.trim() || null,
   supplierName: ticket.supplierName?.trim() || null,
+  supplierCompanyName:
+    ticket.supplierCompanyName?.trim() ||
+    ticket.supplierName?.trim() ||
+    null,
+  supplierContactName: ticket.supplierContactName?.trim() || null,
   avatarColor: ticket.avatarColor ?? null,
   avatarEmoji: ticket.avatarEmoji ?? null,
   messages: Array.isArray(ticket.messages)
@@ -923,13 +932,50 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   pageViews: Array.isArray(ticket.pageViews) ? ticket.pageViews : [],
 });
 
-const getChatClientDisplayName = (
-  chat?: Pick<ChatItem, "clientId" | "clientName" | "tradePointName"> | null
+const getDirectSupplierCompanyName = (
+  chat?: Pick<ChatItem, "supplierCompanyName" | "supplierName" | "clientName" | "title"> | null
 ) =>
-  chat?.tradePointName?.trim() ||
+  chat?.supplierCompanyName?.trim() ||
+  chat?.supplierName?.trim() ||
   chat?.clientName?.trim() ||
-  chat?.clientId?.trim() ||
-  "Реселлер";
+  chat?.title?.trim() ||
+  "Поставщик";
+
+const getDirectSupplierContactName = (
+  chat?: Pick<ChatItem, "supplierContactName"> | null
+) => chat?.supplierContactName?.trim() || null;
+
+const getDirectSupplierDisplayName = (
+  chat?: Pick<
+    ChatItem,
+    "supplierCompanyName" | "supplierName" | "supplierContactName" | "clientName" | "title"
+  > | null
+) => {
+  const companyName = getDirectSupplierCompanyName(chat);
+  const contactName = getDirectSupplierContactName(chat);
+
+  return contactName ? `${companyName} / ${contactName}` : companyName;
+};
+
+const getChatClientDisplayName = (
+  chat?: Pick<
+    ChatItem,
+    | "clientId"
+    | "clientName"
+    | "tradePointName"
+    | "conversationMode"
+    | "supplierCompanyName"
+    | "supplierName"
+    | "supplierContactName"
+    | "title"
+  > | null
+) =>
+  chat?.conversationMode === "direct_supplier"
+    ? getDirectSupplierDisplayName(chat)
+    : chat?.tradePointName?.trim() ||
+      chat?.clientName?.trim() ||
+      chat?.clientId?.trim() ||
+      "Реселлер";
 
 const getDialogCycleBoundary = (chat: ChatItem) => {
   for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
@@ -4541,6 +4587,8 @@ export default function Home() {
                   const unreadCount = getUnreadCount(chat);
                   const chatTone = getChatTone(chat);
                   const isActive = activeChatId === chat.id;
+                  const isDirectSupplierDialog =
+                    chat.conversationMode === "direct_supplier";
                   const isIncomingQueueChat =
                     chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
 
@@ -4560,24 +4608,24 @@ export default function Home() {
                       }}
                       title={getChatClientDisplayName(chat)}
                       identityKey={
-                        chat.conversationMode === "direct_supplier"
+                        isDirectSupplierDialog
                           ? chat.supplierId || chat.supplierName || chat.id
                           : chat.clientId || chat.clientName || chat.id
                       }
                       avatarColor={chat.avatarColor}
                       avatarEmoji={chat.avatarEmoji}
-                      statusDotClassName={chatTone.dot}
+                      statusDotClassName={isDirectSupplierDialog ? undefined : chatTone.dot}
                       preview={getChatPreview(chat)}
                       managerLabel={
-                        chat.conversationMode === "direct_supplier"
+                        isDirectSupplierDialog
                           ? "Прямой чат"
                           : getManagerDisplayName(chat)
                       }
                       timeLabel={formatDialogActivityLabel(
                         chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
                       )}
-                      statusLabel={chatTone.label}
-                      statusBadgeClassName={chatTone.pill}
+                      statusLabel={isDirectSupplierDialog ? undefined : chatTone.label}
+                      statusBadgeClassName={isDirectSupplierDialog ? undefined : chatTone.pill}
                       unreadCount={unreadCount}
                       pinned={chat.pinned}
                       footerAction={
@@ -4677,7 +4725,7 @@ export default function Home() {
                   </span>
                 ) : null}
               </div>
-              {activeChat ? (
+              {activeChat && !isActiveDirectSupplierDialog ? (
                 <div className="mt-1 max-w-[620px]">
                   <PageTrackingCard
                     current={currentPageView}
@@ -4691,6 +4739,7 @@ export default function Home() {
 
             {activeChat ? (
               <div className="flex items-center gap-2">
+                {!isActiveDirectSupplierDialog ? (
                 <div className="flex items-center gap-2 rounded-[12px] bg-[#F2F2F5] p-1.5">
                   <div className="relative">
                     <button
@@ -4771,7 +4820,9 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+                ) : null}
 
+                {!isActiveDirectSupplierDialog ? (
                 <div className="relative">
                   {activeChat.rawStatus === "new" &&
                   !activeChat.assignedManagerId &&
@@ -4785,7 +4836,9 @@ export default function Home() {
                     </button>
                   ) : null}
                 </div>
+                ) : null}
 
+                {!isActiveDirectSupplierDialog ? (
                 <div className="relative">
                   <button
                     onClick={handleResolveTicket}
@@ -4820,6 +4873,7 @@ export default function Home() {
                     </div>
                   ) : null}
                 </div>
+                ) : null}
 
                 <div className="relative">
                   <button
@@ -5974,6 +6028,32 @@ export default function Home() {
 
         {activeChat ? (
         <aside className="flex h-full w-[320px] flex-col overflow-y-auto border-l border-[#E5E5EA] bg-[#FBFBFD] px-4 py-5">
+          {isActiveDirectSupplierDialog ? (
+            <div className="rounded-[24px] border border-[#E5E5EA] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
+                Поставщик
+              </p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Компания
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-[#1E1E1E]">
+                    {getDirectSupplierCompanyName(activeChat)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                    Сотрудник
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-[#1E1E1E]">
+                    {getDirectSupplierContactName(activeChat) || "Имя пока не указано"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="mb-4 rounded-[24px] border border-[#E5E5EA] bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs uppercase tracking-[0.14em] text-[#8E8E93]">
@@ -6361,6 +6441,8 @@ export default function Home() {
               </div>
             </div>
           </div>
+          </>
+          )}
 
         </aside>
         ) : null}

@@ -1889,7 +1889,7 @@ export class TicketsService {
     assignedManagerId?: string;
     supplierId?: string;
   }) {
-    return this.prisma.ticket.findMany({
+    const dialogs = await this.prisma.ticket.findMany({
       where: {
         conversationMode: 'direct_supplier',
         ...where,
@@ -1901,6 +1901,11 @@ export class TicketsService {
             content: true,
             senderType: true,
             senderProfileId: true,
+            senderProfile: {
+              select: {
+                fullName: true,
+              },
+            },
             replyToMessageId: true,
             replyToContent: true,
             messageType: true,
@@ -1911,6 +1916,116 @@ export class TicketsService {
         },
       },
       orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    const supplierIds = [
+      ...new Set(
+        dialogs
+          .map((dialog) => dialog.supplierId?.trim())
+          .filter((supplierId): supplierId is string => Boolean(supplierId)),
+      ),
+    ];
+    const supplierNames = [
+      ...new Set(
+        dialogs
+          .map((dialog) => dialog.supplierName?.trim())
+          .filter((supplierName): supplierName is string =>
+            Boolean(supplierName),
+          ),
+      ),
+    ];
+
+    const supplierProfiles =
+      supplierIds.length > 0 || supplierNames.length > 0
+        ? await this.prisma.profile.findMany({
+            where: {
+              isActive: true,
+              approvalStatus: {
+                not: 'rejected',
+              },
+              role: {
+                in: ['supplier', 'supplier_supervisor'],
+              },
+              OR: [
+                ...(supplierIds.length > 0
+                  ? [
+                      { id: { in: supplierIds } },
+                      { supplierId: { in: supplierIds } },
+                    ]
+                  : []),
+                ...(supplierNames.length > 0
+                  ? [{ companyName: { in: supplierNames } }]
+                  : []),
+              ],
+            },
+            select: {
+              id: true,
+              supplierId: true,
+              companyName: true,
+              fullName: true,
+              role: true,
+              createdAt: true,
+            },
+            orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
+          })
+        : [];
+
+    const profilesBySupplierScope = new Map<
+      string,
+      (typeof supplierProfiles)[number]
+    >();
+    const profilesByCompanyName = new Map<
+      string,
+      (typeof supplierProfiles)[number]
+    >();
+
+    for (const profile of supplierProfiles) {
+      const scopeKeys = [profile.supplierId?.trim(), profile.id.trim()].filter(
+        (scopeKey): scopeKey is string => Boolean(scopeKey),
+      );
+
+      for (const scopeKey of scopeKeys) {
+        if (!profilesBySupplierScope.has(scopeKey)) {
+          profilesBySupplierScope.set(scopeKey, profile);
+        }
+      }
+
+      const companyName = profile.companyName?.trim();
+
+      if (companyName && !profilesByCompanyName.has(companyName)) {
+        profilesByCompanyName.set(companyName, profile);
+      }
+    }
+
+    return dialogs.map((dialog) => {
+      const lastSupplierMessage = [...dialog.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.senderType === 'supplier' &&
+            message.senderProfile?.fullName?.trim(),
+        );
+      const supplierProfile =
+        (dialog.supplierId
+          ? profilesBySupplierScope.get(dialog.supplierId)
+          : null) ??
+        (dialog.supplierName
+          ? profilesByCompanyName.get(dialog.supplierName)
+          : null);
+      const supplierCompanyName =
+        dialog.supplierName?.trim() ||
+        supplierProfile?.companyName?.trim() ||
+        null;
+      const supplierContactName =
+        lastSupplierMessage?.senderProfile?.fullName?.trim() ||
+        supplierProfile?.fullName?.trim() ||
+        null;
+
+      return {
+        ...dialog,
+        supplierCompanyName,
+        supplierContactName,
+      };
     });
   }
 

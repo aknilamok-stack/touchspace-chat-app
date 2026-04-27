@@ -9,12 +9,12 @@ type DialogListCardProps = {
   identityKey: string;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
-  statusDotClassName: string;
+  statusDotClassName?: string;
   preview: string;
   managerLabel: string;
   timeLabel?: string;
-  statusLabel: string;
-  statusBadgeClassName: string;
+  statusLabel?: string;
+  statusBadgeClassName?: string;
   unreadCount?: number;
   pinned?: boolean;
   footerAction?: ReactNode;
@@ -68,9 +68,11 @@ export function DialogListCard({
           >
             <span className="translate-y-[1px]">{avatar.emoji}</span>
           </div>
-          <span
-            className={`absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${statusDotClassName}`}
-          />
+          {statusDotClassName ? (
+            <span
+              className={`absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${statusDotClassName}`}
+            />
+          ) : null}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -85,11 +87,13 @@ export function DialogListCard({
 
           <div className="mt-1.5 flex items-center justify-between gap-3">
             <p className="min-w-0 truncate text-[13px] leading-5 text-[#5F6572]">{preview}</p>
-            <span
-              className={`shrink-0 inline-flex min-h-7 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-medium leading-4 ${statusBadgeClassName}`}
-            >
-              {statusLabel}
-            </span>
+            {statusLabel ? (
+              <span
+                className={`shrink-0 inline-flex min-h-7 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-medium leading-4 ${statusBadgeClassName ?? ""}`}
+              >
+                {statusLabel}
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-1.5 flex items-center justify-between gap-3">

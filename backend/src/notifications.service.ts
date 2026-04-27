@@ -781,8 +781,48 @@ export class NotificationsService {
         Boolean(candidate),
       );
 
+    const recentlyClaimedByOther = tickets
+      .filter(
+        (ticket) =>
+          ticket.assignedManagerId &&
+          ticket.assignedManagerId !== profile.id &&
+          ticket.claimedAt &&
+          Date.now() - ticket.claimedAt.getTime() <= 45_000,
+      )
+      .map((ticket) => {
+        const latestUnreadMessage = ticket.messages[0];
+        const createdAt =
+          ticket.claimedAt ?? latestUnreadMessage?.createdAt ?? new Date();
+        const isDirectSupplierDialog =
+          ticket.conversationMode === 'direct_supplier';
+
+        return {
+          notificationKey: `ticket-claimed:${ticket.id}:${createdAt.toISOString()}`,
+          ticketId: ticket.id,
+          title:
+            (isDirectSupplierDialog
+              ? ticket.supplierName?.trim()
+              : ticket.title?.trim() || ticket.clientName?.trim()) || 'Клиент',
+          clientName: isDirectSupplierDialog
+            ? ticket.supplierName?.trim() || null
+            : ticket.clientName?.trim() || null,
+          tradePointName: isDirectSupplierDialog
+            ? ticket.supplierName?.trim() || null
+            : ticket.tradePointName?.trim() || null,
+          messageId: latestUnreadMessage?.id ?? `claimed:${ticket.id}`,
+          messageText: latestUnreadMessage?.content ?? 'Чат уже взят в работу',
+          createdAt,
+          avatarColor: ticket.avatarColor,
+          avatarEmoji: ticket.avatarEmoji,
+          scopeStatus: 'claimed_by_other_recently' as const,
+          waitSeconds: 0,
+          assignedManagerId: ticket.assignedManagerId,
+          assignedManagerName: ticket.assignedManagerName,
+        };
+      });
+
     return {
-      items: items.sort(
+      items: [...items, ...recentlyClaimedByOther].sort(
         (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
       ),
     };

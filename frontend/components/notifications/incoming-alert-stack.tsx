@@ -5,7 +5,7 @@ type IncomingAlertItem = {
   title: string;
   subtitle?: string | null;
   preview: string;
-  tone?: "green" | "amber" | "blue";
+  tone?: "green" | "amber" | "blue" | "gray";
   avatarEmoji?: string | null;
   avatarColor?: string | null;
   primaryLabel?: string;
@@ -25,6 +25,10 @@ const toneStyles = {
   blue: {
     card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
     footer: "border-[#C1DBF7] bg-white/30",
+  },
+  gray: {
+    card: "bg-[linear-gradient(180deg,#F3F4F6_0%,#E5E7EB_100%)] text-[#374151] shadow-[0_26px_60px_rgba(75,85,99,0.18)]",
+    footer: "border-[#D1D5DB] bg-white/30",
   },
 } as const;
 
@@ -50,7 +54,7 @@ export function IncomingAlertStack({
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex w-[min(420px,calc(100vw-24px))] flex-col gap-3">
       {items.map((item) => {
-        const tone = toneStyles[item.tone ?? "green"];
+        const tone = toneStyles[item.tone ?? "blue"];
 
         return (
           <section

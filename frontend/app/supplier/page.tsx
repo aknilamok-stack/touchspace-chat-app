@@ -1478,6 +1478,7 @@ export default function SupplierPage() {
                     item.message.displayContent,
                     item.message.replyToContent,
                     item.message.senderName,
+                    ...(item.message.attachments?.map((attachment) => attachment.name) ?? []),
                   ]
                     .filter(Boolean)
                     .join(" ");
@@ -1487,7 +1488,23 @@ export default function SupplierPage() {
           .map((item) =>
             item.kind === "request" ? `request:${item.request.id}` : item.message.id
           )
-      : [];
+      : normalizedChatSearchQuery && selectedManagerTicket
+        ? directManagerMessages
+            .filter((message) => {
+              const searchableText = [
+                message.displayContent,
+                message.replyToContent,
+                message.senderName,
+                ...(message.attachments?.map((attachment) => attachment.name) ?? []),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+
+              return searchableText.includes(normalizedChatSearchQuery);
+            })
+            .map((message) => message.id)
+        : [];
   const normalizedActiveChatSearchMatchIndex =
     supplierChatSearchMatchIds.length > 0
       ? ((activeChatSearchMatchIndex % supplierChatSearchMatchIds.length) +
@@ -2491,9 +2508,27 @@ export default function SupplierPage() {
     setSelectedFiles([]);
     setChatSearchQuery("");
     setActiveChatSearchMatchIndex(0);
-  }, [selectedRequestId]);
+  }, [selectedRequestId, selectedManagerTicketId]);
 
   useEffect(() => {
+    if (activeSupplierSection === "manager") {
+      if (!selectedManagerTicket?.id) {
+        setReplyMap({});
+        setReplyTarget(null);
+        setChatSearchQuery("");
+        setActiveChatSearchMatchIndex(0);
+        return;
+      }
+
+      setReplyMap(readReplyMap(selectedManagerTicket.id));
+      setReplyTarget(null);
+      setChatSearchQuery("");
+      setActiveChatSearchMatchIndex(0);
+      setHoveredMessageId("");
+      setHighlightedReplyMessageId("");
+      return;
+    }
+
     if (!selectedRequest?.ticketId) {
       setReplyMap({});
       setReplyTarget(null);
@@ -2508,7 +2543,7 @@ export default function SupplierPage() {
     setActiveChatSearchMatchIndex(0);
     setHoveredMessageId("");
     setHighlightedReplyMessageId("");
-  }, [selectedRequest?.ticketId]);
+  }, [activeSupplierSection, selectedManagerTicket?.id, selectedRequest?.ticketId]);
 
   useEffect(() => {
     if (supplierChatSearchMatchIds.length === 0) {
@@ -3724,7 +3759,10 @@ export default function SupplierPage() {
 
   const handleSendReply = async () => {
     if (activeSupplierSection === "manager") {
-      if (!selectedManagerTicket || !replyText.trim()) {
+      const hasTextToSend = Boolean(replyText.trim());
+      const hasAttachmentToSend = selectedFiles.length > 0;
+
+      if (!selectedManagerTicket || (!hasTextToSend && !hasAttachmentToSend)) {
         return;
       }
 
@@ -3732,26 +3770,78 @@ export default function SupplierPage() {
       setReplyError("");
 
       try {
-        const response = await fetch(apiUrl("/messages"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ticketId: selectedManagerTicket.id,
-            content: replyText,
-            senderType: "supplier",
-            transport: "chat",
-            senderId: supplierProfileId,
-            senderName: resolvedSupplierEmployeeName,
-          }),
-        });
+        const createdMessages: TicketMessage[] = [];
 
-        if (!response.ok) {
-          throw new Error("Не удалось отправить сообщение менеджеру");
+        if (hasTextToSend) {
+          const response = await fetch(apiUrl("/messages"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ticketId: selectedManagerTicket.id,
+              content: replyText,
+              senderType: "supplier",
+              transport: "chat",
+              senderId: supplierProfileId,
+              senderName: resolvedSupplierEmployeeName,
+              replyToMessageId: replyTarget?.id,
+              replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Не удалось отправить сообщение менеджеру");
+          }
+
+          const createdMessage = (await response.json()) as TicketMessageApi;
+          createdMessages.push(formatTicketMessage(createdMessage));
+        }
+
+        if (hasAttachmentToSend) {
+          const formData = new FormData();
+          selectedFiles.forEach((file) => {
+            formData.append("files", file);
+          });
+          formData.append("ticketId", selectedManagerTicket.id);
+          formData.append("senderType", "supplier");
+          formData.append("senderId", supplierProfileId);
+          formData.append("senderName", resolvedSupplierEmployeeName);
+          if (replyTarget?.id) {
+            formData.append("replyToMessageId", replyTarget.id);
+            formData.append("replyToContent", getReplyPreviewContent(replyTarget));
+          }
+
+          const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!attachmentResponse.ok) {
+            throw new Error("Не удалось отправить вложение менеджеру");
+          }
+
+          const createdAttachmentMessage = (await attachmentResponse.json()) as TicketMessageApi;
+          createdMessages.push(formatTicketMessage(createdAttachmentMessage));
+        }
+
+        if (replyTarget && createdMessages.length > 0) {
+          const nextReplyMap = {
+            ...replyMap,
+            [createdMessages[0].id]: {
+              replyToId: replyTarget.id,
+              replyToContent: getReplyPreviewContent(replyTarget),
+            },
+          };
+
+          setReplyMap(nextReplyMap);
+          writeReplyMap(selectedManagerTicket.id, nextReplyMap);
         }
 
         setReplyText("");
+        setReplyTarget(null);
+        setAttachmentName("");
+        setSelectedFiles([]);
         const tickets = await fetchDirectManagerTickets();
         setDirectManagerTickets(tickets);
       } catch (error) {
@@ -4316,73 +4406,406 @@ export default function SupplierPage() {
         <section className="relative flex min-w-0 flex-1 overflow-hidden bg-[#F7F7FA]">
           {activeSupplierSection === "manager" && selectedManagerTicket ? (
             <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
-              <div className="border-b border-[#E5E5EA] bg-white px-6 py-5">
-                <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                  {selectedManagerTicket.assignedManagerName?.trim() || "Менеджер"}
-                </p>
-                <p className="mt-1 text-[13px] text-[#8E8E93]">
-                  Прямой чат с менеджером без клиента
-                </p>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
+                <div className="min-w-0">
+                  <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
+                    {selectedManagerTicket.assignedManagerName?.trim() || "Менеджер"}
+                  </p>
+                  <p className="mt-1 text-[13px] text-[#8E8E93]">
+                    Прямой чат с менеджером без клиента
+                  </p>
+                </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
-                {directManagerMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.senderType === "supplier" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[72%] rounded-[22px] px-4 py-3 text-sm leading-6 shadow-[0_8px_20px_rgba(15,23,42,0.05)] ${
-                        message.senderType === "supplier"
-                          ? "bg-[#0A84FF] text-white"
-                          : "bg-white text-[#1E1E1E]"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap">{message.displayContent || message.content}</p>
-                      <p
-                        className={`mt-1 text-[11px] ${
-                          message.senderType === "supplier" ? "text-white/70" : "text-[#8E8E93]"
+              <div
+                ref={messagesViewportRef}
+                onScroll={updateSupplierScrollState}
+                className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+              >
+                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
+                  {directManagerMessages.map((message, index) => {
+                    const previousMessage = directManagerMessages[index - 1];
+                    const shouldShowDateSeparator =
+                      !previousMessage ||
+                      getMessageDayKey(previousMessage.createdAt) !==
+                        getMessageDayKey(message.createdAt);
+                    const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
+                    const isCurrentSearchMatch =
+                      currentSupplierChatSearchMatchId === message.id;
+                    const isOutgoing = message.senderType === "supplier";
+
+                    return (
+                      <div
+                        key={message.id}
+                        ref={(element) => {
+                          messageElementsRef.current[message.id] = element;
+                        }}
+                        className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
+                          highlightedReplyMessageId === message.id
+                            ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                            : isCurrentSearchMatch
+                              ? "bg-[#FFF4D6] shadow-[0_10px_24px_rgba(255,193,7,0.18)]"
+                              : isSearchMatched
+                                ? "bg-[#FFF9EA]"
+                                : "bg-transparent"
                         }`}
                       >
-                        {formatTimeLabel(message.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {directManagerMessages.length === 0 ? (
-                  <p className="text-sm text-[#8E8E93]">Сообщений пока нет.</p>
-                ) : null}
+                        {shouldShowDateSeparator ? (
+                          <div className="flex justify-center py-1">
+                            <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
+                              {formatMessageDayLabel(message.createdAt)}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
+                          <div
+                            className={`group relative inline-block w-fit max-w-[calc(88%+40px)] ${
+                              isOutgoing ? "pl-10 -ml-10" : "pr-10 -mr-10"
+                            }`}
+                            onMouseEnter={() => showReplyAction(message.id)}
+                            onMouseLeave={hideReplyAction}
+                          >
+                            <div
+                              className={`absolute top-2 z-10 transition ${
+                                hoveredMessageId === message.id
+                                  ? "opacity-100"
+                                  : "pointer-events-none opacity-0"
+                              } ${isOutgoing ? "left-0" : "right-0"}`}
+                            >
+                              <button
+                                onClick={() => {
+                                  setReplyTarget(message);
+                                  composerTextareaRef.current?.focus();
+                                }}
+                                onMouseEnter={() => showReplyAction(message.id)}
+                                onMouseLeave={hideReplyAction}
+                                className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#8E8E93] shadow-sm transition hover:bg-[#F5F8FF] hover:text-[#0A84FF]"
+                                aria-label="Ответить"
+                              >
+                                <svg
+                                  viewBox="0 0 20 20"
+                                  fill="none"
+                                  className="h-4 w-4"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    d="M8.25 5.5L4.5 9.25L8.25 13"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M5.25 9.25H11.25C13.8734 9.25 16 11.3766 16 14V14.5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+
+                            <div
+                              className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
+                                isOutgoing
+                                  ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                  : "bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
+                              }`}
+                            >
+                              {message.replyToContent || replyMap[message.id] ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    focusReplyMessage(
+                                      message.replyToMessageId ??
+                                        replyMap[message.id]?.replyToId ??
+                                        ""
+                                    )
+                                  }
+                                  className={`mb-2 block min-w-0 max-w-full rounded-[16px] px-2.5 py-2 text-left transition ${
+                                    isOutgoing ? "hover:bg-white/10" : "hover:bg-[#F2F7FF]"
+                                  }`}
+                                >
+                                  <p
+                                    className={`text-[11px] font-semibold ${
+                                      isOutgoing ? "text-white/78" : "text-[#0A84FF]"
+                                    }`}
+                                  >
+                                    Ответ
+                                  </p>
+                                  <p
+                                    className={`mt-1 line-clamp-2 text-[13px] leading-[18px] ${
+                                      isOutgoing ? "text-white/82" : "text-[#5A6270]"
+                                    }`}
+                                  >
+                                    {message.replyToContent ?? replyMap[message.id]?.replyToContent}
+                                  </p>
+                                </button>
+                              ) : null}
+                              {message.attachments && message.attachments.length > 0 ? (
+                                <ChatAttachmentList
+                                  attachments={message.attachments}
+                                  tone={isOutgoing ? "outgoing" : "incoming"}
+                                />
+                              ) : (
+                                <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
+                                  {renderHighlightedText(
+                                    message.displayContent || message.content,
+                                    chatSearchQuery
+                                  )}
+                                </p>
+                              )}
+                              <p
+                                className={`absolute bottom-[10px] right-4 whitespace-nowrap text-[12px] leading-none ${
+                                  isOutgoing ? "text-white/65" : "text-[#8E8E93]"
+                                }`}
+                              >
+                                {formatTimeLabel(message.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {directManagerMessages.length === 0 ? (
+                    <p className="text-sm text-[#8E8E93]">Сообщений пока нет.</p>
+                  ) : null}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
 
-              <div className="border-t border-[#E5E5EA] bg-white px-6 py-4">
-                {replyError ? <p className="mb-2 text-sm text-red-500">{replyError}</p> : null}
-                <div className="flex items-end gap-3 rounded-[24px] border border-[#E3E5EA] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                  <textarea
-                    value={replyText}
-                    onChange={(event) => setReplyText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSendReply();
-                      }
-                    }}
-                    rows={1}
-                    className="min-h-[40px] flex-1 resize-none bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
-                    placeholder="Напишите сообщение менеджеру..."
-                  />
-                  <button
-                    onClick={handleSendReply}
-                    disabled={isSendingReply || !replyText.trim()}
-                    className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:bg-[#0077F2] disabled:opacity-45"
-                  >
-                    <Image
-                      src="/icons/otpravit.svg"
-                      alt="Отправить"
-                      width={19}
-                      height={19}
-                      className="h-[19px] w-[19px]"
+              <div className="border-t border-[#E5E5EA] bg-white px-6 py-5">
+                <div className="mx-auto w-full max-w-3xl">
+                  {attachmentName ? (
+                    <div className="mb-3 flex">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
+                        <span className="max-w-[240px] truncate">{attachmentName}</span>
+                        <button
+                          onClick={() => {
+                            setAttachmentName("");
+                            setSelectedFiles([]);
+                          }}
+                          className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {replyTarget ? (
+                    <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => focusReplyMessage(replyTarget.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="text-xs font-semibold text-[#0A84FF]">Ответ на сообщение</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-[#5A6270]">
+                          {getReplyPreviewContent(replyTarget)}
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => setReplyTarget(null)}
+                        className="shrink-0 text-sm text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-sm font-medium text-white shadow-[0_8px_16px_rgba(10,132,255,0.18)]"
+                    >
+                      Чат
+                    </button>
+                    <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
+                      <div className="relative min-w-[220px] flex-1">
+                        <svg
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8E8E93]"
+                          aria-hidden="true"
+                        >
+                          <circle
+                            cx="9"
+                            cy="9"
+                            r="5.75"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                          />
+                          <path
+                            d="M13.5 13.5L16.5 16.5"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <input
+                          value={chatSearchQuery}
+                          onChange={(event) => {
+                            setChatSearchQuery(event.target.value);
+                            setActiveChatSearchMatchIndex(0);
+                          }}
+                          placeholder="Поиск по чату"
+                          className="w-full rounded-full border border-[#E3E5EA] bg-white py-2 pl-10 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                        />
+                      </div>
+                      {chatSearchQuery.trim() ? (
+                        <>
+                          <span className="shrink-0 text-xs font-medium text-[#8E8E93]">
+                            {supplierChatSearchMatchIds.length
+                              ? `${normalizedActiveChatSearchMatchIndex + 1}/${supplierChatSearchMatchIds.length}`
+                              : "0"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => moveChatSearchMatch(-1)}
+                            disabled={supplierChatSearchMatchIds.length === 0}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                            aria-label="Предыдущее совпадение"
+                          >
+                            ‹
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveChatSearchMatch(1)}
+                            disabled={supplierChatSearchMatchIds.length === 0}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F2F7] text-[#6C6C70] transition hover:bg-[#E9EEF8] disabled:opacity-40"
+                            aria-label="Следующее совпадение"
+                          >
+                            ›
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+                    <textarea
+                      ref={composerTextareaRef}
+                      value={replyText}
+                      onChange={(event) => setReplyText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleSendReply();
+                        }
+                      }}
+                      rows={1}
+                      className="min-h-[40px] max-h-[132px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                      placeholder="Напишите сообщение менеджеру..."
                     />
-                  </button>
+                    <div className="relative flex items-center gap-2">
+                      {showEmojiPicker ? (
+                        <div className="absolute bottom-[calc(100%+14px)] right-10 z-20 w-[300px] rounded-[20px] border border-[#E4E6EB] bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                          <div className="mb-3 px-1 text-[13px] font-semibold text-[#1E1E1E]">
+                            Смайлики
+                          </div>
+                          <div className="grid grid-cols-5 gap-2">
+                            {EMOJI_REACTIONS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={() => {
+                                  setReplyText((prev) => `${prev}${emoji}`);
+                                  setShowEmojiPicker(false);
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FBFBFD] text-xl transition hover:bg-[#EEF6FF]"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <button
+                        onClick={() => {
+                          setShowEmojiPicker((prev) => !prev);
+                          setShowQuickReplies(false);
+                        }}
+                        onMouseEnter={() => setHoveredComposerAction("emoji")}
+                        onMouseLeave={() => setHoveredComposerAction(null)}
+                        className={`relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition ${
+                          showEmojiPicker ? "bg-[#E5F0FF]" : "bg-transparent hover:bg-[#E5F0FF]"
+                        }`}
+                      >
+                        <Image
+                          src="/icons/smail.svg"
+                          alt="Смайлики"
+                          width={18}
+                          height={18}
+                          className="h-[18px] w-[18px]"
+                        />
+                      </button>
+
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        onMouseEnter={() => setHoveredComposerAction("file")}
+                        onMouseLeave={() => setHoveredComposerAction(null)}
+                        className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl transition hover:bg-[#E5F0FF]"
+                      >
+                        <Image
+                          src="/icons/skrepka.svg"
+                          alt="Вложить файл"
+                          width={18}
+                          height={18}
+                          className="h-[18px] w-[18px]"
+                        />
+                      </button>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept={CHAT_ATTACHMENT_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          if (files.length === 0) {
+                            setSelectedFiles([]);
+                            setAttachmentName("");
+                            event.target.value = "";
+                            return;
+                          }
+
+                          const validationMessage = validateChatAttachmentFiles(files);
+
+                          if (validationMessage) {
+                            setReplyError(validationMessage);
+                            setSelectedFiles([]);
+                            setAttachmentName("");
+                            event.target.value = "";
+                            return;
+                          }
+
+                          setReplyError("");
+                          setSelectedFiles(files);
+                          setAttachmentName(getChatAttachmentSelectionSummary(files));
+                          event.target.value = "";
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={handleSendReply}
+                      disabled={isSendingReply || (!replyText.trim() && selectedFiles.length === 0)}
+                      className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#0A84FF] shadow-[0_12px_22px_rgba(10,132,255,0.24)] transition hover:bg-[#0077F2] disabled:opacity-45"
+                    >
+                      <Image
+                        src="/icons/otpravit.svg"
+                        alt="Отправить"
+                        width={19}
+                        height={19}
+                        className="h-[19px] w-[19px]"
+                      />
+                    </button>
+                  </div>
+                  {replyError ? <p className="mt-3 text-sm text-red-500">{replyError}</p> : null}
                 </div>
               </div>
             </section>

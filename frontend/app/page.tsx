@@ -1208,6 +1208,8 @@ export default function Home() {
       ? chatSearchMatchIds[normalizedActiveChatSearchMatchIndex]
       : null;
   const chatSearchMatchIdSet = new Set(chatSearchMatchIds);
+  const isActiveDirectSupplierDialog =
+    activeChat?.conversationMode === "direct_supplier";
   const activeSupplierRequest =
     activeChat?.supplierRequests.find(
       (request) => !["closed", "cancelled", "resolved"].includes(request.status)
@@ -1243,6 +1245,7 @@ export default function Home() {
     currentPageViewAgeMs <= CLIENT_ON_SITE_ACTIVITY_TTL_MS;
   const shouldShowClientOfflineHint =
     Boolean(activeChat) &&
+    !isActiveDirectSupplierDialog &&
     sendMode === "chat" &&
     !isLoadingPageViews &&
     !pageViewsError &&
@@ -3113,10 +3116,16 @@ export default function Home() {
     setHoveredEditMessageId("");
   }, [activeChatId]);
 
+  useEffect(() => {
+    if (isActiveDirectSupplierDialog && sendMode === "email") {
+      setSendMode("chat");
+    }
+  }, [isActiveDirectSupplierDialog, sendMode]);
+
   const handleSendMessage = async () => {
     const hasTextToSend = Boolean(messageText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
-    const isEmailMode = sendMode === "email";
+    const isEmailMode = sendMode === "email" && !isActiveDirectSupplierDialog;
 
     if (editTarget) {
       if (!hasTextToSend || !activeChatId) {
@@ -5486,17 +5495,19 @@ export default function Home() {
                 >
                   Чат
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSendMode("email")}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                    sendMode === "email"
-                      ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
-                      : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
-                  }`}
-                >
-                  Email
-                </button>
+                {!isActiveDirectSupplierDialog ? (
+                  <button
+                    type="button"
+                    onClick={() => setSendMode("email")}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                      sendMode === "email"
+                        ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
+                        : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
+                    }`}
+                  >
+                    Email
+                  </button>
+                ) : null}
                 {sendMode === "chat" ? (
                   <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
                     <div className="relative min-w-[220px] flex-1">
@@ -5589,7 +5600,7 @@ export default function Home() {
                     ) : null}
                   </div>
                 ) : null}
-                {sendMode === "email" ? (
+                {!isActiveDirectSupplierDialog && sendMode === "email" ? (
                   <>
                     <span className="ml-1 text-sm font-medium text-[#9A6B2E]">
                       Получатель:

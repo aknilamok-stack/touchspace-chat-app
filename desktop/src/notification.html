@@ -13,7 +13,7 @@
         --card-width: 420px;
         --card-radius: 24px;
         --footer-radius: 16px;
-        --card-bg: linear-gradient(180deg, #2994ff 0%, #2994ff 100%);
+        --card-bg: #0A84FF;
         --card-shadow: none;
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
@@ -67,30 +67,10 @@
         user-select: none;
       }
 
-      .tone-green {
-        --card-bg: linear-gradient(180deg, #2994ff 0%, #2994ff 100%);
-        --card-shadow: none;
-        --text-primary: #ffffff;
-        --text-subtle: rgba(255, 255, 255, 0.9);
-        --text-meta: rgba(255, 255, 255, 0.8);
-        --footer-bg: rgba(0, 0, 0, 0.1);
-        --footer-border: rgba(255, 255, 255, 0.12);
-        --action-hover: rgba(255, 255, 255, 0.1);
-      }
-
-      .tone-amber {
-        --card-bg: linear-gradient(180deg, #fff5de 0%, #ffe8b6 100%);
-        --card-shadow: none;
-        --text-primary: #4f3410;
-        --text-subtle: rgba(79, 52, 16, 0.9);
-        --text-meta: rgba(79, 52, 16, 0.8);
-        --footer-bg: rgba(255, 255, 255, 0.28);
-        --footer-border: #e9d0a0;
-        --action-hover: rgba(255, 255, 255, 0.45);
-      }
-
+      .tone-green,
+      .tone-amber,
       .tone-blue {
-        --card-bg: linear-gradient(180deg, #2994ff 0%, #2994ff 100%);
+        --card-bg: #0A84FF;
         --card-shadow: none;
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
@@ -98,6 +78,17 @@
         --footer-bg: rgba(0, 0, 0, 0.1);
         --footer-border: rgba(255, 255, 255, 0.12);
         --action-hover: rgba(255, 255, 255, 0.1);
+      }
+
+      .tone-gray {
+        --card-bg: #F2F3F5;
+        --card-shadow: none;
+        --text-primary: #394150;
+        --text-subtle: rgba(57, 65, 80, 0.9);
+        --text-meta: rgba(57, 65, 80, 0.78);
+        --footer-bg: rgba(255, 255, 255, 0.32);
+        --footer-border: rgba(148, 163, 184, 0.45);
+        --action-hover: rgba(255, 255, 255, 0.55);
       }
 
       .card-button {
@@ -185,14 +176,9 @@
         margin: 16px 0 0;
         font-size: 15px;
         line-height: 1.45;
-        color: rgba(255, 255, 255, 0.95);
-        -webkit-line-clamp: 2;
-      }
-
-      .tone-amber .message,
-      .tone-blue .message {
         color: var(--text-primary);
         opacity: 0.95;
+        -webkit-line-clamp: 2;
       }
 
       .meta {
@@ -265,7 +251,8 @@
 
       let currentUrl = "";
 
-      const toneClassNames = ["tone-green", "tone-amber", "tone-blue"];
+      const toneClassNames = ["tone-green", "tone-amber", "tone-blue", "tone-gray"];
+      const knownTones = new Set(["green", "amber", "blue", "gray"]);
 
       const resolveAvatar = (title) => {
         const normalized = String(title || "").trim();
@@ -274,12 +261,7 @@
 
       const setTone = (tone) => {
         cardElement.classList.remove(...toneClassNames);
-        if (tone === "amber" || tone === "blue") {
-          cardElement.classList.add(`tone-${tone}`);
-          return;
-        }
-
-        cardElement.classList.add("tone-green");
+        cardElement.classList.add(`tone-${knownTones.has(tone) ? tone : "blue"}`);
       };
 
       window.touchspaceDesktopNotification.onData((payload) => {
@@ -317,15 +299,27 @@
       primarySurfaceElement.tabIndex = 0;
       primarySurfaceElement.setAttribute("role", "button");
 
-      primaryButton.addEventListener("click", () => {
+      const stopNotificationAction = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+
+      primaryButton.addEventListener("click", (event) => {
+        stopNotificationAction(event);
         void window.touchspaceDesktopNotification.act("primary", currentUrl);
       });
 
-      secondaryButton.addEventListener("click", () => {
+      secondaryButton.addEventListener("click", (event) => {
+        stopNotificationAction(event);
         void window.touchspaceDesktopNotification.act("secondary", currentUrl);
       });
 
-      closeButton.addEventListener("click", () => {
+      ["pointerdown", "pointerup", "mousedown", "mouseup"].forEach((eventName) => {
+        closeButton.addEventListener(eventName, stopNotificationAction);
+      });
+
+      closeButton.addEventListener("click", (event) => {
+        stopNotificationAction(event);
         void window.touchspaceDesktopNotification.act("close", currentUrl);
       });
     </script>

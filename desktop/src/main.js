@@ -594,7 +594,10 @@ app.whenReady().then(() => {
           ? payload.avatarColor.trim()
           : "",
       tone:
-        payload.tone === "green" || payload.tone === "amber" || payload.tone === "blue"
+        payload.tone === "green" ||
+        payload.tone === "amber" ||
+        payload.tone === "blue" ||
+        payload.tone === "gray"
           ? payload.tone
           : "blue",
     });

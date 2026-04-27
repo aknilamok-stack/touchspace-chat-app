@@ -1380,7 +1380,7 @@ export default function Home() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: options?.tone ?? "green",
+        tone: "blue",
       });
       return;
     }
@@ -2635,6 +2635,10 @@ export default function Home() {
 
   const visibleFloatingNotifications = notificationCandidates
     .filter((candidate) => {
+      if (candidate.scopeStatus === "claimed_by_other_recently") {
+        return false;
+      }
+
       const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
       return hiddenUntil <= notificationNow;
     })
@@ -2681,23 +2685,20 @@ export default function Home() {
     }
 
     notificationCandidates.forEach((candidate) => {
+      if (candidate.scopeStatus === "claimed_by_other_recently") {
+        return;
+      }
+
       const notificationTitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
-          ? "Чат уже взят в работу"
-          : candidate.tradePointName?.trim() ||
-            candidate.title ||
-            candidate.clientName ||
-            "Неизвестная торговая точка";
+        candidate.tradePointName?.trim() ||
+        candidate.title ||
+        candidate.clientName ||
+        "Неизвестная торговая точка";
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
-      const notificationSubtitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
-          ? candidate.assignedManagerName
-            ? `Уже ведёт ${candidate.assignedManagerName}`
-            : "Чат уже забрал другой менеджер"
-          : null;
+      const notificationSubtitle = null;
       const notificationMeta =
         candidate.scopeStatus === "missed_unclaimed"
           ? "Пропущенное сообщение более 10 минут"
@@ -2709,13 +2710,11 @@ export default function Home() {
                 ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
                 : null;
       const notificationPrimaryLabel =
-        candidate.scopeStatus === "claimed_by_other_recently"
-          ? "Открыть"
-          : candidate.scopeStatus === "new_unclaimed" ||
-              candidate.scopeStatus === "missed_unclaimed" ||
-              candidate.scopeStatus === "rescue_queue"
-            ? "Взять в работу"
-            : "Ответить";
+        candidate.scopeStatus === "new_unclaimed" ||
+        candidate.scopeStatus === "missed_unclaimed" ||
+        candidate.scopeStatus === "rescue_queue"
+          ? "Взять в работу"
+          : "Ответить";
       const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
@@ -2739,13 +2738,7 @@ export default function Home() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone:
-          candidate.scopeStatus === "missed_unclaimed" ||
-          candidate.scopeStatus === "rescue_queue"
-            ? "amber"
-            : candidate.scopeStatus === "claimed_by_other_recently"
-              ? "blue"
-              : "green",
+        tone: "blue",
       });
     });
   }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);
@@ -4474,13 +4467,7 @@ export default function Home() {
                     ? `Чат уже взят в работу менеджером ${candidate.assignedManagerName}`
                     : "Чат уже взят в работу другим менеджером"
                   : candidate.messageText,
-              tone:
-                candidate.scopeStatus === "missed_unclaimed" ||
-                candidate.scopeStatus === "rescue_queue"
-                  ? "amber"
-                  : candidate.scopeStatus === "claimed_by_other_recently"
-                    ? "blue"
-                    : "green",
+              tone: "blue",
               avatarEmoji: candidate.avatarEmoji,
               avatarColor: candidate.avatarColor,
               metaLabel:

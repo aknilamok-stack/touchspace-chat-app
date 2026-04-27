@@ -15,12 +15,12 @@ type IncomingAlertItem = {
 
 const toneStyles = {
   green: {
-    card: "bg-[linear-gradient(180deg,#239965_0%,#1E8B5B_100%)] text-white shadow-[0_26px_60px_rgba(7,94,52,0.32)]",
-    footer: "border-white/12 bg-black/10",
+    card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
+    footer: "border-[#C1DBF7] bg-white/30",
   },
   amber: {
-    card: "bg-[linear-gradient(180deg,#FFF5DE_0%,#FFE8B6_100%)] text-[#4F3410] shadow-[0_26px_60px_rgba(191,132,35,0.28)]",
-    footer: "border-[#E9D0A0] bg-white/28",
+    card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
+    footer: "border-[#C1DBF7] bg-white/30",
   },
   blue: {
     card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",

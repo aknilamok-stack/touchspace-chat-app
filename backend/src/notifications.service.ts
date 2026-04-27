@@ -643,7 +643,9 @@ export class NotificationsService {
           },
           messages: {
             some: {
-              senderType: 'client',
+              senderType: {
+                in: ['client', 'supplier'],
+              },
             },
           },
         },
@@ -656,6 +658,8 @@ export class NotificationsService {
           status: true,
           clientName: true,
           tradePointName: true,
+          supplierName: true,
+          conversationMode: true,
           assignedManagerId: true,
           assignedManagerName: true,
           claimRequiredAt: true,
@@ -668,7 +672,9 @@ export class NotificationsService {
           avatarEmoji: true,
           messages: {
             where: {
-              senderType: 'client',
+              senderType: {
+                in: ['client', 'supplier'],
+              },
             },
             orderBy: {
               createdAt: 'desc',
@@ -677,6 +683,7 @@ export class NotificationsService {
             select: {
               id: true,
               content: true,
+              senderType: true,
               createdAt: true,
             },
           },
@@ -694,12 +701,26 @@ export class NotificationsService {
           return null;
         }
 
+        const isDirectSupplierDialog =
+          ticket.conversationMode === 'direct_supplier';
+
+        if (!ticket.assignedManagerId && latestUnreadMessage.senderType !== 'client') {
+          return null;
+        }
+
         const candidate: ManagerNotificationCandidate = {
           notificationKey: `ticket:${ticket.id}:${latestUnreadMessage.id}`,
           ticketId: ticket.id,
-          title: ticket.title?.trim() || ticket.clientName?.trim() || 'Клиент',
-          clientName: ticket.clientName?.trim() || null,
-          tradePointName: ticket.tradePointName?.trim() || null,
+          title:
+            (isDirectSupplierDialog
+              ? ticket.supplierName?.trim()
+              : ticket.title?.trim() || ticket.clientName?.trim()) || 'Клиент',
+          clientName: isDirectSupplierDialog
+            ? ticket.supplierName?.trim() || null
+            : ticket.clientName?.trim() || null,
+          tradePointName: isDirectSupplierDialog
+            ? ticket.supplierName?.trim() || null
+            : ticket.tradePointName?.trim() || null,
           messageId: latestUnreadMessage.id,
           messageText: latestUnreadMessage.content,
           createdAt: latestUnreadMessage.createdAt,
@@ -739,16 +760,15 @@ export class NotificationsService {
 
         if (
           ticket.assignedManagerId === profile.id &&
-          ticket.lastClientMessageAt &&
           (!ticket.lastManagerReplyAt ||
-            ticket.lastClientMessageAt > ticket.lastManagerReplyAt)
+            latestUnreadMessage.createdAt > ticket.lastManagerReplyAt)
         ) {
           return {
             ...candidate,
             scopeStatus: 'owned_active',
             waitSeconds: Math.max(
               Math.floor(
-                (Date.now() - ticket.lastClientMessageAt.getTime()) / 1000,
+                (Date.now() - latestUnreadMessage.createdAt.getTime()) / 1000,
               ),
               0,
             ),
@@ -761,39 +781,8 @@ export class NotificationsService {
         Boolean(candidate),
       );
 
-    const recentlyClaimedByOther = tickets
-      .filter(
-        (ticket) =>
-          ticket.assignedManagerId &&
-          ticket.assignedManagerId !== profile.id &&
-          ticket.claimedAt &&
-          Date.now() - ticket.claimedAt.getTime() <= 45_000,
-      )
-      .map((ticket) => {
-        const latestUnreadMessage = ticket.messages[0];
-        const createdAt =
-          ticket.claimedAt ?? latestUnreadMessage?.createdAt ?? new Date();
-
-        return {
-          notificationKey: `ticket-claimed:${ticket.id}:${createdAt.toISOString()}`,
-          ticketId: ticket.id,
-          title: ticket.title?.trim() || ticket.clientName?.trim() || 'Клиент',
-          clientName: ticket.clientName?.trim() || null,
-          tradePointName: ticket.tradePointName?.trim() || null,
-          messageId: latestUnreadMessage?.id ?? `claimed:${ticket.id}`,
-          messageText: latestUnreadMessage?.content ?? 'Чат уже взят в работу',
-          createdAt,
-          avatarColor: ticket.avatarColor,
-          avatarEmoji: ticket.avatarEmoji,
-          scopeStatus: 'claimed_by_other_recently' as const,
-          waitSeconds: 0,
-          assignedManagerId: ticket.assignedManagerId,
-          assignedManagerName: ticket.assignedManagerName,
-        };
-      });
-
     return {
-      items: [...items, ...recentlyClaimedByOther].sort(
+      items: items.sort(
         (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
       ),
     };

@@ -1176,6 +1176,34 @@ export default function SupplierPage() {
   const selectedManagerTicket =
     directManagerTickets.find((ticket) => ticket.id === selectedManagerTicketId) ?? null;
   const directManagerMessages = selectedManagerTicket?.messages?.map(formatTicketMessage) ?? [];
+  const latestUnreadDirectManagerMessage =
+    [...directManagerMessages]
+      .reverse()
+      .find(
+        (message) =>
+          message.senderType === "manager" &&
+          message.status !== "read"
+      ) ?? null;
+  const clientSectionUnreadCount = Object.values(ticketMessagesByTicketId).reduce(
+    (total, messages) =>
+      total +
+      messages.filter(
+        (message) =>
+          (message.senderType === "manager" || message.senderType === "client") &&
+          message.status !== "read"
+      ).length,
+    0
+  );
+  const managerSectionUnreadCount = directManagerTickets.reduce(
+    (total, ticket) =>
+      total +
+      (ticket.messages ?? []).filter(
+        (message) =>
+          message.senderType === "manager" &&
+          message.status !== "read"
+      ).length,
+    0
+  );
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
   const selectedTicketRequests = selectedRequest
     ? supplierRequests
@@ -3250,6 +3278,61 @@ export default function SupplierPage() {
   ]);
 
   useEffect(() => {
+    if (
+      !authReady ||
+      activeSupplierSection !== "manager" ||
+      !selectedManagerTicket?.id ||
+      !latestUnreadDirectManagerMessage
+    ) {
+      return;
+    }
+
+    if (typeof document !== "undefined") {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      if (typeof document.hasFocus === "function" && !document.hasFocus()) {
+        return;
+      }
+    }
+
+    const lastMarkedMessageId =
+      lastMarkedIncomingMessageIdRef.current[selectedManagerTicket.id];
+
+    if (lastMarkedMessageId === latestUnreadDirectManagerMessage.id) {
+      return;
+    }
+
+    lastMarkedIncomingMessageIdRef.current[selectedManagerTicket.id] =
+      latestUnreadDirectManagerMessage.id;
+
+    markTicketMessagesRead(selectedManagerTicket.id)
+      .then((messages) => {
+        setDirectManagerTickets((currentTickets) =>
+          currentTickets.map((ticket) =>
+            ticket.id === selectedManagerTicket.id
+              ? {
+                  ...ticket,
+                  messages,
+                }
+              : ticket
+          )
+        );
+      })
+      .catch((error) => {
+        console.error("Ошибка отметки прямого чата как прочитанного:", error);
+        delete lastMarkedIncomingMessageIdRef.current[selectedManagerTicket.id];
+      });
+  }, [
+    activeSupplierSection,
+    authReady,
+    latestUnreadDirectManagerMessage,
+    markTicketMessagesRead,
+    selectedManagerTicket?.id,
+  ]);
+
+  useEffect(() => {
     if (!authReady) {
       return;
     }
@@ -4224,13 +4307,18 @@ export default function SupplierPage() {
                 <button
                   type="button"
                   onClick={() => setActiveSupplierSection("requests")}
-                  className={`rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                  className={`relative inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
                     activeSupplierSection === "requests"
                       ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
                       : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
                   }`}
                 >
-                  Клиенты
+                  <span>Клиенты</span>
+                  {clientSectionUnreadCount > 0 ? (
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-[0_6px_12px_rgba(10,132,255,0.24)]">
+                      {clientSectionUnreadCount > 99 ? "99+" : clientSectionUnreadCount}
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   type="button"
@@ -4238,13 +4326,18 @@ export default function SupplierPage() {
                     setActiveSupplierSection("manager");
                     setSelectedRequestId("");
                   }}
-                  className={`rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                  className={`relative inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
                     activeSupplierSection === "manager"
                       ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
                       : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
                   }`}
                 >
-                  Менеджер
+                  <span>Менеджер</span>
+                  {managerSectionUnreadCount > 0 ? (
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-[0_6px_12px_rgba(10,132,255,0.24)]">
+                      {managerSectionUnreadCount > 99 ? "99+" : managerSectionUnreadCount}
+                    </span>
+                  ) : null}
                 </button>
               </div>
             </div>

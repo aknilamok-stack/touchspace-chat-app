@@ -15,16 +15,16 @@ type IncomingAlertItem = {
 
 const toneStyles = {
   green: {
-    card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
-    footer: "border-[#C1DBF7] bg-white/30",
+    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+    footer: "border-white/20 bg-[#0874E5]",
   },
   amber: {
-    card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
-    footer: "border-[#C1DBF7] bg-white/30",
+    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+    footer: "border-white/20 bg-[#0874E5]",
   },
   blue: {
-    card: "bg-[linear-gradient(180deg,#EAF4FF_0%,#D8EBFF_100%)] text-[#123B63] shadow-[0_26px_60px_rgba(10,132,255,0.22)]",
-    footer: "border-[#C1DBF7] bg-white/30",
+    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+    footer: "border-white/20 bg-[#0874E5]",
   },
   gray: {
     card: "bg-[linear-gradient(180deg,#F3F4F6_0%,#E5E7EB_100%)] text-[#374151] shadow-[0_26px_60px_rgba(75,85,99,0.18)]",
@@ -51,6 +51,14 @@ export function IncomingAlertStack({
     return null;
   }
 
+  const stopNotificationAction = (event: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex w-[min(420px,calc(100vw-24px))] flex-col gap-3">
       {items.map((item) => {
@@ -66,12 +74,13 @@ export function IncomingAlertStack({
               <button
                 type="button"
                 onClick={(event) => {
-                  event.stopPropagation();
+                  stopNotificationAction(event);
                   onClose(item.id);
                 }}
-                onMouseDown={(event) => {
-                  event.stopPropagation();
-                }}
+                onMouseDown={stopNotificationAction}
+                onMouseUp={stopNotificationAction}
+                onPointerDown={stopNotificationAction}
+                onPointerUp={stopNotificationAction}
                 className="text-[36px] leading-none opacity-90 transition hover:opacity-100"
                 aria-label="Закрыть уведомление"
               >

@@ -1076,6 +1076,8 @@ export default function Home() {
   const [isClaimingIncoming, setIsClaimingIncoming] = useState(false);
   const [isResolvingTicket, setIsResolvingTicket] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isJoinActiveDialogConfirmOpen, setIsJoinActiveDialogConfirmOpen] =
+    useState(false);
   const [selectedInvitedManagerId, setSelectedInvitedManagerId] = useState(
     BASE_MANAGERS[0].id as string
   );
@@ -4091,6 +4093,7 @@ export default function Home() {
       await refreshNotificationCandidates();
       applyMessagesToTicket(activeChatId, messages);
       setFilter("in_progress");
+      setIsJoinActiveDialogConfirmOpen(false);
       setToast({
         message: "Вы подключились к диалогу",
         tone: "success",
@@ -5301,9 +5304,9 @@ export default function Home() {
               ) : activeChat && !canCurrentManagerWriteToChat(activeChat) ? (
                 <div className="space-y-3">
                   <button
-                    onClick={handleJoinActiveDialog}
+                    onClick={() => setIsJoinActiveDialogConfirmOpen(true)}
                     disabled={isInvitingManager || !managerSupervisorPowerEnabled}
-                    className="flex min-h-[72px] w-full items-center justify-center rounded-[28px] border border-[#DCE7FF] bg-white px-6 py-5 text-base font-semibold text-[#0A84FF] shadow-[0_14px_32px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-[#F7FAFF] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                    className="flex min-h-[72px] w-full items-center justify-center rounded-[28px] border border-[#D1D1D6] bg-[#F2F2F7] px-6 py-5 text-base font-semibold text-[#6C6C70] shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:bg-[#E9E9EF] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                   >
                     {isInvitingManager ? "Подключаем..." : "Начать диалог"}
                   </button>
@@ -6400,6 +6403,51 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {isJoinActiveDialogConfirmOpen && activeChat ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(30,30,30,0.28)] p-6">
+          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
+                  Подключение к диалогу
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-[#1E1E1E]">
+                  Чат уже ведёт другой менеджер
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsJoinActiveDialogConfirmOpen(false)}
+                className="rounded-full bg-[#F2F2F7] px-3 py-2 text-sm text-[#6C6C70]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-[#5A6270]">
+              Сейчас этот диалог ведёт{" "}
+              {activeChat.assignedManagerName?.trim() || "другой менеджер"}. Вы уверены, что
+              хотите присоединиться к чату и получить возможность писать?
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setIsJoinActiveDialogConfirmOpen(false)}
+                className="rounded-2xl border border-[#D1D1D6] bg-white px-4 py-3 text-sm text-[#6C6C70]"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleJoinActiveDialog}
+                disabled={isInvitingManager || !managerSupervisorPowerEnabled}
+                className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {isInvitingManager ? "Подключаем..." : "Присоединиться"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isCreateClientModalOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(30,30,30,0.28)] p-6">

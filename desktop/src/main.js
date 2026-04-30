@@ -23,6 +23,7 @@ const desktopSessionPartition = `persist:touchspace-workspace:${new URL(startUrl
   .toLowerCase()}`;
 const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
+const windowsAppUserModelId = "com.touchspace.workspace";
 
 let mainWindow = null;
 let notificationWindow = null;
@@ -36,6 +37,10 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
+}
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(windowsAppUserModelId);
 }
 
 function getDesktopAuthSessionPath() {
@@ -209,6 +214,14 @@ function ensureDockIconVisible() {
   app.dock.setIcon(windowIconPath);
 }
 
+function keepMainWindowInTaskbar() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.setSkipTaskbar(false);
+}
+
 function getOverlayNotificationBounds() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const workArea = display.workArea;
@@ -230,6 +243,7 @@ function hideOverlayNotificationWindow() {
   }
 
   notificationWindow.hide();
+  keepMainWindowInTaskbar();
 }
 
 function focusMainWindow(targetUrl) {
@@ -350,6 +364,7 @@ function showOverlayNotificationWindow(payload) {
   pendingNotificationPayload = payload;
   notificationWindowPendingShow = true;
   ensureDockIconVisible();
+  keepMainWindowInTaskbar();
   const overlay = createNotificationWindow();
 
   if (!overlay) {
@@ -359,6 +374,7 @@ function showOverlayNotificationWindow(payload) {
   const bounds = getOverlayNotificationBounds();
   overlay.setBounds(bounds);
   sendOverlayNotificationPayload();
+  keepMainWindowInTaskbar();
   requestDesktopAttention(Math.max(lastUnreadAttentionCount + 1, 1));
   return true;
 }
@@ -479,6 +495,7 @@ function createWindow() {
     title: "TouchSpace Workspace",
     backgroundColor: "#eff4ff",
     show: false,
+    skipTaskbar: false,
     autoHideMenuBar: false,
     icon: windowIconPath,
     webPreferences: {
@@ -492,6 +509,7 @@ function createWindow() {
   });
 
   Menu.setApplicationMenu(createMenu());
+  keepMainWindowInTaskbar();
   registerEditingShortcuts(mainWindow);
 
   mainWindow.once("ready-to-show", () => {
@@ -641,6 +659,7 @@ app.whenReady().then(() => {
 
     notificationWindowPendingShow = false;
     notificationWindow.showInactive();
+    keepMainWindowInTaskbar();
   });
 
   ipcMain.on("desktop:auth-storage:get", (event) => {

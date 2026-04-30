@@ -2111,7 +2111,7 @@ export default function SupplierPage() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "blue" | "green";
+      tone?: "blue" | "green" | "amber";
     }
   ) => {
     const targetUrl = options?.requestId
@@ -2202,8 +2202,10 @@ export default function SupplierPage() {
 
   const emitSupplierCandidateNotification = useCallback(
     (candidate: SupplierNotificationCandidate) => {
+      const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
+      const isDirectManagerDialog = candidate.kind === "direct";
       const notificationTitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Запрос уже взят в работу"
           : candidate.kind === "request"
           ? `Новый запрос: ${candidate.title || "поставщик"}`
@@ -2225,7 +2227,7 @@ export default function SupplierPage() {
               ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
               : null;
       const notificationPrimaryLabel =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Открыть"
           : candidate.scopeStatus === "new_unclaimed" ||
               candidate.scopeStatus === "missed_unclaimed"
@@ -2244,7 +2246,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: "blue",
+        tone: isClaimedByOther ? "amber" : isDirectManagerDialog ? "green" : "blue",
       });
     },
     [showDesktopNotification]
@@ -3430,8 +3432,9 @@ export default function SupplierPage() {
 
     effectiveNotificationCandidates.forEach((candidate) => {
       const isDirectManagerDialog = candidate.kind === "direct";
+      const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
       const notificationTitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Запрос уже взят в работу"
           : isDirectManagerDialog
             ? `Менеджер: ${candidate.title || "диалог"}`
@@ -3455,7 +3458,7 @@ export default function SupplierPage() {
               ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
               : null;
       const notificationPrimaryLabel =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Открыть"
           : candidate.scopeStatus === "new_unclaimed" ||
               candidate.scopeStatus === "missed_unclaimed"
@@ -3465,7 +3468,8 @@ export default function SupplierPage() {
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
-        (!isDirectManagerDialog &&
+        (!isClaimedByOther &&
+          !isDirectManagerDialog &&
           Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
 
       if (!shouldNotify) {
@@ -3485,7 +3489,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: isDirectManagerDialog ? "green" : "blue",
+        tone: isClaimedByOther ? "amber" : isDirectManagerDialog ? "green" : "blue",
       });
     });
   }, [effectiveNotificationCandidates, authReady]);

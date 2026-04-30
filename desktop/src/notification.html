@@ -89,6 +89,17 @@
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
+      .tone-amber {
+        --card-bg: #FFCC00;
+        --card-shadow: none;
+        --text-primary: #3A2A00;
+        --text-subtle: rgba(58, 42, 0, 0.88);
+        --text-meta: rgba(58, 42, 0, 0.72);
+        --footer-bg: rgba(0, 0, 0, 0.08);
+        --footer-border: rgba(0, 0, 0, 0.12);
+        --action-hover: rgba(255, 255, 255, 0.22);
+      }
+
       .card-button {
         border: 0;
         background: transparent;
@@ -255,8 +266,10 @@
       };
 
       const setTone = (tone) => {
-        cardElement.classList.remove("tone-blue", "tone-green");
-        cardElement.classList.add(tone === "green" ? "tone-green" : "tone-blue");
+        cardElement.classList.remove("tone-blue", "tone-green", "tone-amber");
+        cardElement.classList.add(
+          tone === "green" ? "tone-green" : tone === "amber" ? "tone-amber" : "tone-blue"
+        );
       };
 
       window.touchspaceDesktopNotification.onData((payload) => {

@@ -1102,6 +1102,7 @@ export default function SupplierPage() {
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const defaultDocumentTitleRef = useRef("");
+  const visibleNotificationRequestIdsRef = useRef<Set<string>>(new Set());
   const titleFlashIntervalRef = useRef<number | null>(null);
 
   const selectedRequest =
@@ -1828,7 +1829,7 @@ export default function SupplierPage() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "blue";
+      tone?: "blue" | "amber";
     }
   ) => {
     const targetUrl = options?.requestId
@@ -2459,9 +2460,36 @@ export default function SupplierPage() {
   const visibleFloatingNotifications = notificationCandidates
     .filter((candidate) => {
       const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
-      return hiddenUntil <= notificationNow;
+      if (hiddenUntil > notificationNow) {
+        return false;
+      }
+
+      if (candidate.scopeStatus !== "claimed_by_other_recently") {
+        return true;
+      }
+
+      const originalNotificationKey = candidate.requestId
+        ? `supplier-request:${candidate.requestId}`
+        : "";
+      const originalHiddenUntil = originalNotificationKey
+        ? dismissedNotificationUntil[originalNotificationKey] ?? 0
+        : 0;
+
+      return (
+        Boolean(candidate.requestId) &&
+        visibleNotificationRequestIdsRef.current.has(candidate.requestId as string) &&
+        originalHiddenUntil <= notificationNow
+      );
     })
     .slice(0, 3);
+
+  useEffect(() => {
+    visibleNotificationRequestIdsRef.current = new Set(
+      visibleFloatingNotifications
+        .map((candidate) => candidate.requestId)
+        .filter((requestId): requestId is string => Boolean(requestId))
+    );
+  }, [visibleFloatingNotifications]);
 
   const dismissFloatingNotification = (notificationKey: string) => {
     setDismissedNotificationUntil((current) => ({
@@ -2518,8 +2546,25 @@ export default function SupplierPage() {
     }
 
     notificationCandidates.forEach((candidate) => {
+      const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
+      const originalNotificationKey = candidate.requestId
+        ? `supplier-request:${candidate.requestId}`
+        : "";
+      const originalHiddenUntil = originalNotificationKey
+        ? dismissedNotificationUntil[originalNotificationKey] ?? 0
+        : 0;
+
+      if (
+        isClaimedByOther &&
+        (!candidate.requestId ||
+          !visibleNotificationRequestIdsRef.current.has(candidate.requestId) ||
+          originalHiddenUntil > notificationNow)
+      ) {
+        return;
+      }
+
       const notificationTitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Запрос уже взят в работу"
           : candidate.kind === "request"
           ? `Новый запрос: ${candidate.title || "поставщик"}`
@@ -2539,7 +2584,7 @@ export default function SupplierPage() {
               ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
               : null;
       const notificationPrimaryLabel =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Открыть"
           : candidate.scopeStatus === "new_unclaimed" ||
               candidate.scopeStatus === "missed_unclaimed"
@@ -2549,7 +2594,8 @@ export default function SupplierPage() {
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
-        Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+        (!isClaimedByOther &&
+          Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
 
       if (!shouldNotify) {
         return;
@@ -2568,10 +2614,16 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: "blue",
+        tone: isClaimedByOther ? "amber" : "blue",
       });
     });
-  }, [notificationCandidates, authReady, supplierSupervisorPowerEnabled]);
+  }, [
+    dismissedNotificationUntil,
+    notificationCandidates,
+    notificationNow,
+    authReady,
+    supplierSupervisorPowerEnabled,
+  ]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -3562,7 +3614,10 @@ export default function SupplierPage() {
                           ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
                           : "Сейчас этот запрос ведёт другой сотрудник поставщика"
                         : candidate.messageText,
-                    tone: "blue",
+                    tone:
+                      candidate.scopeStatus === "claimed_by_other_recently"
+                        ? "amber"
+                        : "blue",
                     avatarEmoji: candidate.avatarEmoji,
                     avatarColor: candidate.avatarColor,
                     metaLabel:

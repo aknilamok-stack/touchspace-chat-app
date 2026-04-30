@@ -16,7 +16,7 @@ export type DesktopShellNotificationPayload = {
   header?: string;
   avatarEmoji?: string | null;
   avatarColor?: string | null;
-  tone?: "green" | "amber" | "blue" | "gray";
+  tone?: "green" | "amber" | "blue";
 };
 
 declare global {

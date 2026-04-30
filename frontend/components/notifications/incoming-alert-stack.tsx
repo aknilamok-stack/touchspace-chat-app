@@ -5,7 +5,7 @@ type IncomingAlertItem = {
   title: string;
   subtitle?: string | null;
   preview: string;
-  tone?: "blue" | "green";
+  tone?: "blue" | "green" | "amber";
   avatarEmoji?: string | null;
   avatarColor?: string | null;
   primaryLabel?: string;
@@ -21,6 +21,10 @@ const notificationTone = {
   green: {
     card: "bg-[#34C759] text-white shadow-[0_26px_60px_rgba(52,199,89,0.28)]",
     footer: "border-white/20 bg-[#2EAD4F]",
+  },
+  amber: {
+    card: "bg-[#FFCC00] text-[#3A2A00] shadow-[0_26px_60px_rgba(255,204,0,0.28)]",
+    footer: "border-black/10 bg-[#E6B800]",
   },
 } as const;
 

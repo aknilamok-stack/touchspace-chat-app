@@ -1140,6 +1140,7 @@ export default function Home() {
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const titleFlashIntervalRef = useRef<number | null>(null);
+  const visibleNotificationTicketIdsRef = useRef<Set<string>>(new Set());
   const defaultDocumentTitleRef = useRef("TouchSpace");
   const managerIsNearBottomRef = useRef(true);
   const previousActiveChatIdRef = useRef("");
@@ -1360,7 +1361,7 @@ export default function Home() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "blue" | "green";
+      tone?: "blue" | "green" | "amber";
     }
   ) => {
     const targetUrl =
@@ -2637,9 +2638,29 @@ export default function Home() {
   const visibleFloatingNotifications = notificationCandidates
     .filter((candidate) => {
       const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
-      return hiddenUntil <= notificationNow;
+      if (hiddenUntil > notificationNow) {
+        return false;
+      }
+
+      if (candidate.scopeStatus !== "claimed_by_other_recently") {
+        return true;
+      }
+
+      const originalNotificationKey = `ticket:${candidate.ticketId}:${candidate.messageId}`;
+      const originalHiddenUntil = dismissedNotificationUntil[originalNotificationKey] ?? 0;
+
+      return (
+        visibleNotificationTicketIdsRef.current.has(candidate.ticketId) &&
+        originalHiddenUntil <= notificationNow
+      );
     })
     .slice(0, 3);
+
+  useEffect(() => {
+    visibleNotificationTicketIdsRef.current = new Set(
+      visibleFloatingNotifications.map((candidate) => candidate.ticketId)
+    );
+  }, [visibleFloatingNotifications]);
 
   const dismissFloatingNotification = (notificationKey: string) => {
     const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
@@ -2688,8 +2709,20 @@ export default function Home() {
 
     notificationCandidates.forEach((candidate) => {
       const isDirectSupplierDialog = candidate.conversationMode === "direct_supplier";
+      const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
+      const originalNotificationKey = `ticket:${candidate.ticketId}:${candidate.messageId}`;
+      const originalHiddenUntil = dismissedNotificationUntil[originalNotificationKey] ?? 0;
+
+      if (
+        isClaimedByOther &&
+        (!visibleNotificationTicketIdsRef.current.has(candidate.ticketId) ||
+          originalHiddenUntil > notificationNow)
+      ) {
+        return;
+      }
+
       const notificationTitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Чат уже взят в работу"
           : isDirectSupplierDialog
             ? candidate.tradePointName?.trim() || candidate.title || "Поставщик"
@@ -2702,7 +2735,7 @@ export default function Home() {
           ? `${candidate.messageText.slice(0, 80)}...`
           : candidate.messageText;
       const notificationSubtitle =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? candidate.assignedManagerName
             ? `Уже ведёт ${candidate.assignedManagerName}`
             : "Чат уже забрал другой менеджер"
@@ -2718,7 +2751,7 @@ export default function Home() {
                 ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
                 : null;
       const notificationPrimaryLabel =
-        candidate.scopeStatus === "claimed_by_other_recently"
+        isClaimedByOther
           ? "Открыть"
           : candidate.scopeStatus === "new_unclaimed" ||
               candidate.scopeStatus === "missed_unclaimed" ||
@@ -2729,7 +2762,8 @@ export default function Home() {
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
-        (!isDirectSupplierDialog &&
+        (!isClaimedByOther &&
+          !isDirectSupplierDialog &&
           Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
 
       if (!shouldNotify) {
@@ -2749,10 +2783,16 @@ export default function Home() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: isDirectSupplierDialog ? "green" : "blue",
+        tone: isClaimedByOther ? "amber" : isDirectSupplierDialog ? "green" : "blue",
       });
     });
-  }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);
+  }, [
+    dismissedNotificationUntil,
+    notificationCandidates,
+    notificationNow,
+    authReady,
+    managerSupervisorPowerEnabled,
+  ]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -4478,7 +4518,12 @@ export default function Home() {
                     ? `Чат уже взят в работу менеджером ${candidate.assignedManagerName}`
                     : "Чат уже взят в работу другим менеджером"
                   : candidate.messageText,
-              tone: candidate.conversationMode === "direct_supplier" ? "green" : "blue",
+              tone:
+                candidate.scopeStatus === "claimed_by_other_recently"
+                  ? "amber"
+                  : candidate.conversationMode === "direct_supplier"
+                    ? "green"
+                    : "blue",
               avatarEmoji: candidate.avatarEmoji,
               avatarColor: candidate.avatarColor,
               metaLabel:

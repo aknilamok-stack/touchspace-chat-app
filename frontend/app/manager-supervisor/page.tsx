@@ -39,7 +39,6 @@ import { playNotificationSound } from "@/lib/notification-sound";
 import {
   isDesktopShell,
   shouldShowDesktopBackgroundNotification,
-  showDesktopShellNotification,
 } from "@/lib/runtime";
 
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
@@ -1370,22 +1369,15 @@ export default function Home() {
       options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
 
     if (isDesktopShell()) {
-      if (!shouldShowDesktopBackgroundNotification()) {
+      if (
+        !shouldShowDesktopBackgroundNotification() ||
+        typeof window === "undefined" ||
+        !("Notification" in window)
+      ) {
         return;
       }
 
-      await showDesktopShellNotification({
-        title,
-        body,
-        url: targetUrl,
-        subtitle: options?.subtitle ?? null,
-        metaLabel: options?.metaLabel ?? null,
-        primaryLabel: options?.primaryLabel,
-        secondaryLabel: options?.secondaryLabel,
-        avatarEmoji: options?.avatarEmoji ?? null,
-        avatarColor: options?.avatarColor ?? null,
-        tone: options?.tone ?? "blue",
-      });
+      new Notification(title, { body });
       return;
     }
 
@@ -4510,8 +4502,7 @@ export default function Home() {
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
-          {!isDesktopShell() ? (
-            <IncomingAlertStack
+          <IncomingAlertStack
             items={visibleFloatingNotifications.map((candidate) => ({
               id: candidate.notificationKey,
               title:
@@ -4562,8 +4553,7 @@ export default function Home() {
             onClose={dismissFloatingNotification}
             onSecondary={dismissFloatingNotification}
             onPrimary={handlePrimaryFloatingNotification}
-            />
-          ) : null}
+          />
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
             <div className="min-w-0">
               <div className="flex items-center gap-2">

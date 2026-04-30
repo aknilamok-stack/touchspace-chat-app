@@ -430,23 +430,11 @@ const getChatPreview = (chat: ChatItem) => {
 };
 
 const getUnreadCount = (chat: ChatItem) => {
-  let unreadCount = 0;
-
-  for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
-    const message = chat.messages[index];
-
-    if (message.from === "manager" || message.from === "system" || message.from === "ai") {
-      break;
-    }
-
-    if (message.status === "read") {
-      break;
-    }
-
-    unreadCount += 1;
-  }
-
-  return unreadCount;
+  return chat.messages.filter(
+    (message) =>
+      (message.from === "client" || message.from === "supplier") &&
+      message.status !== "read"
+  ).length;
 };
 
 const getLastNonSystemMessage = (chat: ChatItem) => {
@@ -2067,13 +2055,13 @@ export default function Home() {
     return searchHaystack.includes(normalizedQuery);
   });
 
-  const incomingCount = chatData.filter((chat) => {
-    return chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
-  }).length;
+  const incomingUnreadCount = chatData
+    .filter((chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled)
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
 
-  const myCount = chatData.filter((chat) => {
-    return isChatMine(chat) && !chat.aiEnabled;
-  }).length;
+  const myUnreadCount = chatData
+    .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>
@@ -4410,7 +4398,7 @@ export default function Home() {
               }`}
             >
               <span>Входящие</span>
-              {incomingCount > 0 && (
+              {incomingUnreadCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "incoming"
@@ -4418,7 +4406,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {incomingCount}
+                  {incomingUnreadCount}
                 </span>
               )}
             </button>
@@ -4432,7 +4420,7 @@ export default function Home() {
               }`}
             >
               <span>Мои</span>
-              {myCount > 0 && (
+              {myUnreadCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "in_progress"
@@ -4440,7 +4428,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {myCount}
+                  {myUnreadCount}
                 </span>
               )}
             </button>

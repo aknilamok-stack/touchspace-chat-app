@@ -371,6 +371,10 @@ const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
   return "Поставщик";
 };
 
+const getDirectManagerDisplayName = (ticket?: Pick<Ticket, "assignedManagerName"> | null) =>
+  ticket?.assignedManagerName?.trim() ||
+  "Менеджер";
+
 const isSameLocalDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&
   left.getMonth() === right.getMonth() &&
@@ -1496,15 +1500,12 @@ export default function SupplierPage() {
           notificationKey: `supplier-direct:${ticket.id}:${latestManagerMessage.id}`,
           ticketId: ticket.id,
           requestId: null,
-          title:
-            ticket.assignedManagerName?.trim() ||
-            ticket.title?.trim() ||
-            "Диалог с менеджером",
+          title: getDirectManagerDisplayName(ticket),
           messageId: latestManagerMessage.id,
           messageText: latestManagerMessage.content,
           createdAt: latestManagerMessage.createdAt,
           senderType: "manager",
-          tradePointName: ticket.assignedManagerName?.trim() || null,
+          tradePointName: getDirectManagerDisplayName(ticket),
           avatarColor: ticket.avatarColor ?? null,
           avatarEmoji: ticket.avatarEmoji ?? null,
           scopeStatus: "owned_active",
@@ -4419,7 +4420,7 @@ export default function SupplierPage() {
                     key={ticket.id}
                     active={selectedManagerTicketId === ticket.id}
                     onClick={() => setSelectedManagerTicketId(ticket.id)}
-                    title={ticket.assignedManagerName?.trim() || "Менеджер"}
+                    title={getDirectManagerDisplayName(ticket)}
                     identityKey={ticket.assignedManagerId || ticket.id}
                     preview={ticket.messages?.at(-1)?.content?.trim() || "Прямой чат без клиента"}
                     managerLabel="Прямой чат"
@@ -4572,11 +4573,16 @@ export default function SupplierPage() {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                 <div className="min-w-0">
                   <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                    {selectedManagerTicket.assignedManagerName?.trim() || "Менеджер"}
+                    {getDirectManagerDisplayName(selectedManagerTicket)}
                   </p>
-                  <p className="mt-1 text-[13px] text-[#8E8E93]">
-                    Прямой чат с менеджером без клиента
-                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="rounded-full bg-[#EAF3FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
+                      Менеджер
+                    </span>
+                    <p className="text-[13px] text-[#8E8E93]">
+                      Прямой чат без клиента
+                    </p>
+                  </div>
                 </div>
               </div>
 

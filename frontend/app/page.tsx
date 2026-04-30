@@ -952,7 +952,7 @@ const getDirectSupplierCompanyName = (
   chat?.supplierCompanyName?.trim() ||
   chat?.supplierName?.trim() ||
   chat?.clientName?.trim() ||
-  chat?.title?.trim() ||
+  chat?.title?.replace(/^Поставщик:\s*/i, "").trim() ||
   "Поставщик";
 
 const getDirectSupplierContactName = (

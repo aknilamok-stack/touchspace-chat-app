@@ -1935,6 +1935,13 @@ export class TicketsService {
           ),
       ),
     ];
+    const managerIds = [
+      ...new Set(
+        dialogs
+          .map((dialog) => dialog.assignedManagerId?.trim())
+          .filter((managerId): managerId is string => Boolean(managerId)),
+      ),
+    ];
 
     const supplierProfiles =
       supplierIds.length > 0 || supplierNames.length > 0
@@ -1970,6 +1977,24 @@ export class TicketsService {
             orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
           })
         : [];
+    const managerProfiles =
+      managerIds.length > 0
+        ? await this.prisma.profile.findMany({
+            where: {
+              id: {
+                in: managerIds,
+              },
+              isActive: true,
+              role: {
+                in: ['manager', 'manager_supervisor'],
+              },
+            },
+            select: {
+              id: true,
+              fullName: true,
+            },
+          })
+        : [];
 
     const profilesBySupplierScope = new Map<
       string,
@@ -1979,6 +2004,9 @@ export class TicketsService {
       string,
       (typeof supplierProfiles)[number]
     >();
+    const managerProfilesById = new Map(
+      managerProfiles.map((profile) => [profile.id, profile]),
+    );
 
     for (const profile of supplierProfiles) {
       const scopeKeys = [profile.supplierId?.trim(), profile.id.trim()].filter(
@@ -2021,9 +2049,16 @@ export class TicketsService {
         lastSupplierMessage?.senderProfile?.fullName?.trim() ||
         supplierProfile?.fullName?.trim() ||
         null;
+      const assignedManagerName =
+        dialog.assignedManagerName?.trim() ||
+        (dialog.assignedManagerId
+          ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()
+          : null) ||
+        null;
 
       return {
         ...dialog,
+        assignedManagerName,
         supplierCompanyName,
         supplierContactName,
       };

@@ -15,8 +15,8 @@ type IncomingAlertItem = {
 
 const notificationTone = {
   blue: {
-    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#0874E5]",
+    card: "border-[#0A84FF] bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+    footer: "border-white/20 bg-[#006FD6]",
   },
   green: {
     card: "bg-[#34C759] text-white shadow-[0_26px_60px_rgba(52,199,89,0.28)]",
@@ -63,7 +63,7 @@ export function IncomingAlertStack({
         return (
           <section
             key={item.id}
-            className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${tone.card}`}
+            className={`pointer-events-auto overflow-hidden rounded-[24px] border ${tone.card}`}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>

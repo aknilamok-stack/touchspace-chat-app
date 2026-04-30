@@ -1473,7 +1473,7 @@ export default function Home() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: "blue",
+        tone: options?.tone ?? "blue",
       });
       return;
     }
@@ -2189,7 +2189,17 @@ export default function Home() {
   });
 
   const scrollManagerChatToBottom = (behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    const viewport = messagesViewportRef.current;
+
+    if (viewport) {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior,
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+
     managerIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
     setPendingClientMessageCount(0);

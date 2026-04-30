@@ -13,6 +13,7 @@ import { TicketsService } from './tickets.service';
 import { InviteManagerDto } from './dto/invite-manager.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto';
+import { RemoveInvitedManagerDto } from './dto/remove-invited-manager.dto';
 import {
   CreateTicketContactDto,
   DeleteTicketContactDto,
@@ -316,6 +317,23 @@ export class TicketsController {
     @Body() inviteManagerDto: InviteManagerDto,
   ) {
     return this.ticketsService.inviteManager(id, inviteManagerDto);
+  }
+
+  @Patch(':id/remove-invited-manager')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
+  removeInvitedManager(
+    @Param('id') id: string,
+    @Body() removeInvitedManagerDto: RemoveInvitedManagerDto,
+  ) {
+    return this.ticketsService.removeInvitedManager(
+      id,
+      removeInvitedManagerDto,
+    );
   }
 
   @Patch(':id/assign-manager')

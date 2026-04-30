@@ -1168,6 +1168,7 @@ export default function Home() {
   );
   const [isInvitingManager, setIsInvitingManager] = useState(false);
   const [inviteManagerError, setInviteManagerError] = useState("");
+  const [removingInvitedManagerId, setRemovingInvitedManagerId] = useState("");
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isCreatingClientDialog, setIsCreatingClientDialog] = useState(false);
   const [selectedTransferManagerId, setSelectedTransferManagerId] = useState(
@@ -1414,10 +1415,6 @@ export default function Home() {
           : manager.status,
     }))
   );
-  const firstOnlineManagerId =
-    availableManagers.find((manager) => manager.status === "online")?.id ??
-    availableManagers[0]?.id ??
-    "";
   const filteredQuickReplies = quickReplies.filter((phrase) =>
     phrase.toLowerCase().includes(quickReplySearch.trim().toLowerCase())
   );
@@ -1936,6 +1933,74 @@ export default function Home() {
     },
     [currentManagerId, resolvedCurrentManagerName]
   );
+
+  const resolveManagerName = useCallback(
+    (managerId?: string | null, managerName?: string | null) => {
+      const normalizedManagerName = managerName?.trim();
+
+      if (normalizedManagerName && isSpecificManagerName(normalizedManagerName)) {
+        return normalizedManagerName;
+      }
+
+      if (managerId && managerId === currentManagerId) {
+        return resolvedCurrentManagerName;
+      }
+
+      return (
+        availableManagers.find((manager) => manager.id === managerId)?.name ||
+        managerAccounts.find((manager) => manager.id === managerId)?.name ||
+        managerName?.trim() ||
+        "Менеджер"
+      );
+    },
+    [availableManagers, currentManagerId, resolvedCurrentManagerName]
+  );
+
+  const isPrimaryManagerOfChat = useCallback(
+    (chat: ChatItem | null) => {
+      if (!chat || chat.rawStatus === "resolved" || chat.conversationMode === "direct_supplier") {
+        return false;
+      }
+
+      if (currentManagerId && chat.assignedManagerId === currentManagerId) {
+        return true;
+      }
+
+      return (
+        !chat.assignedManagerId &&
+        Boolean(chat.assignedManagerName) &&
+        resolveManagerName(null, chat.assignedManagerName) === resolvedCurrentManagerName
+      );
+    },
+    [currentManagerId, resolvedCurrentManagerName, resolveManagerName]
+  );
+
+  const canManageActiveChatManagers = isPrimaryManagerOfChat(activeChat ?? null);
+  const activeChatInvitedManagers = activeChat
+    ? activeChat.invitedManagerIds.map((managerId, index) => ({
+        id: managerId,
+        name: resolveManagerName(managerId, activeChat.invitedManagerNames[index]),
+      }))
+    : [];
+  const inviteManagerOptions = activeChat
+    ? availableManagers.filter(
+        (manager) =>
+          manager.id !== currentManagerId &&
+          manager.id !== activeChat.assignedManagerId &&
+          !activeChat.invitedManagerIds.includes(manager.id)
+      )
+    : availableManagers;
+  const transferManagerOptions = availableManagers.filter(
+    (manager) => manager.id !== currentManagerId
+  );
+  const firstOnlineInviteManagerId =
+    inviteManagerOptions.find((manager) => manager.status === "online")?.id ??
+    inviteManagerOptions[0]?.id ??
+    "";
+  const firstOnlineTransferManagerId =
+    transferManagerOptions.find((manager) => manager.status === "online")?.id ??
+    transferManagerOptions[0]?.id ??
+    "";
 
   const canCurrentManagerWriteToChat = useCallback(
     (chat: ChatItem | null) => {
@@ -4098,9 +4163,9 @@ export default function Home() {
   };
 
   const handleInviteManager = async () => {
-    if (!activeChatId) return;
+    if (!activeChatId || !canManageActiveChatManagers) return;
 
-    const selectedManager = availableManagers.find(
+    const selectedManager = inviteManagerOptions.find(
       (manager) => manager.id === selectedInvitedManagerId
     );
 
@@ -4141,6 +4206,49 @@ export default function Home() {
       setInviteManagerError("Не удалось пригласить оператора");
     } finally {
       setIsInvitingManager(false);
+    }
+  };
+
+  const handleRemoveInvitedManager = async (managerId: string) => {
+    if (!activeChatId || !canManageActiveChatManagers) {
+      return;
+    }
+
+    setRemovingInvitedManagerId(managerId);
+    setInviteManagerError("");
+
+    try {
+      const response = await fetch(apiUrl(`/tickets/${activeChatId}/remove-invited-manager`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          managerId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Не удалось отключить менеджера");
+      }
+
+      const [tickets, messages] = await Promise.all([
+        fetchTickets(),
+        fetchMessages(activeChatId),
+      ]);
+
+      syncTickets(tickets);
+      await refreshNotificationCandidates();
+      applyMessagesToTicket(activeChatId, messages);
+    } catch (error) {
+      console.error("Ошибка отключения менеджера:", error);
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Не удалось отключить менеджера",
+        tone: "error",
+      });
+    } finally {
+      setRemovingInvitedManagerId("");
     }
   };
 
@@ -4200,9 +4308,9 @@ export default function Home() {
   };
 
   const handleTransferDialog = async () => {
-    if (!activeChatId) return;
+    if (!activeChatId || !canManageActiveChatManagers) return;
 
-    const selectedManager = availableManagers.find(
+    const selectedManager = transferManagerOptions.find(
       (manager) => manager.id === selectedTransferManagerId
     );
 
@@ -4775,10 +4883,11 @@ export default function Home() {
                     )}
                   </div>
 
+                  {canManageActiveChatManagers ? (
                   <div className="relative">
                     <button
                       onClick={() => {
-                        setSelectedInvitedManagerId(firstOnlineManagerId);
+                        setSelectedInvitedManagerId(firstOnlineInviteManagerId);
                         setInviteManagerError("");
                         setIsInviteModalOpen(true);
                       }}
@@ -4800,11 +4909,13 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+                  ) : null}
 
+                  {canManageActiveChatManagers ? (
                   <div className="relative">
                     <button
                       onClick={() => {
-                        setSelectedTransferManagerId(firstOnlineManagerId);
+                        setSelectedTransferManagerId(firstOnlineTransferManagerId);
                         setTransferDialogError("");
                         setIsTransferModalOpen(true);
                       }}
@@ -4826,6 +4937,7 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+                  ) : null}
                 </div>
                 ) : null}
 
@@ -4997,13 +5109,32 @@ export default function Home() {
             )
           ) : (
             <>
-          {activeChat?.invitedManagerNames.length ? (
+          {activeChatInvitedManagers.length ? (
             <div className="border-b border-[#EDEDF1] bg-white px-6 py-3">
-              <div className="mx-auto flex w-full max-w-3xl items-center gap-2 text-sm text-[#6C6C70]">
+              <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 text-sm text-[#6C6C70]">
                 <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-[#8E8E93]">
                   Подключены
                 </span>
-                <span>{activeChat.invitedManagerNames.join(", ")}</span>
+                {activeChatInvitedManagers.map((manager) => (
+                  <span
+                    key={manager.id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#F7F7FA] px-2.5 py-1 text-xs text-[#6C6C70]"
+                  >
+                    {manager.name}
+                    {canManageActiveChatManagers ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveInvitedManager(manager.id)}
+                        disabled={removingInvitedManagerId === manager.id}
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-[#8E8E93] transition hover:bg-[#E5E5EA] hover:text-[#FD6868] disabled:opacity-50"
+                        aria-label={`Отключить ${manager.name}`}
+                        title="Отключить менеджера"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </span>
+                ))}
               </div>
             </div>
           ) : null}
@@ -5029,10 +5160,10 @@ export default function Home() {
                       Сейчас ведёт
                     </span>
                     <span className="mr-3">
-                      {activeChat.assignedManagerName || resolvedCurrentManagerName}
+                      {resolveManagerName(activeChat.assignedManagerId, activeChat.assignedManagerName)}
                       {(activeChat.assignedManagerId === currentManagerId ||
                         (!activeChat.assignedManagerId &&
-                          (activeChat.assignedManagerName || resolvedCurrentManagerName) === resolvedCurrentManagerName))
+                          resolveManagerName(null, activeChat.assignedManagerName) === resolvedCurrentManagerName))
                         ? " (Вы)"
                         : ""}
                     </span>
@@ -5050,7 +5181,10 @@ export default function Home() {
                       Ранее вёл
                     </span>
                     <span>
-                      {activeChat.lastResolvedByManagerName}
+                      {resolveManagerName(
+                        activeChat.lastResolvedByManagerId,
+                        activeChat.lastResolvedByManagerName
+                      )}
                       {activeChat.lastResolvedByManagerId === currentManagerId ? " (Вы)" : ""}
                     </span>
                   </>
@@ -6476,7 +6610,7 @@ export default function Home() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {availableManagers.map((manager) => (
+              {inviteManagerOptions.length ? inviteManagerOptions.map((manager) => (
                 <button
                   key={manager.id}
                   onClick={() =>
@@ -6503,7 +6637,11 @@ export default function Home() {
                     </span>
                   </div>
                 </button>
-              ))}
+              )) : (
+                <p className="rounded-2xl bg-[#F7F7FA] px-4 py-3 text-sm text-[#8E8E93]">
+                  Нет доступных менеджеров для приглашения
+                </p>
+              )}
             </div>
 
             {inviteManagerError && (
@@ -6521,7 +6659,7 @@ export default function Home() {
                 onClick={handleInviteManager}
                 disabled={
                   isInvitingManager ||
-                  availableManagers.find((manager) => manager.id === selectedInvitedManagerId)
+                  inviteManagerOptions.find((manager) => manager.id === selectedInvitedManagerId)
                     ?.status !== "online"
                 }
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
@@ -6638,7 +6776,7 @@ export default function Home() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {availableManagers.map((manager) => (
+              {transferManagerOptions.length ? transferManagerOptions.map((manager) => (
                 <button
                   key={manager.id}
                   onClick={() =>
@@ -6665,7 +6803,11 @@ export default function Home() {
                     </span>
                   </div>
                 </button>
-              ))}
+              )) : (
+                <p className="rounded-2xl bg-[#F7F7FA] px-4 py-3 text-sm text-[#8E8E93]">
+                  Нет доступных менеджеров для передачи
+                </p>
+              )}
             </div>
 
             {transferDialogError && (
@@ -6683,7 +6825,7 @@ export default function Home() {
                 onClick={handleTransferDialog}
                 disabled={
                   isTransferringDialog ||
-                  availableManagers.find((manager) => manager.id === selectedTransferManagerId)
+                  transferManagerOptions.find((manager) => manager.id === selectedTransferManagerId)
                     ?.status !== "online"
                 }
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { InviteManagerDto } from './dto/invite-manager.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
+import { RemoveInvitedManagerDto } from './dto/remove-invited-manager.dto';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto';
 import { TypingService } from '../typing.service';
 import { ProfilesService } from '../profiles.service';
@@ -2328,6 +2329,78 @@ export class TicketsService {
     });
   }
 
+  async removeInvitedManager(
+    id: string,
+    removeInvitedManagerDto: RemoveInvitedManagerDto,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        invitedManagerIds: true,
+        invitedManagerNames: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${id}" not found`);
+    }
+
+    const invitedManagerIds = readJsonStringArray(ticket.invitedManagerIds);
+    const invitedManagerNames = readJsonStringArray(ticket.invitedManagerNames);
+    const removedIndex = invitedManagerIds.indexOf(
+      removeInvitedManagerDto.managerId,
+    );
+
+    if (removedIndex === -1) {
+      return this.prisma.ticket.findUnique({
+        where: { id },
+      });
+    }
+
+    const removedManagerName =
+      invitedManagerNames[removedIndex] ?? 'приглашённый менеджер';
+    const nextInvitedManagerIds = invitedManagerIds.filter(
+      (managerId) => managerId !== removeInvitedManagerDto.managerId,
+    );
+    const nextInvitedManagerNames = invitedManagerNames.filter(
+      (_managerName, index) => index !== removedIndex,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      const updatedTicket = await tx.ticket.update({
+        where: { id },
+        data: {
+          invitedManagerIds: nextInvitedManagerIds,
+          invitedManagerNames: nextInvitedManagerNames,
+        },
+      });
+
+      await tx.message.create({
+        data: {
+          ticketId: id,
+          content: `Менеджер ${removedManagerName} отключён от диалога`,
+          senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+        },
+      });
+
+      await tx.ticket.update({
+        where: { id },
+        data: {
+          lastMessageAt: now,
+        },
+      });
+
+      return updatedTicket;
+    });
+  }
+
   async assignManager(id: string, assignManagerDto: AssignManagerDto) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
@@ -2361,6 +2434,8 @@ export class TicketsService {
         data: {
           assignedManagerId: assignManagerDto.managerId,
           assignedManagerName: assignManagerDto.managerName,
+          invitedManagerIds: [],
+          invitedManagerNames: [],
           conversationMode: 'manager',
           currentHandlerType: 'manager',
           aiEnabled: false,

@@ -200,6 +200,15 @@ function clearDesktopAttention() {
   lastUnreadAttentionCount = 0;
 }
 
+function ensureDockIconVisible() {
+  if (process.platform !== "darwin" || !app.dock) {
+    return;
+  }
+
+  app.dock.show();
+  app.dock.setIcon(windowIconPath);
+}
+
 function getOverlayNotificationBounds() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const workArea = display.workArea;
@@ -340,6 +349,7 @@ function createNotificationWindow() {
 function showOverlayNotificationWindow(payload) {
   pendingNotificationPayload = payload;
   notificationWindowPendingShow = true;
+  ensureDockIconVisible();
   const overlay = createNotificationWindow();
 
   if (!overlay) {
@@ -349,6 +359,7 @@ function showOverlayNotificationWindow(payload) {
   const bounds = getOverlayNotificationBounds();
   overlay.setBounds(bounds);
   sendOverlayNotificationPayload();
+  requestDesktopAttention(Math.max(lastUnreadAttentionCount + 1, 1));
   return true;
 }
 
@@ -356,6 +367,8 @@ function requestDesktopAttention(unreadCount) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
+
+  ensureDockIconVisible();
 
   if (typeof app.setBadgeCount === "function") {
     app.setBadgeCount(unreadCount);

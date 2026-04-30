@@ -3326,6 +3326,15 @@ export default function Home() {
       return;
     }
 
+    const outgoingMessageText = messageText;
+    const outgoingFiles = selectedFiles;
+    let createdMessageCount = 0;
+
+    setMessageText("");
+    setManagerSuggestions([]);
+    setActiveManagerSuggestionIndex(-1);
+    lastTypingSentAtRef.current = 0;
+
     try {
       if (
         activeChat &&
@@ -3370,7 +3379,7 @@ export default function Home() {
           },
           body: JSON.stringify({
             ticketId: activeChatId,
-            content: messageText,
+            content: outgoingMessageText,
             senderType: "manager",
             transport: isEmailMode ? "email" : "chat",
             managerId: currentManagerId,
@@ -3389,11 +3398,12 @@ export default function Home() {
 
         const newMessage = (await response.json()) as ApiMessage;
         createdMessages.push(formatMessage(newMessage));
+        createdMessageCount += 1;
       }
 
-      if (selectedFiles.length > 0) {
+      if (outgoingFiles.length > 0) {
         const formData = new FormData();
-        selectedFiles.forEach((file) => {
+        outgoingFiles.forEach((file) => {
           formData.append("files", file);
         });
         formData.append("ticketId", activeChatId);
@@ -3421,6 +3431,7 @@ export default function Home() {
 
         const attachmentMessage = (await attachmentResponse.json()) as ApiMessage;
         createdMessages.push(formatMessage(attachmentMessage));
+        createdMessageCount += 1;
       }
 
       if (createdMessages.length > 0) {
@@ -3459,13 +3470,9 @@ export default function Home() {
       const refreshedTickets = await fetchTickets();
       syncTickets(refreshedTickets);
       await refreshNotificationCandidates();
-      setMessageText("");
-      setManagerSuggestions([]);
-      setActiveManagerSuggestionIndex(-1);
       setAttachmentName("");
       setSelectedFiles([]);
       setHoveredMessageId("");
-      lastTypingSentAtRef.current = 0;
       if (isEmailMode) {
         setToast({
           message: `Email отправлен на ${emailRecipient.trim()}`,
@@ -3477,6 +3484,9 @@ export default function Home() {
       });
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
+      if (hasTextToSend && createdMessageCount === 0) {
+        setMessageText(outgoingMessageText);
+      }
       setToast({
         message:
           error instanceof Error ? error.message : "Не удалось отправить сообщение",

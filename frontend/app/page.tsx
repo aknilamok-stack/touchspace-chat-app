@@ -334,6 +334,31 @@ const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", 
 const BASE_MANAGERS = Array.from(
   new Map(managerAccounts.map(({ id, name }) => [id, { id, name }])).values()
 );
+const GENERIC_MANAGER_NAMES = new Set(["менеджер"]);
+
+const isSpecificManagerName = (name?: string | null) => {
+  const normalizedName = name?.trim();
+  return Boolean(normalizedName && !GENERIC_MANAGER_NAMES.has(normalizedName.toLowerCase()));
+};
+
+const resolveManagerSessionName = (
+  sessionManagerName: string | undefined,
+  sessionFullName: string | undefined,
+  fallbackManagerName: string
+) => {
+  const normalizedSessionManagerName = sessionManagerName?.trim();
+  const normalizedSessionFullName = sessionFullName?.trim();
+
+  if (normalizedSessionManagerName && isSpecificManagerName(normalizedSessionManagerName)) {
+    return normalizedSessionManagerName;
+  }
+
+  if (normalizedSessionFullName && isSpecificManagerName(normalizedSessionFullName)) {
+    return normalizedSessionFullName;
+  }
+
+  return fallbackManagerName;
+};
 
 const dedupeManagers = <T extends { id: string; name: string }>(managers: T[]) =>
   Array.from(
@@ -1573,12 +1598,18 @@ export default function Home() {
     }
 
     const fallbackManager =
+      managerAccounts.find((account) => account.id === session.managerId) ??
       managerAccounts.find((account) => account.login === session.login) ??
-      managerAccounts[0];
+      managerAccounts[0] ??
+      { id: "manager", name: "Менеджер" };
     const nextManagerId = session.managerId ?? fallbackManager.id;
-    const nextManagerName = session.managerName ?? fallbackManager.name;
+    const nextManagerName = resolveManagerSessionName(
+      session.managerName,
+      session.fullName,
+      fallbackManager.name
+    );
 
-    if (!session.managerId || !session.managerName) {
+    if (session.managerId !== nextManagerId || session.managerName !== nextManagerName) {
       writeAuthSession({
         ...session,
         managerId: nextManagerId,

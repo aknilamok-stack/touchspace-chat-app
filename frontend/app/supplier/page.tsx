@@ -176,7 +176,7 @@ type SupplierNotificationCandidate = {
   waitSeconds: number;
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
-  kind: "message" | "request";
+  kind: "message" | "request" | "direct";
 };
 
 const mergeSupplierNotificationCandidates = (
@@ -1474,16 +1474,68 @@ export default function SupplierPage() {
       ];
     });
   }, [authReady, supplierProfileId, supplierRequests, ticketMessagesByTicketId, ticketsById]);
+  const directManagerNotificationCandidates = useMemo<SupplierNotificationCandidate[]>(() => {
+    if (!authReady) {
+      return [];
+    }
+
+    return directManagerTickets
+      .flatMap((ticket) => {
+        const latestManagerMessage = [...(ticket.messages ?? [])]
+          .reverse()
+          .find(
+            (message) =>
+              message.senderType === "manager" &&
+              message.status !== "read"
+          );
+
+        if (!latestManagerMessage) {
+          return [];
+        }
+
+        const candidate: SupplierNotificationCandidate = {
+          notificationKey: `supplier-direct:${ticket.id}:${latestManagerMessage.id}`,
+          ticketId: ticket.id,
+          requestId: null,
+          title:
+            ticket.assignedManagerName?.trim() ||
+            ticket.title?.trim() ||
+            "Диалог с менеджером",
+          messageId: latestManagerMessage.id,
+          messageText: latestManagerMessage.content,
+          createdAt: latestManagerMessage.createdAt,
+          senderType: "manager",
+          tradePointName: ticket.assignedManagerName?.trim() || null,
+          avatarColor: ticket.avatarColor ?? null,
+          avatarEmoji: ticket.avatarEmoji ?? null,
+          scopeStatus: "owned_active",
+          waitSeconds: 0,
+          assignedSupplierProfileId: supplierProfileId || null,
+          assignedSupplierProfileName: supplierEmployeeName || supplierName || null,
+          kind: "direct",
+        };
+
+        return [candidate];
+      });
+  }, [authReady, directManagerTickets, supplierEmployeeName, supplierName, supplierProfileId]);
   const effectiveNotificationCandidates = useMemo(
     () =>
       mergeSupplierNotificationCandidates(
         mergeSupplierNotificationCandidates(
-          notificationCandidates,
-          localNotificationCandidates
+          mergeSupplierNotificationCandidates(
+            notificationCandidates,
+            localNotificationCandidates
+          ),
+          directManagerNotificationCandidates
         ),
         eventNotificationCandidates
       ),
-    [eventNotificationCandidates, localNotificationCandidates, notificationCandidates]
+    [
+      directManagerNotificationCandidates,
+      eventNotificationCandidates,
+      localNotificationCandidates,
+      notificationCandidates,
+    ]
   );
   const supplierTimelineItems = selectedRequest
     ? buildSupplierTimelineItems(
@@ -2059,7 +2111,7 @@ export default function SupplierPage() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "blue";
+      tone?: "blue" | "green";
     }
   ) => {
     const targetUrl = options?.requestId
@@ -3135,9 +3187,16 @@ export default function SupplierPage() {
       if (linkedRequest) {
         setIsChatPaneDismissed(false);
         setSelectedRequestId(linkedRequest.request.id);
+        return;
+      }
+
+      if (directManagerTickets.some((ticket) => ticket.id === deepLinkTicketId)) {
+        setIsChatPaneDismissed(false);
+        setSelectedRequestId("");
+        setSelectedManagerTicketId(deepLinkTicketId);
       }
     }
-  }, [deepLinkRequestId, deepLinkTicketId, supplierRequestCards]);
+  }, [deepLinkRequestId, deepLinkTicketId, directManagerTickets, supplierRequestCards]);
 
   useEffect(() => {
     const currentRequestId = selectedRequestId;
@@ -3370,9 +3429,12 @@ export default function SupplierPage() {
     });
 
     effectiveNotificationCandidates.forEach((candidate) => {
+      const isDirectManagerDialog = candidate.kind === "direct";
       const notificationTitle =
         candidate.scopeStatus === "claimed_by_other_recently"
           ? "Запрос уже взят в работу"
+          : isDirectManagerDialog
+            ? `Менеджер: ${candidate.title || "диалог"}`
           : candidate.kind === "request"
           ? `Новый запрос: ${candidate.title || "поставщик"}`
           : candidate.senderType === "client"
@@ -3403,7 +3465,8 @@ export default function SupplierPage() {
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
-        Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+        (!isDirectManagerDialog &&
+          Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
 
       if (!shouldNotify) {
         return;
@@ -3422,7 +3485,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: "blue",
+        tone: isDirectManagerDialog ? "green" : "blue",
       });
     });
   }, [effectiveNotificationCandidates, authReady]);

@@ -67,8 +67,6 @@
         user-select: none;
       }
 
-      .tone-green,
-      .tone-amber,
       .tone-blue {
         --card-bg: #0A84FF;
         --card-shadow: none;
@@ -80,15 +78,15 @@
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
-      .tone-gray {
-        --card-bg: #F2F3F5;
+      .tone-green {
+        --card-bg: #34C759;
         --card-shadow: none;
-        --text-primary: #394150;
-        --text-subtle: rgba(57, 65, 80, 0.9);
-        --text-meta: rgba(57, 65, 80, 0.78);
-        --footer-bg: rgba(255, 255, 255, 0.32);
-        --footer-border: rgba(148, 163, 184, 0.45);
-        --action-hover: rgba(255, 255, 255, 0.55);
+        --text-primary: #ffffff;
+        --text-subtle: rgba(255, 255, 255, 0.9);
+        --text-meta: rgba(255, 255, 255, 0.8);
+        --footer-bg: rgba(0, 0, 0, 0.1);
+        --footer-border: rgba(255, 255, 255, 0.12);
+        --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .card-button {
@@ -251,17 +249,14 @@
 
       let currentUrl = "";
 
-      const toneClassNames = ["tone-green", "tone-amber", "tone-blue", "tone-gray"];
-      const knownTones = new Set(["green", "amber", "blue", "gray"]);
-
       const resolveAvatar = (title) => {
         const normalized = String(title || "").trim();
         return normalized ? normalized.charAt(0).toUpperCase() : "💬";
       };
 
       const setTone = (tone) => {
-        cardElement.classList.remove(...toneClassNames);
-        cardElement.classList.add(`tone-${knownTones.has(tone) ? tone : "blue"}`);
+        cardElement.classList.remove("tone-blue", "tone-green");
+        cardElement.classList.add(tone === "green" ? "tone-green" : "tone-blue");
       };
 
       window.touchspaceDesktopNotification.onData((payload) => {
@@ -278,7 +273,7 @@
         currentUrl = payload?.url || "";
         avatarElement.textContent = payload?.avatarEmoji || resolveAvatar(payload?.title);
         avatarElement.style.backgroundColor = payload?.avatarColor || "rgba(255, 255, 255, 0.24)";
-        setTone(payload?.tone || "blue");
+        setTone(payload?.tone);
         document.body.classList.add("is-ready");
         requestAnimationFrame(() => {
           window.touchspaceDesktopNotification.rendered();

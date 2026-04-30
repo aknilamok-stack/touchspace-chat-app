@@ -5,7 +5,7 @@ type IncomingAlertItem = {
   title: string;
   subtitle?: string | null;
   preview: string;
-  tone?: "blue";
+  tone?: "blue" | "green";
   avatarEmoji?: string | null;
   avatarColor?: string | null;
   primaryLabel?: string;
@@ -14,8 +14,14 @@ type IncomingAlertItem = {
 };
 
 const notificationTone = {
-  card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-  footer: "border-white/20 bg-[#0874E5]",
+  blue: {
+    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+    footer: "border-white/20 bg-[#0874E5]",
+  },
+  green: {
+    card: "bg-[#34C759] text-white shadow-[0_26px_60px_rgba(52,199,89,0.28)]",
+    footer: "border-white/20 bg-[#2EAD4F]",
+  },
 } as const;
 
 function getInitialAvatar(title: string) {
@@ -48,10 +54,12 @@ export function IncomingAlertStack({
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex w-[min(420px,calc(100vw-24px))] flex-col gap-3">
       {items.map((item) => {
+        const tone = notificationTone[item.tone ?? "blue"];
+
         return (
           <section
             key={item.id}
-            className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${notificationTone.card}`}
+            className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${tone.card}`}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>
@@ -103,7 +111,7 @@ export function IncomingAlertStack({
               </div>
             </div>
 
-            <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${notificationTone.footer}`}>
+            <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${tone.footer}`}>
               <button
                 type="button"
                 onClick={(event) => {

@@ -1851,7 +1851,7 @@ export default function SupplierPage() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: options?.tone ?? "green",
+        tone: options?.tone ?? "blue",
       });
       return;
     }

@@ -27,6 +27,7 @@ type ManagerNotificationCandidate = {
   createdAt: Date;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
+  conversationMode?: string | null;
   scopeStatus:
     | 'new_unclaimed'
     | 'missed_unclaimed'
@@ -721,6 +722,7 @@ export class NotificationsService {
           createdAt: latestUnreadMessage.createdAt,
           avatarColor: ticket.avatarColor,
           avatarEmoji: ticket.avatarEmoji,
+          conversationMode: ticket.conversationMode,
           scopeStatus: ticket.rescueQueuedAt
             ? 'rescue_queue'
             : ticket.claimMissedAt
@@ -809,6 +811,7 @@ export class NotificationsService {
           createdAt,
           avatarColor: ticket.avatarColor,
           avatarEmoji: ticket.avatarEmoji,
+          conversationMode: ticket.conversationMode,
           scopeStatus: 'claimed_by_other_recently' as const,
           waitSeconds: 0,
           assignedManagerId: ticket.assignedManagerId,

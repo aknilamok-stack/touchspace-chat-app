@@ -280,6 +280,7 @@ type NotificationCandidate = {
   createdAt: string;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
+  conversationMode?: string | null;
   scopeStatus:
     | "new_unclaimed"
     | "missed_unclaimed"
@@ -1359,7 +1360,7 @@ export default function Home() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "blue";
+      tone?: "blue" | "green";
     }
   ) => {
     const targetUrl =
@@ -2641,9 +2642,14 @@ export default function Home() {
     .slice(0, 3);
 
   const dismissFloatingNotification = (notificationKey: string) => {
+    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
+
     setDismissedNotificationUntil((current) => ({
       ...current,
-      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+      [notificationKey]:
+        candidate?.conversationMode === "direct_supplier"
+          ? Number.POSITIVE_INFINITY
+          : Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
     }));
   };
 
@@ -2681,9 +2687,12 @@ export default function Home() {
     }
 
     notificationCandidates.forEach((candidate) => {
+      const isDirectSupplierDialog = candidate.conversationMode === "direct_supplier";
       const notificationTitle =
         candidate.scopeStatus === "claimed_by_other_recently"
           ? "Чат уже взят в работу"
+          : isDirectSupplierDialog
+            ? candidate.tradePointName?.trim() || candidate.title || "Поставщик"
           : candidate.tradePointName?.trim() ||
             candidate.title ||
             candidate.clientName ||
@@ -2720,7 +2729,8 @@ export default function Home() {
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
       const shouldNotify =
         lastMessageId !== candidate.messageId ||
-        Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS;
+        (!isDirectSupplierDialog &&
+          Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
 
       if (!shouldNotify) {
         return;
@@ -2739,7 +2749,7 @@ export default function Home() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: "blue",
+        tone: isDirectSupplierDialog ? "green" : "blue",
       });
     });
   }, [notificationCandidates, authReady, managerSupervisorPowerEnabled]);
@@ -4468,7 +4478,7 @@ export default function Home() {
                     ? `Чат уже взят в работу менеджером ${candidate.assignedManagerName}`
                     : "Чат уже взят в работу другим менеджером"
                   : candidate.messageText,
-              tone: "blue",
+              tone: candidate.conversationMode === "direct_supplier" ? "green" : "blue",
               avatarEmoji: candidate.avatarEmoji,
               avatarColor: candidate.avatarColor,
               metaLabel:

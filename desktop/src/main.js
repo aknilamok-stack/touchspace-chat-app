@@ -606,13 +606,7 @@ app.whenReady().then(() => {
         typeof payload.avatarColor === "string" && payload.avatarColor.trim()
           ? payload.avatarColor.trim()
           : "",
-      tone:
-        payload.tone === "green" ||
-        payload.tone === "amber" ||
-        payload.tone === "blue" ||
-        payload.tone === "gray"
-          ? payload.tone
-          : "blue",
+      tone: payload.tone === "green" ? "green" : "blue",
     });
   });
 

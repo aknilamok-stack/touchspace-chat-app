@@ -1,11 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ProfilesService } from './profiles.service';
-import {
-  getDefaultFullNameForRole,
-  isManagerRole,
-  isSupplierRole,
-} from './role.utils';
+import { isManagerRole, isSupplierRole } from './role.utils';
 import {
   getSupplierRequestSyncState,
   SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
@@ -134,7 +130,6 @@ export class NotificationsService {
     await this.profilesService.ensureProfile({
       id: normalizedProfileId,
       role: resolvedRole,
-      fullName: getDefaultFullNameForRole(resolvedRole),
     });
 
     const profile = await this.prisma.profile.findUnique({

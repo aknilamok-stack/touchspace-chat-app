@@ -441,6 +441,9 @@ export default function NotificationSettingsPage() {
         ...session,
         fullName: payload.fullName,
         email: payload.email ?? session.email,
+        adminName: session.role === "admin" ? payload.fullName : session.adminName,
+        managerName: session.role === "manager" ? payload.fullName : session.managerName,
+        supplierName: isSupplierRole(session.role) ? payload.fullName : session.supplierName,
       };
 
       setData((current) =>

@@ -330,15 +330,16 @@ export class ProfilesService {
       return null;
     }
 
-    const fullName =
+    const fullNameForCreate =
       input.fullName?.trim() ||
       (role === 'client' ? 'Клиент' : getDefaultFullNameForRole(role));
+    const fullNameForUpdate = input.fullName?.trim() || undefined;
 
     return this.prisma.profile.upsert({
       where: { id },
       create: {
         id,
-        fullName,
+        fullName: fullNameForCreate,
         role,
         email: input.email?.trim() || null,
         phone: input.phone?.trim() || null,
@@ -369,7 +370,7 @@ export class ProfilesService {
         chatAccessEnabled: input.chatAccessEnabled ?? true,
       },
       update: {
-        fullName,
+        fullName: fullNameForUpdate,
         role,
         email: input.email?.trim() || undefined,
         phone: input.phone?.trim() || undefined,

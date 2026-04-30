@@ -16,7 +16,7 @@ type IncomingAlertItem = {
 const notificationTone = {
   blue: {
     card: "border-[#0A84FF] bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#006FD6]",
+    footer: "border-white/20 bg-[#0A84FF]",
   },
   green: {
     card: "bg-[#34C759] text-white shadow-[0_26px_60px_rgba(52,199,89,0.28)]",

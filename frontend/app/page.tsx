@@ -5571,7 +5571,7 @@ export default function Home() {
                   toast.tone === "error"
                     ? "border-[#FFD5D5] bg-[#FFF6F6] text-[#C53C3C]"
                     : toast.tone === "info"
-                      ? "border-[#D6E7FF] bg-[#F6FAFF] text-[#0A84FF]"
+                      ? "border-[#0A84FF] bg-[#0A84FF] text-white"
                       : "border-[#BDE9CB] bg-[linear-gradient(135deg,#F1FFF5_0%,#E3F9EA_100%)] text-[#167C3E]"
                 }`}
               >
@@ -5581,7 +5581,7 @@ export default function Home() {
                       toast.tone === "error"
                         ? "bg-[#FFE3E3] text-[#C53C3C]"
                         : toast.tone === "info"
-                          ? "bg-[#EAF3FF] text-[#0A84FF]"
+                          ? "bg-white/20 text-white"
                           : "bg-[#DDF6E5] text-[#1F8B4C]"
                     }`}
                   >

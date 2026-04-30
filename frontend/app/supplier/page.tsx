@@ -2059,7 +2059,7 @@ export default function SupplierPage() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "green" | "amber" | "blue";
+      tone?: "blue";
     }
   ) => {
     const targetUrl = options?.requestId
@@ -2082,7 +2082,7 @@ export default function SupplierPage() {
         secondaryLabel: options?.secondaryLabel,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: options?.tone ?? "blue",
+        tone: "blue",
       });
       return;
     }
@@ -2192,12 +2192,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone:
-          candidate.scopeStatus === "missed_unclaimed"
-            ? "amber"
-            : candidate.scopeStatus === "claimed_by_other_recently"
-              ? "blue"
-              : "green",
+        tone: "blue",
       });
     },
     [showDesktopNotification]
@@ -3427,12 +3422,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone:
-          candidate.scopeStatus === "missed_unclaimed"
-            ? "amber"
-            : candidate.scopeStatus === "claimed_by_other_recently"
-              ? "blue"
-              : "blue",
+        tone: "blue",
       });
     });
   }, [effectiveNotificationCandidates, authReady]);

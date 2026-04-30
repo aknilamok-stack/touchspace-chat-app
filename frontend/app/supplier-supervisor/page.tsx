@@ -1828,7 +1828,7 @@ export default function SupplierPage() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "green" | "amber" | "blue";
+      tone?: "blue";
     }
   ) => {
     const targetUrl = options?.requestId
@@ -2568,12 +2568,7 @@ export default function SupplierPage() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone:
-          candidate.scopeStatus === "missed_unclaimed"
-            ? "amber"
-            : candidate.scopeStatus === "claimed_by_other_recently"
-              ? "blue"
-              : "green",
+        tone: "blue",
       });
     });
   }, [notificationCandidates, authReady, supplierSupervisorPowerEnabled]);
@@ -3567,12 +3562,7 @@ export default function SupplierPage() {
                           ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
                           : "Сейчас этот запрос ведёт другой сотрудник поставщика"
                         : candidate.messageText,
-                    tone:
-                      candidate.scopeStatus === "missed_unclaimed"
-                        ? "amber"
-                        : candidate.scopeStatus === "claimed_by_other_recently"
-                          ? "blue"
-                          : "green",
+                    tone: "blue",
                     avatarEmoji: candidate.avatarEmoji,
                     avatarColor: candidate.avatarColor,
                     metaLabel:

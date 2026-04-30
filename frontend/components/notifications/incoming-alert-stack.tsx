@@ -5,7 +5,7 @@ type IncomingAlertItem = {
   title: string;
   subtitle?: string | null;
   preview: string;
-  tone?: "green" | "amber" | "blue" | "gray";
+  tone?: "blue";
   avatarEmoji?: string | null;
   avatarColor?: string | null;
   primaryLabel?: string;
@@ -13,23 +13,9 @@ type IncomingAlertItem = {
   metaLabel?: string | null;
 };
 
-const toneStyles = {
-  green: {
-    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#0874E5]",
-  },
-  amber: {
-    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#0874E5]",
-  },
-  blue: {
-    card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#0874E5]",
-  },
-  gray: {
-    card: "bg-[linear-gradient(180deg,#F3F4F6_0%,#E5E7EB_100%)] text-[#374151] shadow-[0_26px_60px_rgba(75,85,99,0.18)]",
-    footer: "border-[#D1D5DB] bg-white/30",
-  },
+const notificationTone = {
+  card: "bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
+  footer: "border-white/20 bg-[#0874E5]",
 } as const;
 
 function getInitialAvatar(title: string) {
@@ -62,12 +48,10 @@ export function IncomingAlertStack({
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex w-[min(420px,calc(100vw-24px))] flex-col gap-3">
       {items.map((item) => {
-        const tone = toneStyles[item.tone ?? "blue"];
-
         return (
           <section
             key={item.id}
-            className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${tone.card}`}
+            className={`pointer-events-auto overflow-hidden rounded-[24px] border border-black/10 ${notificationTone.card}`}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>
@@ -119,7 +103,7 @@ export function IncomingAlertStack({
               </div>
             </div>
 
-            <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${tone.footer}`}>
+            <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${notificationTone.footer}`}>
               <button
                 type="button"
                 onClick={(event) => {

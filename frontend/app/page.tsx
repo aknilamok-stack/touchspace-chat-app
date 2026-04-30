@@ -1449,7 +1449,7 @@ export default function Home() {
       secondaryLabel?: string;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
-      tone?: "green" | "amber" | "blue" | "gray";
+      tone?: "blue";
     }
   ) => {
     const targetUrl =
@@ -2939,7 +2939,7 @@ export default function Home() {
         secondaryLabel: "Позже",
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
-        tone: candidate.scopeStatus === "claimed_by_other_recently" ? "gray" : "blue",
+        tone: "blue",
       });
     });
   }, [notificationCandidates, authReady]);
@@ -4823,7 +4823,7 @@ export default function Home() {
                     ? `Чат уже взят в работу менеджером ${candidate.assignedManagerName}`
                     : "Чат уже взят в работу другим менеджером"
                   : candidate.messageText,
-              tone: candidate.scopeStatus === "claimed_by_other_recently" ? "gray" : "blue",
+              tone: "blue",
               avatarEmoji: candidate.avatarEmoji,
               avatarColor: candidate.avatarColor,
               metaLabel:

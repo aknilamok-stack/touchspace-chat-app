@@ -1,4 +1,10 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class ResolveTicketDto {
   @IsString()
@@ -13,4 +19,8 @@ export class ResolveTicketDto {
   @IsString()
   @IsIn(['manager', 'supplier'])
   resolverRole?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceCloseSupplierRequests?: boolean;
 }

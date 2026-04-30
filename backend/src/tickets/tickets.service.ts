@@ -2110,18 +2110,23 @@ export class TicketsService {
       );
     }
 
-    const hasActiveSupplierRequest =
-      await this.prisma.supplierRequest.findFirst({
-        where: {
-          ticketId: id,
-          status: {
-            notIn: ['closed', 'cancelled', 'resolved'],
-          },
+    const activeSupplierRequests = await this.prisma.supplierRequest.findMany({
+      where: {
+        ticketId: id,
+        status: {
+          notIn: ['closed', 'cancelled', 'resolved'],
         },
-        select: { id: true },
-      });
+      },
+      select: {
+        id: true,
+        supplierName: true,
+      },
+    });
 
-    if (hasActiveSupplierRequest) {
+    if (
+      activeSupplierRequests.length > 0 &&
+      !resolveTicketDto.forceCloseSupplierRequests
+    ) {
       throw new BadRequestException(
         'Нельзя завершить диалог, пока поставщик не отметил запрос как решённый',
       );
@@ -2129,6 +2134,37 @@ export class TicketsService {
 
     return this.prisma.$transaction(async (tx) => {
       const now = new Date();
+
+      if (activeSupplierRequests.length > 0) {
+        await tx.supplierRequest.updateMany({
+          where: {
+            id: {
+              in: activeSupplierRequests.map((request) => request.id),
+            },
+          },
+          data: {
+            status: 'closed',
+            lastSupplierReplyAt: now,
+            closedAt: now,
+          },
+        });
+
+        await Promise.all(
+          activeSupplierRequests.map((request) =>
+            tx.message.create({
+              data: {
+                ticketId: id,
+                content: `Менеджер ${resolveTicketDto.managerName} завершил чат поставщика ${request.supplierName}`,
+                senderType: 'system',
+                senderRole: 'system',
+                status: 'sent',
+                deliveryStatus: 'sent',
+                messageType: 'system',
+              },
+            }),
+          ),
+        );
+      }
 
       const updatedTicket = await tx.ticket.update({
         where: { id },

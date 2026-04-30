@@ -1156,7 +1156,6 @@ export default function SupplierPage() {
   const supplierIsNearBottomRef = useRef(true);
   const previousSelectedRequestIdRef = useRef("");
   const previousVisibleMessageCountRef = useRef(0);
-  const pendingInitialScrollRequestIdRef = useRef("");
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -1948,7 +1947,16 @@ export default function SupplierPage() {
   };
 
   const scrollSupplierChatToBottom = (behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    const viewport = messagesViewportRef.current;
+
+    if (viewport) {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior,
+      });
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     supplierIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
     setPendingClientMessageCount(0);
@@ -3201,35 +3209,34 @@ export default function SupplierPage() {
   }, [deepLinkRequestId, deepLinkTicketId, directManagerTickets, supplierRequestCards]);
 
   useEffect(() => {
-    const currentRequestId = selectedRequestId;
-    const currentMessageCount = visibleSupplierMessages.length;
-    const requestChanged = previousSelectedRequestIdRef.current !== currentRequestId;
+    const currentDialogId =
+      activeSupplierSection === "manager"
+        ? selectedManagerTicketId
+          ? `manager:${selectedManagerTicketId}`
+          : ""
+        : selectedRequestId
+          ? `request:${selectedRequestId}`
+          : "";
+    const currentMessageCount =
+      activeSupplierSection === "manager"
+        ? directManagerMessages.length
+        : visibleSupplierMessages.length;
+    const dialogChanged = previousSelectedRequestIdRef.current !== currentDialogId;
 
-    if (requestChanged) {
-      previousSelectedRequestIdRef.current = currentRequestId;
+    if (dialogChanged) {
+      previousSelectedRequestIdRef.current = currentDialogId;
       previousVisibleMessageCountRef.current = currentMessageCount;
-      pendingInitialScrollRequestIdRef.current = currentRequestId;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
 
-      return;
-    }
-
-    if (
-      currentRequestId &&
-      pendingInitialScrollRequestIdRef.current === currentRequestId
-    ) {
-      if (isLoadingMessages) {
-        previousVisibleMessageCountRef.current = currentMessageCount;
-        return;
+      if (currentDialogId) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollSupplierChatToBottom("auto");
+          });
+        });
       }
 
-      pendingInitialScrollRequestIdRef.current = "";
-      previousVisibleMessageCountRef.current = currentMessageCount;
-
-      requestAnimationFrame(() => {
-        scrollSupplierChatToBottom("auto");
-      });
       return;
     }
 
@@ -3262,7 +3269,13 @@ export default function SupplierPage() {
       setPendingClientMessageCount((current) => current + newClientMessagesCount);
       setShowScrollToLatest(true);
     }
-  }, [isLoadingMessages, selectedRequestId, visibleSupplierMessages.length]);
+  }, [
+    activeSupplierSection,
+    directManagerMessages.length,
+    selectedManagerTicketId,
+    selectedRequestId,
+    visibleSupplierMessages.length,
+  ]);
 
   useEffect(() => {
     if (

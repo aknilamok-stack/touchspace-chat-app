@@ -1,5 +1,5 @@
-import { AdminRegistrations } from "@/components/admin/admin-registrations";
+import { redirect } from "next/navigation";
 
 export default function AdminRegistrationsPage() {
-  return <AdminRegistrations />;
+  redirect("/admin/users");
 }

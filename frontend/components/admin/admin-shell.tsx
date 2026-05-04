@@ -12,7 +12,6 @@ import {
 
 const navigation = [
   { href: "/admin", label: "Главная" },
-  { href: "/admin/registrations", label: "Регистрации" },
   { href: "/admin/users", label: "Пользователи и доступы" },
   { href: "/admin/dialogs", label: "Диалоги" },
   { href: "/admin/analytics", label: "Общая аналитика" },

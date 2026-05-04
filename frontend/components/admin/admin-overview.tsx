@@ -357,29 +357,6 @@ export function AdminOverview() {
         </AdminPanel>
       </section>
 
-      <section className="grid gap-4">
-        <AdminPanel title="Лента последних событий">
-          {(data?.lists?.recentEvents ?? []).length > 0 ? (
-            <div className="grid gap-3">
-              {data.lists.recentEvents.map((item: any) => (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between gap-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                    <p className="mt-1 text-sm text-slate-600">{item.description}</p>
-                  </div>
-                  <span className="shrink-0 text-xs text-slate-500">{formatDateTime(item.createdAt)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            compactEmpty("Лента активности пока пуста.")
-          )}
-        </AdminPanel>
-      </section>
-
       <AdminPanel title="Динамика за 7 дней">
         {chartPoints.length > 0 ? (
           <div className="grid gap-5">

@@ -2123,6 +2123,12 @@ export default function Home() {
   const myUnreadCount = chatData
     .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
     .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const supplierUnreadCount = chatData
+    .filter((chat) => chat.conversationMode === "direct_supplier")
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const allUnreadCount = chatData
+    .filter((chat) => chat.conversationMode !== "direct_supplier")
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>
@@ -4725,6 +4731,17 @@ export default function Home() {
               }`}
             >
               Поставщик
+              {supplierUnreadCount > 0 && (
+                <span
+                  className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                    filter === "supplier"
+                      ? "bg-white text-[#0A84FF]"
+                      : "bg-[#0A84FF] text-white"
+                  }`}
+                >
+                  {supplierUnreadCount > 99 ? "99+" : supplierUnreadCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -4736,6 +4753,17 @@ export default function Home() {
               }`}
             >
               Все
+              {allUnreadCount > 0 && (
+                <span
+                  className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                    filter === "all"
+                      ? "bg-white text-[#0A84FF]"
+                      : "bg-[#0A84FF] text-white"
+                  }`}
+                >
+                  {allUnreadCount > 99 ? "99+" : allUnreadCount}
+                </span>
+              )}
             </button>
 
             <div ref={chatFiltersRef} className="relative">

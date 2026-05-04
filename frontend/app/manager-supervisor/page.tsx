@@ -1944,13 +1944,13 @@ export default function Home() {
     return searchHaystack.includes(normalizedQuery);
   });
 
-  const incomingCount = chatData.filter((chat) => {
-    return chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
-  }).length;
-
-  const myCount = chatData.filter((chat) => {
-    return isChatMine(chat) && !chat.aiEnabled;
-  }).length;
+  const incomingUnreadCount = chatData
+    .filter((chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled)
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const myUnreadCount = chatData
+    .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
+    .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const allUnreadCount = chatData.reduce((total, chat) => total + getUnreadCount(chat), 0);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>
@@ -4497,7 +4497,7 @@ export default function Home() {
               }`}
             >
               <span>Входящие</span>
-              {incomingCount > 0 && (
+              {incomingUnreadCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "incoming"
@@ -4505,7 +4505,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {incomingCount}
+                  {incomingUnreadCount > 99 ? "99+" : incomingUnreadCount}
                 </span>
               )}
             </button>
@@ -4519,7 +4519,7 @@ export default function Home() {
               }`}
             >
               <span>Мои</span>
-              {myCount > 0 && (
+              {myUnreadCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "in_progress"
@@ -4527,7 +4527,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {myCount}
+                  {myUnreadCount > 99 ? "99+" : myUnreadCount}
                 </span>
               )}
             </button>
@@ -4541,6 +4541,17 @@ export default function Home() {
               }`}
             >
               Все
+              {allUnreadCount > 0 && (
+                <span
+                  className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                    filter === "all"
+                      ? "bg-white text-[#0A84FF]"
+                      : "bg-[#0A84FF] text-white"
+                  }`}
+                >
+                  {allUnreadCount > 99 ? "99+" : allUnreadCount}
+                </span>
+              )}
             </button>
           </div>
 

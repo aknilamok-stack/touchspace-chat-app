@@ -129,7 +129,7 @@ export function AdminOverview() {
       {
         label: "Решено сегодня",
         value: formatNumber(data?.metrics?.resolvedToday),
-        hint: "resolved и closed",
+        hint: "решённые и закрытые",
         tone: "good",
       },
       {
@@ -141,7 +141,7 @@ export function AdminOverview() {
       {
         label: "Ответ поставщика",
         value: formatDuration(data?.metrics?.avgSupplierResponseMs),
-        hint: "supplier flow",
+        hint: "среднее время ответа",
         tone: "default",
       },
       {
@@ -175,7 +175,7 @@ export function AdminOverview() {
     {
       label: "Запросов поставщикам",
       value: formatNumber(data?.metrics?.totalSupplierRequests),
-      hint: "всего supplier requests",
+      hint: "всего запросов поставщикам",
     },
     {
       label: "Среднее чатов в день",

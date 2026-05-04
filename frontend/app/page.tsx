@@ -970,26 +970,6 @@ const getDirectSupplierDisplayName = (
   return contactName ? `${contactName}/${companyName}` : companyName;
 };
 
-const getDirectSupplierMessageDisplayName = (
-  chat?: Pick<
-    ChatItem,
-    "supplierCompanyName" | "supplierName" | "supplierContactName" | "clientName" | "title"
-  > | null,
-  senderName?: string | null
-) => {
-  const companyName = getDirectSupplierCompanyName(chat);
-  const normalizedCompanyName = companyName.trim().toLowerCase();
-  const normalizedSenderName = senderName?.trim();
-  const contactName =
-    normalizedSenderName &&
-    normalizedSenderName.toLowerCase() !== normalizedCompanyName &&
-    normalizedSenderName.toLowerCase() !== "поставщик"
-      ? normalizedSenderName
-      : getDirectSupplierContactName(chat);
-
-  return contactName ? `${contactName}/${companyName}` : companyName;
-};
-
 const getChatClientDisplayName = (
   chat?: Pick<
     ChatItem,
@@ -2163,6 +2143,71 @@ export default function Home() {
           supplier.status === "online"
       ),
     [supplierPresenceRecords]
+  );
+  const getSupplierPresenceContactName = useCallback(
+    (
+      chat?: Pick<
+        ChatItem,
+        "supplierId" | "supplierCompanyName" | "supplierName" | "clientName" | "title"
+      > | null
+    ) => {
+      const supplierScopeId = chat?.supplierId?.trim();
+      const supplierCompanyName = getDirectSupplierCompanyName(chat).trim().toLowerCase();
+      const supplier = supplierPresenceRecords.find((record) => {
+        const recordSupplierId = record.supplierId?.trim();
+        return (
+          (supplierScopeId &&
+            (recordSupplierId === supplierScopeId || record.id.trim() === supplierScopeId)) ||
+          (!supplierScopeId && record.fullName.trim().toLowerCase() !== supplierCompanyName)
+        );
+      });
+      const fullName = supplier?.fullName?.trim();
+
+      return fullName && fullName.toLowerCase() !== supplierCompanyName ? fullName : null;
+    },
+    [supplierPresenceRecords]
+  );
+  const getDirectSupplierDisplayNameForChat = useCallback(
+    (
+      chat?: Pick<
+        ChatItem,
+        | "supplierId"
+        | "supplierCompanyName"
+        | "supplierName"
+        | "supplierContactName"
+        | "clientName"
+        | "title"
+      > | null
+    ) => {
+      const companyName = getDirectSupplierCompanyName(chat);
+      const contactName = getDirectSupplierContactName(chat) || getSupplierPresenceContactName(chat);
+
+      return contactName ? `${contactName}/${companyName}` : companyName;
+    },
+    [getSupplierPresenceContactName]
+  );
+  const getChatDisplayName = useCallback(
+    (chat?: ChatItem | null) =>
+      chat?.conversationMode === "direct_supplier"
+        ? getDirectSupplierDisplayNameForChat(chat)
+        : getChatClientDisplayName(chat),
+    [getDirectSupplierDisplayNameForChat]
+  );
+  const getDirectSupplierMessageDisplayNameForChat = useCallback(
+    (chat: ChatItem | null, senderName?: string | null) => {
+      const companyName = getDirectSupplierCompanyName(chat);
+      const normalizedCompanyName = companyName.trim().toLowerCase();
+      const normalizedSenderName = senderName?.trim();
+      const contactName =
+        normalizedSenderName &&
+        normalizedSenderName.toLowerCase() !== normalizedCompanyName &&
+        normalizedSenderName.toLowerCase() !== "поставщик"
+          ? normalizedSenderName
+          : getDirectSupplierContactName(chat) || getSupplierPresenceContactName(chat);
+
+      return contactName ? `${contactName}/${companyName}` : companyName;
+    },
+    [getSupplierPresenceContactName]
   );
   const activeChatSupplierScopeIds = Array.from(
     new Set(
@@ -4826,7 +4871,7 @@ export default function Home() {
                         setActiveChatId(chat.id);
                         setIsSupplierFormOpen(false);
                       }}
-                      title={getChatClientDisplayName(chat)}
+                      title={getChatDisplayName(chat)}
                       identityKey={
                         isDirectSupplierDialog
                           ? chat.supplierId || chat.supplierName || chat.id
@@ -4934,7 +4979,7 @@ export default function Home() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                  {activeChat ? getChatClientDisplayName(activeChat) : "Выберите обращение"}
+                  {activeChat ? getChatDisplayName(activeChat) : "Выберите обращение"}
                 </p>
                 {activeChat?.aiEnabled ? (
                   <span className="shrink-0 rounded-full bg-[#EEF6FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
@@ -5163,7 +5208,7 @@ export default function Home() {
                             setActiveChatId(chat.id);
                             setIsSupplierFormOpen(false);
                           }}
-                          title={getChatClientDisplayName(chat)}
+                          title={getChatDisplayName(chat)}
                           identityKey={chat.clientId || chat.clientName || chat.id}
                           avatarColor={chat.avatarColor}
                           avatarEmoji={chat.avatarEmoji}
@@ -5479,7 +5524,7 @@ export default function Home() {
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
                                 {message.from === "supplier" &&
-                                  `Поставщик: ${getDirectSupplierMessageDisplayName(activeChat, message.senderName)}`}
+                                  `Поставщик: ${getDirectSupplierMessageDisplayNameForChat(activeChat, message.senderName)}`}
                                 {message.isInternal && "Внутренний комментарий поставщику"}
                               </p>
                             ) : null}
@@ -5671,7 +5716,7 @@ export default function Home() {
                 <div className="inline-flex max-w-[70%] items-end gap-2 rounded-[20px] rounded-bl-[8px] border border-[#E6EBF3] bg-[#FBFCFE] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
                   <div className="min-w-0">
                     <p className="text-[11px] font-medium text-[#9AA5B5]">
-                      {getChatClientDisplayName(activeChat)} печатает
+                      {getChatDisplayName(activeChat)} печатает
                     </p>
                     <div className="mt-1 flex items-end gap-2">
                       <p className="line-clamp-3 break-words text-[15px] leading-6 text-[#667085]">
@@ -6289,7 +6334,9 @@ export default function Home() {
                     Сотрудник
                   </p>
                   <p className="mt-1 text-base font-semibold text-[#1E1E1E]">
-                    {getDirectSupplierContactName(activeChat) || "Имя пока не указано"}
+                    {getDirectSupplierContactName(activeChat) ||
+                      getSupplierPresenceContactName(activeChat) ||
+                      "Имя пока не указано"}
                   </p>
                 </div>
               </div>

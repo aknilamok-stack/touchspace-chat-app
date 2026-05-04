@@ -180,19 +180,6 @@ export function AdminInsights() {
         ]}
       />
 
-      <AdminCards
-        items={[
-          { label: "Диалогов с AI", value: String(payload?.summary?.aiDialogs ?? 0) },
-          { label: "Доля AI-чатов", value: `${payload?.summary?.aiShare ?? 0}%` },
-          { label: "AI решил сам", value: String(payload?.summary?.aiResolved ?? 0), tone: "good" },
-          {
-            label: "AI передал менеджеру",
-            value: String(payload?.summary?.aiHandedToManager ?? 0),
-            tone: "warn",
-          },
-        ]}
-      />
-
       <div className="grid gap-4 xl:grid-cols-2">
         <AdminPanel title="Когда пишут по времени суток">
           <InsightsBars items={payload?.charts?.byHour ?? []} accentClass="bg-sky-500" />

@@ -18,8 +18,8 @@ type InsightsPayload = {
   summary?: {
     totalDialogs?: number;
     avgDialogsPerDay?: number;
-    busiestWeekday?: string | null;
-    busiestHour?: string | null;
+    busiestWeekday?: { label: string; count: number } | null;
+    busiestHour?: { label: string; count: number } | null;
     aiDialogs?: number;
     aiShare?: number;
     aiResolved?: number;
@@ -175,8 +175,8 @@ export function AdminInsights() {
         items={[
           { label: "Диалогов в периоде", value: String(payload?.summary?.totalDialogs ?? 0) },
           { label: "Среднее в день", value: String(payload?.summary?.avgDialogsPerDay ?? 0) },
-          { label: "Пиковый день недели", value: payload?.summary?.busiestWeekday ?? "нет данных" },
-          { label: "Пиковый час", value: payload?.summary?.busiestHour ?? "нет данных", tone: "good" },
+          { label: "Пиковый день недели", value: payload?.summary?.busiestWeekday?.label ?? "нет данных" },
+          { label: "Пиковый час", value: payload?.summary?.busiestHour?.label ?? "нет данных", tone: "good" },
         ]}
       />
 

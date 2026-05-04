@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatDuration, formatNumber } from "@/lib/admin-format";
-import { AdminButton, AdminInput, AdminMessage, AdminPanel, AdminSelect } from "@/components/admin/admin-ui";
+import {
+  AdminButton,
+  AdminInput,
+  AdminMessage,
+  AdminPanel,
+  AdminSelect,
+  getStatusLabel,
+} from "@/components/admin/admin-ui";
 
 const attentionCards = [
   {
@@ -290,8 +297,10 @@ export function AdminOverview() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-950">Диалог #{item.id}</p>
-                      <p className="mt-1 text-sm text-slate-700">{item.title}</p>
+                      <p className="text-sm font-semibold text-slate-950">{item.title}</p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {item.supplierName ? `Поставщик: ${item.supplierName}` : "Поставщик не указан"}
+                      </p>
                     </div>
                     <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-800">
                       {item.issue}
@@ -299,8 +308,7 @@ export function AdminOverview() {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
                     <span>Менеджер: {item.managerName}</span>
-                    <span>Статус: {item.status}</span>
-                    {item.supplierName ? <span>Поставщик: {item.supplierName}</span> : null}
+                    <span>Статус: {getStatusLabel(item.status)}</span>
                   </div>
                 </div>
               ))}

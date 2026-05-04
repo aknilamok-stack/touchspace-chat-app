@@ -860,6 +860,19 @@ export class AdminService {
         let priority = 0;
         let issue = 'Требует проверки';
 
+        if (ticket.status === 'resolved' || ticket.status === 'closed') {
+          return {
+            id: ticket.id,
+            title: ticket.title || 'Диалог без названия',
+            managerName: ticket.assignedManagerName || 'Не назначен',
+            supplierName: ticket.supplierName || null,
+            status: ticket.status,
+            priority,
+            issue,
+            waitMs,
+          };
+        }
+
         if (ticket.slaBreached) {
           priority += 100;
           issue = `SLA менеджера просрочен на ${Math.round(waitMs / 60000)} мин`;
@@ -891,7 +904,7 @@ export class AdminService {
 
         return {
           id: ticket.id,
-          title: ticket.title || `Диалог ${ticket.id}`,
+          title: ticket.title || 'Диалог без названия',
           managerName: ticket.assignedManagerName || 'Не назначен',
           supplierName: ticket.supplierName || null,
           status: ticket.status,

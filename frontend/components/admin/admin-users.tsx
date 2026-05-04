@@ -548,7 +548,6 @@ export function AdminUsers() {
                         className="text-left"
                       >
                         <p className="font-medium text-slate-950">{user.fullName}</p>
-                        <p className="mt-1 text-xs text-slate-500">ID: {user.id}</p>
                       </button>
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-700">{user.email ?? user.authLogin ?? "нет данных"}</td>

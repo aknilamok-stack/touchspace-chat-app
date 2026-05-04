@@ -487,6 +487,11 @@ ${JSON.stringify(compactTickets)}
         AND: [
           this.buildClientDialogWhere(dialog),
           {
+            conversationMode: {
+              not: 'direct_supplier',
+            },
+          },
+          {
             createdAt: {
               gte: range.from,
               lte: range.to,

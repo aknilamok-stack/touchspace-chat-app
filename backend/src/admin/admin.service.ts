@@ -543,6 +543,9 @@ export class AdminService {
         : null;
 
     return {
+      conversationMode: {
+        not: 'direct_supplier',
+      },
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.managerId ? { assignedManagerId: filters.managerId } : {}),
       ...(filters.supplierId
@@ -2037,6 +2040,11 @@ export class AdminService {
       where: {
         AND: [
           clientWhere,
+          {
+            conversationMode: {
+              not: 'direct_supplier',
+            },
+          },
           {
             createdAt: {
               gte: range.from,

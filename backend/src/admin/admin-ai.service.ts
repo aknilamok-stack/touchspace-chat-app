@@ -3,7 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import OpenAI from 'openai';
+import { AiTextClient } from '../ai-text-client';
 import { PrismaService } from '../prisma.service';
 
 type AiAnalysisPayload = {
@@ -26,26 +26,10 @@ type InsightsAiPayload = {
 
 @Injectable()
 export class AdminAiService {
-  private readonly client: OpenAI | null;
-  private readonly model: string;
+  private readonly aiClient: AiTextClient;
 
   constructor(private readonly prisma: PrismaService) {
-    this.client = process.env.OPENAI_API_KEY
-      ? new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-        })
-      : null;
-    this.model = process.env.OPENAI_ADMIN_MODEL?.trim() || 'gpt-5-mini';
-  }
-
-  private ensureClient() {
-    if (!this.client) {
-      throw new InternalServerErrorException(
-        'OPENAI_API_KEY не задан. Добавьте ключ в окружение backend.',
-      );
-    }
-
-    return this.client;
+    this.aiClient = new AiTextClient('admin');
   }
 
   private normalizeStringArray(value: unknown) {
@@ -130,7 +114,7 @@ export class AdminAiService {
       };
     } catch {
       throw new InternalServerErrorException(
-        'OpenAI вернул ответ, который не удалось разобрать как JSON.',
+        'AI вернул ответ, который не удалось разобрать как JSON.',
       );
     }
   }
@@ -141,7 +125,7 @@ export class AdminAiService {
       return this.normalizeInsightsPayload(parsed);
     } catch {
       throw new InternalServerErrorException(
-        'OpenAI вернул ответ по инсайтам, который не удалось разобрать как JSON.',
+        'AI вернул ответ по инсайтам, который не удалось разобрать как JSON.',
       );
     }
   }
@@ -253,13 +237,9 @@ ${transcript}
       throw new NotFoundException(`Dialog with id "${id}" not found`);
     }
 
-    const client = this.ensureClient();
-    const response = await client.responses.create({
-      model: this.model,
-      input: this.buildPrompt(dialog),
-    });
-
-    const parsed = this.parseAnalysis(response.output_text);
+    const parsed = this.parseAnalysis(
+      await this.aiClient.generateText(this.buildPrompt(dialog)),
+    );
 
     const updatedTicket = await this.prisma.ticket.update({
       where: { id },
@@ -274,7 +254,8 @@ ${transcript}
 
     return {
       ticketId: updatedTicket.id,
-      model: this.model,
+      model: this.aiClient.model,
+      provider: this.aiClient.provider,
       analysis: parsed,
     };
   }
@@ -284,7 +265,6 @@ ${transcript}
     dateFrom?: string;
     dateTo?: string;
   }) {
-    const client = this.ensureClient();
     const now = new Date();
     const preset = input?.preset?.trim() || 'month';
     const to = input?.dateTo ? new Date(input.dateTo) : now;
@@ -341,9 +321,8 @@ ${transcript}
       })),
     }));
 
-    const response = await client.responses.create({
-      model: this.model,
-      input: `
+    const text = await this.aiClient.generateText(
+      `
 Ты анализируешь обращения в TouchSpace admin analytics.
 
 Верни строго JSON без markdown:
@@ -373,7 +352,7 @@ ${transcript}
 Данные:
 ${JSON.stringify(compactTickets)}
       `.trim(),
-    });
+    );
 
     return {
       period: {
@@ -381,8 +360,9 @@ ${JSON.stringify(compactTickets)}
         to,
         preset,
       },
-      model: this.model,
-      insights: this.parseInsightsSummary(response.output_text),
+      model: this.aiClient.model,
+      provider: this.aiClient.provider,
+      insights: this.parseInsightsSummary(text),
     };
   }
 }

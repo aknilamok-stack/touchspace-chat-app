@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import OpenAI from 'openai';
+import { AiTextClient } from './ai-text-client';
 import { PrismaService } from './prisma.service';
 import { PushService } from './push.service';
 
@@ -12,32 +12,13 @@ type AiChatReply = {
 
 @Injectable()
 export class ChatAiService {
-  private readonly client: OpenAI | null;
-  private readonly model: string;
+  private readonly aiClient: AiTextClient;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
   ) {
-    this.client = process.env.OPENAI_API_KEY
-      ? new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-        })
-      : null;
-    this.model =
-      process.env.OPENAI_CHAT_MODEL?.trim() ||
-      process.env.OPENAI_ADMIN_MODEL?.trim() ||
-      'gpt-5-mini';
-  }
-
-  private ensureClient() {
-    if (!this.client) {
-      throw new InternalServerErrorException(
-        'OPENAI_API_KEY не задан. Добавьте ключ в окружение backend.',
-      );
-    }
-
-    return this.client;
+    this.aiClient = new AiTextClient('chat');
   }
 
   private extractJson(text: string) {
@@ -90,7 +71,7 @@ export class ChatAiService {
       return this.normalizeReply(parsed);
     } catch {
       throw new InternalServerErrorException(
-        'OpenAI вернул ответ для чата, который не удалось разобрать как JSON.',
+        'AI вернул ответ для чата, который не удалось разобрать как JSON.',
       );
     }
   }
@@ -225,14 +206,12 @@ ${transcript}
       };
     }
 
-    const response = await this.ensureClient().responses.create({
-      model: this.model,
-      input: this.buildPrompt(dialog),
-    });
+    const text = await this.aiClient.generateText(this.buildPrompt(dialog));
 
     return {
-      model: this.model,
-      ...this.parseResponse(response.output_text),
+      model: this.aiClient.model,
+      provider: this.aiClient.provider,
+      ...this.parseResponse(text),
     };
   }
 

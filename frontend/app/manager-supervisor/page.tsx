@@ -136,6 +136,10 @@ type ApiTicket = {
   superuserEmail?: string | null;
   superuserPhone?: string | null;
   canonicalEmail?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   avatarColor?: string | null;
   avatarEmoji?: string | null;
   status?: string;
@@ -261,6 +265,10 @@ type ChatItem = {
   superuserEmail: string | null;
   superuserPhone: string | null;
   canonicalEmail: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  supplierCompanyName: string | null;
+  supplierContactName: string | null;
   avatarColor: string | null;
   avatarEmoji: string | null;
   messages: ChatMessage[];
@@ -915,6 +923,13 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   superuserEmail: ticket.superuserEmail?.trim() || null,
   superuserPhone: ticket.superuserPhone?.trim() || null,
   canonicalEmail: ticket.canonicalEmail?.trim() || null,
+  supplierId: ticket.supplierId?.trim() || null,
+  supplierName: ticket.supplierName?.trim() || null,
+  supplierCompanyName:
+    ticket.supplierCompanyName?.trim() ||
+    ticket.supplierName?.trim() ||
+    null,
+  supplierContactName: ticket.supplierContactName?.trim() || null,
   avatarColor: ticket.avatarColor ?? null,
   avatarEmoji: ticket.avatarEmoji ?? null,
   messages: Array.isArray(ticket.messages)
@@ -926,13 +941,50 @@ const formatTicket = (ticket: ApiTicket): ChatItem => ({
   pageViews: Array.isArray(ticket.pageViews) ? ticket.pageViews : [],
 });
 
-const getChatClientDisplayName = (
-  chat?: Pick<ChatItem, "clientId" | "clientName" | "tradePointName"> | null
+const getDirectSupplierCompanyName = (
+  chat?: Pick<ChatItem, "supplierCompanyName" | "supplierName" | "clientName" | "title"> | null
 ) =>
-  chat?.tradePointName?.trim() ||
+  chat?.supplierCompanyName?.trim() ||
+  chat?.supplierName?.trim() ||
   chat?.clientName?.trim() ||
-  chat?.clientId?.trim() ||
-  "Реселлер";
+  chat?.title?.replace(/^Поставщик:\s*/i, "").trim() ||
+  "Поставщик";
+
+const getDirectSupplierContactName = (
+  chat?: Pick<ChatItem, "supplierContactName"> | null
+) => chat?.supplierContactName?.trim() || null;
+
+const getDirectSupplierDisplayName = (
+  chat?: Pick<
+    ChatItem,
+    "supplierCompanyName" | "supplierName" | "supplierContactName" | "clientName" | "title"
+  > | null
+) => {
+  const companyName = getDirectSupplierCompanyName(chat);
+  const contactName = getDirectSupplierContactName(chat);
+
+  return contactName ? `${contactName}/${companyName}` : companyName;
+};
+
+const getChatClientDisplayName = (
+  chat?: Pick<
+    ChatItem,
+    | "clientId"
+    | "clientName"
+    | "tradePointName"
+    | "conversationMode"
+    | "supplierCompanyName"
+    | "supplierName"
+    | "supplierContactName"
+    | "title"
+  > | null
+) =>
+  chat?.conversationMode === "direct_supplier"
+    ? getDirectSupplierDisplayName(chat)
+    : chat?.tradePointName?.trim() ||
+      chat?.clientName?.trim() ||
+      chat?.clientId?.trim() ||
+      "Реселлер";
 
 const getDialogCycleBoundary = (chat: ChatItem) => {
   for (let index = chat.messages.length - 1; index >= 0; index -= 1) {

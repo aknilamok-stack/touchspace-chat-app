@@ -371,9 +371,25 @@ const formatSupplierCompanyName = (supplierId?: string, fallback?: string) => {
   return "Поставщик";
 };
 
-const getDirectManagerDisplayName = (ticket?: Pick<Ticket, "assignedManagerName"> | null) =>
-  ticket?.assignedManagerName?.trim() ||
-  "Менеджер";
+const isSpecificManagerName = (name?: string | null) => {
+  const normalizedName = name?.trim().toLowerCase();
+  return Boolean(normalizedName && normalizedName !== "менеджер" && normalizedName !== "manager");
+};
+
+const getDirectManagerDisplayName = (
+  ticket?: Pick<Ticket, "assignedManagerName" | "messages"> | null
+) => {
+  if (isSpecificManagerName(ticket?.assignedManagerName)) {
+    return ticket?.assignedManagerName?.trim() || "Менеджер";
+  }
+
+  const lastManagerMessageName = [...(ticket?.messages ?? [])]
+    .reverse()
+    .find((message) => message.senderType === "manager" && isSpecificManagerName(message.senderName))
+    ?.senderName?.trim();
+
+  return lastManagerMessageName || ticket?.assignedManagerName?.trim() || "Менеджер";
+};
 
 const isSameLocalDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&

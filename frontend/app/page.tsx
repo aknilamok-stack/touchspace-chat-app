@@ -967,7 +967,7 @@ const getDirectSupplierDisplayName = (
   const companyName = getDirectSupplierCompanyName(chat);
   const contactName = getDirectSupplierContactName(chat);
 
-  return contactName ? `${companyName} / ${contactName}` : companyName;
+  return contactName ? `${contactName}/${companyName}` : companyName;
 };
 
 const getChatClientDisplayName = (

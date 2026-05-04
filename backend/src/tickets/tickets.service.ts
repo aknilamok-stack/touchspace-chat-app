@@ -92,6 +92,13 @@ const CLIENT_AVATAR_EMOJIS = [
   '🥝',
 ];
 
+const GENERIC_MANAGER_NAMES = new Set(['менеджер', 'manager']);
+
+const isSpecificManagerName = (name?: string | null) => {
+  const normalizedName = name?.trim().toLowerCase();
+  return Boolean(normalizedName && !GENERIC_MANAGER_NAMES.has(normalizedName));
+};
+
 @Injectable()
 export class TicketsService {
   private static readonly OFFLINE_MANAGER_AUTO_REPLY =
@@ -2049,15 +2056,23 @@ export class TicketsService {
         lastSupplierMessage?.senderProfile?.fullName?.trim() ||
         supplierProfile?.fullName?.trim() ||
         null;
+      const managerProfileName = dialog.assignedManagerId
+        ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()
+        : null;
       const assignedManagerName =
-        dialog.assignedManagerName?.trim() ||
-        (dialog.assignedManagerId
-          ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()
+        (isSpecificManagerName(dialog.assignedManagerName)
+          ? dialog.assignedManagerName?.trim()
           : null) ||
+        managerProfileName ||
+        dialog.assignedManagerName?.trim() ||
         null;
 
       return {
         ...dialog,
+        messages: dialog.messages.map(({ senderProfile, ...message }) => ({
+          ...message,
+          senderName: senderProfile?.fullName?.trim() || null,
+        })),
         assignedManagerName,
         supplierCompanyName,
         supplierContactName,

@@ -5,7 +5,6 @@ import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatNumber } from "@/lib/admin-format";
 import {
   AdminButton,
-  AdminCards,
   AdminInput,
   AdminMessage,
   AdminPage,
@@ -419,7 +418,27 @@ export function AdminUsers() {
         </AdminMessage>
       ) : null}
 
-      <AdminCards items={metrics} />
+      <section className="grid gap-3 xl:grid-cols-4">
+        {metrics.map((item) => {
+          const toneClass = {
+            default: "border-slate-200 bg-white text-slate-950",
+            good: "border-emerald-200 bg-emerald-50 text-emerald-950",
+            warn: "border-amber-200 bg-amber-50 text-amber-950",
+          }[item.tone ?? "default"];
+
+          return (
+            <article
+              key={item.label}
+              className={`rounded-[20px] border px-4 py-4 shadow-[0_12px_32px_rgba(148,163,184,0.1)] ${toneClass}`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                {item.label}
+              </p>
+              <p className="mt-3 text-[30px] font-semibold tracking-tight">{item.value}</p>
+            </article>
+          );
+        })}
+      </section>
 
       <section className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-[0_16px_44px_rgba(148,163,184,0.12)]">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_180px_180px_180px_auto]">

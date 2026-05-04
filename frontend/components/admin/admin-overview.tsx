@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatDuration, formatNumber } from "@/lib/admin-format";
-import { AdminButton, AdminMessage, AdminPanel } from "@/components/admin/admin-ui";
+import { AdminButton, AdminInput, AdminMessage, AdminPanel, AdminSelect } from "@/components/admin/admin-ui";
 
 const attentionCards = [
   {
@@ -68,14 +68,29 @@ const compactEmpty = (text: string) => (
   </p>
 );
 
+const periodOptions = [
+  { value: "today", label: "Сегодня" },
+  { value: "yesterday", label: "Вчера" },
+  { value: "week", label: "Неделя" },
+  { value: "month", label: "Месяц" },
+  { value: "custom", label: "Произвольный" },
+];
+
 export function AdminOverview() {
+  const [period, setPeriod] = useState("week");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const result = await adminApi.getOverview();
+      const result = await adminApi.getOverview({
+        preset: period === "custom" ? undefined : period,
+        dateFrom: period === "custom" ? dateFrom || undefined : undefined,
+        dateTo: period === "custom" ? dateTo || undefined : undefined,
+      });
       setData(result);
       setUpdatedAt(new Date().toISOString());
       setError(null);
@@ -86,7 +101,7 @@ export function AdminOverview() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [period, dateFrom, dateTo]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -94,7 +109,7 @@ export function AdminOverview() {
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [period, dateFrom, dateTo]);
 
   const kpis = useMemo(
     () => [
@@ -164,7 +179,7 @@ export function AdminOverview() {
     {
       label: "Среднее чатов в день",
       value: formatNumber(data?.metrics?.avgDialogsPerDay),
-      hint: "по последним 7 дням",
+      hint: "за выбранный период",
     },
   ];
 
@@ -176,15 +191,42 @@ export function AdminOverview() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-[30px] font-semibold tracking-tight text-slate-950">Главная</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Операционный центр TouchSpace: очереди, SLA, команда и качество диалогов.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
-              Период: 7 дней
-            </span>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+              <span>Период:</span>
+              <AdminSelect
+                value={period}
+                onChange={(event) => setPeriod(event.target.value)}
+                className="rounded-none border-0 bg-transparent px-0 py-0 text-xs font-medium focus:bg-transparent"
+                aria-label="Период главной"
+              >
+                {periodOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </AdminSelect>
+            </div>
+            {period === "custom" ? (
+              <>
+                <AdminInput
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                  className="rounded-full px-3 py-1.5 text-xs"
+                  aria-label="Дата с"
+                />
+                <AdminInput
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => setDateTo(event.target.value)}
+                  className="rounded-full px-3 py-1.5 text-xs"
+                  aria-label="Дата по"
+                />
+              </>
+            ) : null}
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800">
               Live: автообновление 10 сек
             </span>

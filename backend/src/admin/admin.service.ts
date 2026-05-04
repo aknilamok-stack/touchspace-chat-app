@@ -84,23 +84,47 @@ export class AdminService {
     const explicitTo = this.toDate(input?.dateTo);
 
     if (explicitFrom || explicitTo) {
+      const to = explicitTo ?? now;
+
+      if (input?.dateTo && !input.dateTo.includes('T')) {
+        to.setHours(23, 59, 59, 999);
+      }
+
       return {
         from:
           explicitFrom ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
-        to: explicitTo ?? now,
+        to,
       };
     }
 
-    const preset = input?.preset ?? 'month';
+    const preset = input?.preset ?? 'week';
+
+    if (preset === 'today' || preset === 'day') {
+      const from = new Date(now);
+      from.setHours(0, 0, 0, 0);
+
+      return { from, to: now };
+    }
+
+    if (preset === 'yesterday') {
+      const from = new Date(now);
+      from.setDate(from.getDate() - 1);
+      from.setHours(0, 0, 0, 0);
+
+      const to = new Date(from);
+      to.setHours(23, 59, 59, 999);
+
+      return { from, to };
+    }
+
     const durationByPreset: Record<string, number> = {
-      day: 1,
       week: 7,
       month: 30,
     };
-    const days = durationByPreset[preset] ?? 30;
+    const days = durationByPreset[preset] ?? 7;
 
     return {
-      from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000),
+      from: new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000),
       to: now,
     };
   }
@@ -573,7 +597,7 @@ export class AdminService {
     };
   }
 
-  async getOverview() {
+  async getOverview(input?: DateRangeInput) {
     const [
       tickets,
       supplierRequests,
@@ -744,9 +768,17 @@ export class AdminService {
     ]);
 
     const now = new Date();
-    const from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const range = this.normalizeDateRange(input);
+    const from = range.from;
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
+    const ticketsInRange = tickets.filter(
+      (ticket) => ticket.createdAt >= range.from && ticket.createdAt <= range.to,
+    );
+    const supplierRequestsInRange = supplierRequests.filter(
+      (request) =>
+        request.createdAt >= range.from && request.createdAt <= range.to,
+    );
     const newDialogs = tickets.filter(
       (ticket) => ticket.status === 'new',
     ).length;
@@ -770,7 +802,7 @@ export class AdminService {
     const managerRiskMap = new Map<string, number>();
     const activeTradePointKeys = new Set<string>();
 
-    for (const ticket of tickets) {
+    for (const ticket of ticketsInRange) {
       const tradePointKey =
         ticket.tradePointExternalId?.trim() ||
         ticket.tradePointName?.trim() ||
@@ -782,7 +814,7 @@ export class AdminService {
       }
     }
 
-    for (const ticket of tickets) {
+    for (const ticket of ticketsInRange) {
       if (ticket.assignedManagerId) {
         managerLoadMap.set(
           ticket.assignedManagerId,
@@ -1004,12 +1036,8 @@ export class AdminService {
       },
     ];
 
-    const dialogsByDay = this.buildTimeSeries(
-      tickets.filter((ticket) => ticket.createdAt >= from),
-      from,
-      now,
-    );
-    const totalChatRequests = tickets.reduce(
+    const dialogsByDay = this.buildTimeSeries(ticketsInRange, from, range.to);
+    const totalChatRequests = ticketsInRange.reduce(
       (total, ticket) => total + (ticket.requestCount ?? 1),
       0,
     );
@@ -1022,8 +1050,9 @@ export class AdminService {
         : 0;
 
     return {
+      period: range,
       metrics: {
-        totalDialogs: tickets.length,
+        totalDialogs: ticketsInRange.length,
         newDialogs,
         inProgressDialogs,
         resolvedDialogs,
@@ -1034,10 +1063,10 @@ export class AdminService {
             (ticket.lastMessageAt ?? ticket.createdAt) >= todayStart,
         ).length,
         avgFirstResponseMs: this.average(
-          tickets.map((ticket) => ticket.firstResponseTime),
+          ticketsInRange.map((ticket) => ticket.firstResponseTime),
         ),
         avgSupplierResponseMs: this.average(
-          supplierRequests.map((request) => request.responseTime),
+          supplierRequestsInRange.map((request) => request.responseTime),
         ),
         activeManagers: profiles.filter((profile) => profile.role === 'manager')
           .length,
@@ -1056,7 +1085,7 @@ export class AdminService {
         pendingRegistrations: registrationsPending,
         activeTradePoints: activeTradePointKeys.size,
         totalChatRequests,
-        totalSupplierRequests: supplierRequests.length,
+        totalSupplierRequests: supplierRequestsInRange.length,
         avgDialogsPerDay,
       },
       attention: {
@@ -1082,7 +1111,7 @@ export class AdminService {
           .map(([entityId, dialogs]) => ({ entityId, dialogs }))
           .sort((left, right) => right.dialogs - left.dialogs)
           .slice(0, 5),
-        topReasons: this.buildTopicBuckets(tickets),
+        topReasons: this.buildTopicBuckets(ticketsInRange),
         liveManagers: profiles
           .filter((profile) => profile.role === 'manager')
           .map((profile) => ({

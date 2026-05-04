@@ -121,13 +121,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
                   Панель администратора
                 </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {session.adminName ?? "Администратор"} управляет доступом, качеством диалогов и аналитикой TouchSpace.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
-                <span className="rounded-full bg-slate-100 px-3 py-1.5">Роль: admin</span>
-                <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Backend подключен</span>
               </div>
             </div>
           </header>

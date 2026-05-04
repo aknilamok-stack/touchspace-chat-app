@@ -31,8 +31,12 @@ export class AdminController {
   ) {}
 
   @Get('overview')
-  getOverview() {
-    return this.adminService.getOverview();
+  getOverview(
+    @Query('preset') preset?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.adminService.getOverview({ preset, dateFrom, dateTo });
   }
 
   @Get('registrations')

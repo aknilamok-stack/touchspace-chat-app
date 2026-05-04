@@ -75,7 +75,8 @@ export async function adminRequest<T>(
 }
 
 export const adminApi = {
-  getOverview: () => adminRequest<any>("/admin/overview"),
+  getOverview: (query?: Record<string, QueryValue>) =>
+    adminRequest<any>("/admin/overview", undefined, query),
   getRegistrations: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/registrations", undefined, query),
   getRegistration: (id: string) => adminRequest<any>(`/admin/registrations/${id}`),

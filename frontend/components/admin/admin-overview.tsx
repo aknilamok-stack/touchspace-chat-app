@@ -63,12 +63,6 @@ const teamStatusMeta = {
   },
 };
 
-const systemStatusMeta: Record<string, string> = {
-  ok: "bg-emerald-100 text-emerald-800",
-  warn: "bg-amber-100 text-amber-800",
-  error: "bg-rose-100 text-rose-800",
-};
-
 const compactEmpty = (text: string) => (
   <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
     {text}
@@ -363,7 +357,7 @@ export function AdminOverview() {
         </AdminPanel>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+      <section className="grid gap-4">
         <AdminPanel title="Лента последних событий">
           {(data?.lists?.recentEvents ?? []).length > 0 ? (
             <div className="grid gap-3">
@@ -383,25 +377,6 @@ export function AdminOverview() {
           ) : (
             compactEmpty("Лента активности пока пуста.")
           )}
-        </AdminPanel>
-
-        <AdminPanel title="Состояние системы">
-          <div className="grid gap-3">
-            {(data?.lists?.systemStatus ?? []).map((item: any) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between gap-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                  <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${systemStatusMeta[item.status] ?? systemStatusMeta.warn}`}>
-                  {item.status === "ok" ? "ok" : item.status === "error" ? "ошибка" : "внимание"}
-                </span>
-              </div>
-            ))}
-          </div>
         </AdminPanel>
       </section>
 

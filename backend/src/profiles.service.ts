@@ -226,6 +226,7 @@ export class ProfilesService {
       select: {
         id: true,
         fullName: true,
+        companyName: true,
         supplierId: true,
         supplierStatus: true,
         supplierPresenceHeartbeatAt: true,
@@ -236,6 +237,7 @@ export class ProfilesService {
     return suppliers.map((supplier) => ({
       id: supplier.id,
       fullName: supplier.fullName,
+      companyName: supplier.companyName,
       supplierId: supplier.supplierId,
       supplierStatus: this.resolvePresenceStatus(
         supplier.supplierStatus,

@@ -2153,14 +2153,20 @@ export default function Home() {
     ) => {
       const supplierScopeId = chat?.supplierId?.trim();
       const supplierCompanyName = getDirectSupplierCompanyName(chat).trim().toLowerCase();
-      const supplier = supplierPresenceRecords.find((record) => {
+      const matchingSuppliers = supplierPresenceRecords.filter((record) => {
         const recordSupplierId = record.supplierId?.trim();
+        const recordCompanyName = record.companyName?.trim().toLowerCase();
+
         return (
           (supplierScopeId &&
             (recordSupplierId === supplierScopeId || record.id.trim() === supplierScopeId)) ||
-          (!supplierScopeId && record.fullName.trim().toLowerCase() !== supplierCompanyName)
+          (recordCompanyName && recordCompanyName === supplierCompanyName)
         );
       });
+      const supplier =
+        matchingSuppliers.find(
+          (record) => record.fullName.trim().toLowerCase() !== supplierCompanyName
+        ) ?? matchingSuppliers[0];
       const fullName = supplier?.fullName?.trim();
 
       return fullName && fullName.toLowerCase() !== supplierCompanyName ? fullName : null;

@@ -13,6 +13,7 @@ type ManagerStatusRecord = {
 type SupplierStatusRecord = {
   id: string;
   fullName: string;
+  companyName?: string | null;
   supplierId?: string | null;
   supplierStatus: string | null;
   lastLoginAt?: string | null;
@@ -21,6 +22,7 @@ type SupplierStatusRecord = {
 export type SupplierPresenceRecord = {
   id: string;
   fullName: string;
+  companyName: string | null;
   supplierId: string | null;
   status: ManagerPresence;
   lastLoginAt?: string | null;
@@ -128,6 +130,7 @@ export async function fetchSupplierStatusRecords(): Promise<SupplierPresenceReco
   return payload.map((supplier) => ({
     id: supplier.id,
     fullName: supplier.fullName,
+    companyName: supplier.companyName?.trim() || null,
     supplierId: supplier.supplierId?.trim() || null,
     status:
       supplier.supplierStatus === "online" ||

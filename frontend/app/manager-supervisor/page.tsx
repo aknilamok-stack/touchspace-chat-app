@@ -1947,10 +1947,22 @@ export default function Home() {
   const incomingUnreadCount = chatData
     .filter((chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled)
     .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const actionableNotificationCandidates = notificationCandidates.filter(
+    (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+  );
+  const incomingNotificationCount = actionableNotificationCandidates.filter(
+    (candidate) => candidate.scopeStatus !== "owned_active"
+  ).length;
   const myUnreadCount = chatData
     .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
     .reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const myNotificationCount = actionableNotificationCandidates.filter(
+    (candidate) => candidate.scopeStatus === "owned_active"
+  ).length;
   const allUnreadCount = chatData.reduce((total, chat) => total + getUnreadCount(chat), 0);
+  const incomingTabBadgeCount = Math.max(incomingUnreadCount, incomingNotificationCount);
+  const myTabBadgeCount = Math.max(myUnreadCount, myNotificationCount);
+  const allTabBadgeCount = Math.max(allUnreadCount, actionableNotificationCandidates.length);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>
@@ -4497,7 +4509,7 @@ export default function Home() {
               }`}
             >
               <span>Входящие</span>
-              {incomingUnreadCount > 0 && (
+              {incomingTabBadgeCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "incoming"
@@ -4505,7 +4517,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {incomingUnreadCount > 99 ? "99+" : incomingUnreadCount}
+                  {incomingTabBadgeCount > 99 ? "99+" : incomingTabBadgeCount}
                 </span>
               )}
             </button>
@@ -4519,7 +4531,7 @@ export default function Home() {
               }`}
             >
               <span>Мои</span>
-              {myUnreadCount > 0 && (
+              {myTabBadgeCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "in_progress"
@@ -4527,7 +4539,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {myUnreadCount > 99 ? "99+" : myUnreadCount}
+                  {myTabBadgeCount > 99 ? "99+" : myTabBadgeCount}
                 </span>
               )}
             </button>
@@ -4541,7 +4553,7 @@ export default function Home() {
               }`}
             >
               Все
-              {allUnreadCount > 0 && (
+              {allTabBadgeCount > 0 && (
                 <span
                   className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
                     filter === "all"
@@ -4549,7 +4561,7 @@ export default function Home() {
                       : "bg-[#0A84FF] text-white"
                   }`}
                 >
-                  {allUnreadCount > 99 ? "99+" : allUnreadCount}
+                  {allTabBadgeCount > 99 ? "99+" : allTabBadgeCount}
                 </span>
               )}
             </button>

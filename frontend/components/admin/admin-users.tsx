@@ -89,6 +89,7 @@ export function AdminUsers() {
     company: "",
   });
   const [payload, setPayload] = useState<any>(null);
+  const [companyOptions, setCompanyOptions] = useState<string[]>([]);
   const [supplierSupervisorCompanies, setSupplierSupervisorCompanies] = useState<string[]>([]);
   const [detail, setDetail] = useState<any>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
@@ -148,6 +149,23 @@ export function AdminUsers() {
     }
   };
 
+  const loadCompanyOptions = async () => {
+    try {
+      const result = await adminApi.getUsers();
+      const companies = Array.from(
+        new Set<string>(
+          (result?.items ?? [])
+            .map((item: any) => item.companyName?.trim())
+            .filter((value: string | undefined | null): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right, "ru"));
+
+      setCompanyOptions(companies);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить список компаний");
+    }
+  };
+
   const openCreateDrawer = () => {
     setDrawerMode("create");
     setCreateForm(emptyCreateForm);
@@ -191,6 +209,7 @@ export function AdminUsers() {
 
   useEffect(() => {
     void loadSupplierSupervisorCompanies();
+    void loadCompanyOptions();
   }, []);
 
   const users = useMemo(() => {
@@ -250,6 +269,7 @@ export function AdminUsers() {
       setCreateForm(emptyCreateForm);
       await loadUsers();
       await loadSupplierSupervisorCompanies();
+      await loadCompanyOptions();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось создать пользователя");
     } finally {
@@ -289,6 +309,7 @@ export function AdminUsers() {
       setMessage("Изменения сохранены");
       await loadUsers();
       await loadSupplierSupervisorCompanies();
+      await loadCompanyOptions();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось обновить пользователя");
     } finally {
@@ -473,11 +494,17 @@ export function AdminUsers() {
               </option>
             ))}
           </AdminSelect>
-          <AdminInput
+          <AdminSelect
             value={filters.company}
             onChange={(event) => setFilters((current) => ({ ...current, company: event.target.value }))}
-            placeholder="Компания"
-          />
+          >
+            <option value="">Все компании</option>
+            {companyOptions.map((companyName) => (
+              <option key={companyName} value={companyName}>
+                {companyName}
+              </option>
+            ))}
+          </AdminSelect>
           <AdminButton
             tone="secondary"
             onClick={() => {

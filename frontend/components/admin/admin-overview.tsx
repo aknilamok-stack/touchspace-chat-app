@@ -291,9 +291,11 @@ export function AdminOverview() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-950">{item.title}</p>
+                      <p className="text-sm font-semibold text-slate-950">
+                        Компания: {item.supplierCompanyName ?? item.supplierName ?? "не указана"}
+                      </p>
                       <p className="mt-1 text-sm text-slate-700">
-                        {item.supplierName ? `Поставщик: ${item.supplierName}` : "Поставщик не указан"}
+                        Поставщик: {item.supplierContactName ?? "не указан"}
                       </p>
                     </div>
                     <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-800">
@@ -303,6 +305,7 @@ export function AdminOverview() {
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
                     <span>Менеджер: {item.managerName}</span>
                     <span>Статус: {getStatusLabel(item.status)}</span>
+                    <span>Диалог: {item.title}</span>
                   </div>
                 </div>
               ))}

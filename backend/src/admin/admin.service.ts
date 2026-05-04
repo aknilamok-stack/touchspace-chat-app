@@ -621,8 +621,19 @@ export class AdminService {
           createdAt: true,
           assignedManagerId: true,
           assignedManagerName: true,
+          assignedManagerProfile: {
+            select: {
+              fullName: true,
+            },
+          },
           supplierId: true,
           supplierName: true,
+          supplierProfile: {
+            select: {
+              fullName: true,
+              companyName: true,
+            },
+          },
           clientId: true,
           clientEmail: true,
           tradePointExternalId: true,
@@ -859,13 +870,30 @@ export class AdminService {
         const waitMs = Math.max(now.getTime() - baseline.getTime(), 0);
         let priority = 0;
         let issue = 'Требует проверки';
+        const supplierCompanyName =
+          ticket.supplierProfile?.companyName?.trim() ||
+          ticket.supplierName?.trim() ||
+          null;
+        const supplierProfileName = ticket.supplierProfile?.fullName?.trim();
+        const supplierContactName =
+          supplierProfileName &&
+          supplierProfileName !== supplierCompanyName &&
+          supplierProfileName !== ticket.supplierName?.trim()
+            ? supplierProfileName
+            : null;
+        const managerName =
+          ticket.assignedManagerProfile?.fullName?.trim() ||
+          ticket.assignedManagerName?.trim() ||
+          'Не назначен';
 
         if (ticket.status === 'resolved' || ticket.status === 'closed') {
           return {
             id: ticket.id,
             title: ticket.title || 'Диалог без названия',
-            managerName: ticket.assignedManagerName || 'Не назначен',
+            managerName,
             supplierName: ticket.supplierName || null,
+            supplierCompanyName,
+            supplierContactName,
             status: ticket.status,
             priority,
             issue,
@@ -905,8 +933,10 @@ export class AdminService {
         return {
           id: ticket.id,
           title: ticket.title || 'Диалог без названия',
-          managerName: ticket.assignedManagerName || 'Не назначен',
+          managerName,
           supplierName: ticket.supplierName || null,
+          supplierCompanyName,
+          supplierContactName,
           status: ticket.status,
           priority,
           issue,

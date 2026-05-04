@@ -14,6 +14,18 @@ type AdminHeadersRequest = Request & {
   };
 };
 
+const decodeHeaderValue = (value?: string) => {
+  if (!value) {
+    return value;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext) {
@@ -30,17 +42,20 @@ export class AdminGuard implements CanActivate {
       ? adminNameHeader[0]
       : adminNameHeader;
 
+    const decodedAdminId = decodeHeaderValue(adminId);
+    const decodedAdminName = decodeHeaderValue(adminName);
+
     if (!role || role.trim() !== 'admin') {
       throw new UnauthorizedException('Admin role is required');
     }
 
-    if (!adminId?.trim()) {
+    if (!decodedAdminId?.trim()) {
       throw new ForbiddenException('Admin id header is required');
     }
 
     request.adminContext = {
-      adminId: adminId.trim(),
-      adminName: adminName?.trim() || undefined,
+      adminId: decodedAdminId.trim(),
+      adminName: decodedAdminName?.trim() || undefined,
     };
 
     return true;

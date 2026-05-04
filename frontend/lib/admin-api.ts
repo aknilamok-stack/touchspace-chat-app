@@ -5,6 +5,8 @@ import { readAuthSession } from "@/lib/auth";
 
 type QueryValue = string | number | boolean | null | undefined;
 
+const encodeHeaderValue = (value: string) => encodeURIComponent(value);
+
 const getAdminHeaders = () => {
   const session = readAuthSession();
 
@@ -15,8 +17,8 @@ const getAdminHeaders = () => {
   return {
     "Content-Type": "application/json",
     "x-touchspace-admin-role": "admin",
-    "x-touchspace-admin-id": session.adminId ?? "admin_touchspace",
-    "x-touchspace-admin-name": session.adminName ?? "TouchSpace Admin",
+    "x-touchspace-admin-id": encodeHeaderValue(session.adminId ?? "admin_touchspace"),
+    "x-touchspace-admin-name": encodeHeaderValue(session.adminName ?? "TouchSpace Admin"),
   };
 };
 

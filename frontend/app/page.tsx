@@ -970,6 +970,26 @@ const getDirectSupplierDisplayName = (
   return contactName ? `${contactName}/${companyName}` : companyName;
 };
 
+const getDirectSupplierMessageDisplayName = (
+  chat?: Pick<
+    ChatItem,
+    "supplierCompanyName" | "supplierName" | "supplierContactName" | "clientName" | "title"
+  > | null,
+  senderName?: string | null
+) => {
+  const companyName = getDirectSupplierCompanyName(chat);
+  const normalizedCompanyName = companyName.trim().toLowerCase();
+  const normalizedSenderName = senderName?.trim();
+  const contactName =
+    normalizedSenderName &&
+    normalizedSenderName.toLowerCase() !== normalizedCompanyName &&
+    normalizedSenderName.toLowerCase() !== "поставщик"
+      ? normalizedSenderName
+      : getDirectSupplierContactName(chat);
+
+  return contactName ? `${contactName}/${companyName}` : companyName;
+};
+
 const getChatClientDisplayName = (
   chat?: Pick<
     ChatItem,
@@ -5459,7 +5479,7 @@ export default function Home() {
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
                                 {message.from === "supplier" &&
-                                  `Поставщик: ${message.senderName || "Поставщик"}`}
+                                  `Поставщик: ${getDirectSupplierMessageDisplayName(activeChat, message.senderName)}`}
                                 {message.isInternal && "Внутренний комментарий поставщику"}
                               </p>
                             ) : null}

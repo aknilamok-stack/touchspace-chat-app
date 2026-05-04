@@ -99,6 +99,21 @@ const isSpecificManagerName = (name?: string | null) => {
   return Boolean(normalizedName && !GENERIC_MANAGER_NAMES.has(normalizedName));
 };
 
+const isSpecificSupplierContactName = (
+  name?: string | null,
+  companyName?: string | null,
+) => {
+  const normalizedName = name?.trim().toLowerCase();
+  const normalizedCompanyName = companyName?.trim().toLowerCase();
+
+  return Boolean(
+    normalizedName &&
+      normalizedName !== 'поставщик' &&
+      normalizedName !== 'supplier' &&
+      normalizedName !== normalizedCompanyName,
+  );
+};
+
 @Injectable()
 export class TicketsService {
   private static readonly OFFLINE_MANAGER_AUTO_REPLY =
@@ -1981,7 +1996,7 @@ export class TicketsService {
               role: true,
               createdAt: true,
             },
-            orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
+            orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
           })
         : [];
     const managerProfiles =
@@ -2028,7 +2043,19 @@ export class TicketsService {
 
       const companyName = profile.companyName?.trim();
 
-      if (companyName && !profilesByCompanyName.has(companyName)) {
+      const existingCompanyProfile = companyName
+        ? profilesByCompanyName.get(companyName)
+        : null;
+
+      if (
+        companyName &&
+        (!existingCompanyProfile ||
+          (!isSpecificSupplierContactName(
+            existingCompanyProfile.fullName,
+            companyName,
+          ) &&
+            isSpecificSupplierContactName(profile.fullName, companyName)))
+      ) {
         profilesByCompanyName.set(companyName, profile);
       }
     }
@@ -2052,9 +2079,20 @@ export class TicketsService {
         dialog.supplierName?.trim() ||
         supplierProfile?.companyName?.trim() ||
         null;
+      const supplierProfileName = isSpecificSupplierContactName(
+        supplierProfile?.fullName,
+        supplierCompanyName,
+      )
+        ? supplierProfile?.fullName?.trim()
+        : null;
       const supplierContactName =
-        lastSupplierMessage?.senderProfile?.fullName?.trim() ||
-        supplierProfile?.fullName?.trim() ||
+        (isSpecificSupplierContactName(
+          lastSupplierMessage?.senderProfile?.fullName,
+          supplierCompanyName,
+        )
+          ? lastSupplierMessage?.senderProfile?.fullName?.trim()
+          : null) ||
+        supplierProfileName ||
         null;
       const managerProfileName = dialog.assignedManagerId
         ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()

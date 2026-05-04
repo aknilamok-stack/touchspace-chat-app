@@ -2215,6 +2215,25 @@ export default function Home() {
     },
     [getSupplierPresenceContactName]
   );
+  const getDirectSupplierNotificationTitle = useCallback(
+    (candidate: Pick<NotificationCandidate, "title" | "tradePointName" | "clientName">) => {
+      const companyName =
+        candidate.tradePointName?.trim() ||
+        candidate.title?.trim() ||
+        candidate.clientName?.trim() ||
+        "Поставщик";
+      const contactName = getSupplierPresenceContactName({
+        supplierId: null,
+        supplierCompanyName: companyName,
+        supplierName: companyName,
+        clientName: companyName,
+        title: companyName,
+      });
+
+      return contactName ? `${contactName}/${companyName}` : companyName;
+    },
+    [getSupplierPresenceContactName]
+  );
   const activeChatSupplierScopeIds = Array.from(
     new Set(
       (activeChat?.supplierRequests ?? [])
@@ -3005,7 +3024,7 @@ export default function Home() {
         isClaimedByOther
           ? "Чат уже взят в работу"
           : isDirectSupplierDialog
-            ? candidate.tradePointName?.trim() || candidate.title || "Поставщик"
+            ? getDirectSupplierNotificationTitle(candidate)
           : candidate.tradePointName?.trim() ||
             candidate.title ||
             candidate.clientName ||
@@ -3066,7 +3085,13 @@ export default function Home() {
         tone: isClaimedByOther ? "amber" : isDirectSupplierDialog ? "green" : "blue",
       });
     });
-  }, [dismissedNotificationUntil, notificationCandidates, notificationNow, authReady]);
+  }, [
+    dismissedNotificationUntil,
+    notificationCandidates,
+    notificationNow,
+    authReady,
+    getDirectSupplierNotificationTitle,
+  ]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -4931,10 +4956,12 @@ export default function Home() {
             items={visibleFloatingNotifications.map((candidate) => ({
               id: candidate.notificationKey,
               title:
-                candidate.tradePointName?.trim() ||
-                candidate.title ||
-                candidate.clientName ||
-                "Клиентский чат",
+                candidate.conversationMode === "direct_supplier"
+                  ? getDirectSupplierNotificationTitle(candidate)
+                  : candidate.tradePointName?.trim() ||
+                    candidate.title ||
+                    candidate.clientName ||
+                    "Клиентский чат",
               subtitle:
                 candidate.scopeStatus === "claimed_by_other_recently"
                   ? candidate.assignedManagerName

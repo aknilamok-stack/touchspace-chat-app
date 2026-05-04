@@ -165,6 +165,7 @@ export class AdminController {
     @Query('status') status?: string,
     @Query('managerId') managerId?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('preset') preset?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('supplierEscalated') supplierEscalated?: string,
@@ -174,6 +175,7 @@ export class AdminController {
       status,
       managerId,
       supplierId,
+      preset,
       dateFrom,
       dateTo,
       supplierEscalated,
@@ -182,13 +184,31 @@ export class AdminController {
   }
 
   @Get('dialogs/:id')
-  getDialog(@Param('id') id: string) {
-    return this.adminService.getDialog(id);
+  getDialog(
+    @Param('id') id: string,
+    @Query('preset') preset?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.adminService.getDialog(id, { preset, dateFrom, dateTo });
   }
 
   @Post('dialogs/:id/ai-analyze')
   analyzeDialog(@Param('id') id: string) {
     return this.adminAiService.analyzeDialog(id);
+  }
+
+  @Post('dialogs/:id/client-ai-summary')
+  generateClientDialogAiSummary(
+    @Param('id') id: string,
+    @Body()
+    body?: {
+      preset?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
+    return this.adminAiService.generateClientDialogSummary(id, body);
   }
 
   @Get('analytics/overview')

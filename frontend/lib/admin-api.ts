@@ -118,10 +118,16 @@ export const adminApi = {
     }),
   getDialogs: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/dialogs", undefined, query),
-  getDialog: (id: string) => adminRequest<any>(`/admin/dialogs/${id}`),
+  getDialog: (id: string, query?: Record<string, QueryValue>) =>
+    adminRequest<any>(`/admin/dialogs/${id}`, undefined, query),
   analyzeDialogAi: (id: string) =>
     adminRequest<any>(`/admin/dialogs/${id}/ai-analyze`, {
       method: "POST",
+    }),
+  generateClientDialogAiSummary: (id: string, payload?: Record<string, QueryValue>) =>
+    adminRequest<any>(`/admin/dialogs/${id}/client-ai-summary`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
     }),
   getAnalyticsOverview: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/analytics/overview", undefined, query),

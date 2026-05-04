@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AiTextClient } from '../ai-text-client';
 import { PrismaService } from '../prisma.service';
 
@@ -24,12 +25,117 @@ type InsightsAiPayload = {
   recommendations: string[];
 };
 
+type DateRangeInput = {
+  preset?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 @Injectable()
 export class AdminAiService {
   private readonly aiClient: AiTextClient;
 
   constructor(private readonly prisma: PrismaService) {
     this.aiClient = new AiTextClient('admin');
+  }
+
+  private toDate(value?: string | null, fallback?: Date | null) {
+    if (!value) {
+      return fallback ?? null;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? (fallback ?? null) : parsed;
+  }
+
+  private normalizeDateRange(input?: DateRangeInput) {
+    const now = new Date();
+    const explicitFrom = this.toDate(input?.dateFrom);
+    const explicitTo = this.toDate(input?.dateTo);
+
+    if (explicitFrom || explicitTo) {
+      const to = explicitTo ?? now;
+
+      if (input?.dateTo && !input.dateTo.includes('T')) {
+        to.setHours(23, 59, 59, 999);
+      }
+
+      return {
+        from:
+          explicitFrom ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        to,
+      };
+    }
+
+    const preset = input?.preset ?? 'week';
+
+    if (preset === 'today' || preset === 'day') {
+      const from = new Date(now);
+      from.setHours(0, 0, 0, 0);
+
+      return { from, to: now };
+    }
+
+    if (preset === 'yesterday') {
+      const from = new Date(now);
+      from.setDate(from.getDate() - 1);
+      from.setHours(0, 0, 0, 0);
+
+      const to = new Date(from);
+      to.setHours(23, 59, 59, 999);
+
+      return { from, to };
+    }
+
+    const days = preset === 'month' ? 30 : 7;
+
+    return {
+      from: new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000),
+      to: now,
+    };
+  }
+
+  private buildClientDialogWhere(dialog: {
+    id: string;
+    clientId?: string | null;
+    clientEmail?: string | null;
+    canonicalEmail?: string | null;
+    currentUserEmail?: string | null;
+    tradePointExternalId?: string | null;
+    tradePointName?: string | null;
+    clientName?: string | null;
+  }): Prisma.TicketWhereInput {
+    const or: Prisma.TicketWhereInput[] = [{ id: dialog.id }];
+    const clientId = dialog.clientId?.trim();
+    const email =
+      dialog.canonicalEmail?.trim()?.toLowerCase() ||
+      dialog.clientEmail?.trim()?.toLowerCase() ||
+      dialog.currentUserEmail?.trim()?.toLowerCase();
+    const tradePointExternalId = dialog.tradePointExternalId?.trim();
+    const tradePointName = dialog.tradePointName?.trim();
+    const clientName = dialog.clientName?.trim();
+
+    if (clientId) {
+      or.push({ clientId });
+    }
+
+    if (email) {
+      or.push({ canonicalEmail: email }, { clientEmail: email }, { currentUserEmail: email });
+    }
+
+    if (tradePointExternalId) {
+      or.push({ tradePointExternalId });
+    }
+
+    if (tradePointName) {
+      or.push({ tradePointName });
+    }
+
+    if (clientName) {
+      or.push({ clientName });
+    }
+
+    return { OR: or };
   }
 
   private normalizeStringArray(value: unknown) {
@@ -360,6 +466,124 @@ ${JSON.stringify(compactTickets)}
         to,
         preset,
       },
+      model: this.aiClient.model,
+      provider: this.aiClient.provider,
+      insights: this.parseInsightsSummary(text),
+    };
+  }
+
+  async generateClientDialogSummary(id: string, input?: DateRangeInput) {
+    const dialog = await this.prisma.ticket.findUnique({
+      where: { id },
+    });
+
+    if (!dialog) {
+      throw new NotFoundException(`Dialog with id "${id}" not found`);
+    }
+
+    const range = this.normalizeDateRange(input);
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        AND: [
+          this.buildClientDialogWhere(dialog),
+          {
+            createdAt: {
+              gte: range.from,
+              lte: range.to,
+            },
+          },
+        ],
+      },
+      include: {
+        messages: {
+          select: {
+            senderType: true,
+            senderRole: true,
+            content: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          take: 20,
+        },
+        supplierRequests: {
+          select: {
+            supplierName: true,
+            status: true,
+            requestText: true,
+            responseBreached: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 40,
+    });
+
+    const compactTickets = tickets.map((ticket) => ({
+      title: ticket.title,
+      status: ticket.status,
+      createdAt: ticket.createdAt.toISOString(),
+      manager: ticket.assignedManagerName,
+      supplier: ticket.supplierName,
+      managerSlaBreached: ticket.slaBreached || ticket.firstResponseBreached,
+      supplierSlaBreaches: ticket.supplierRequests.filter(
+        (request) => request.responseBreached,
+      ).length,
+      supplierRequests: ticket.supplierRequests.map((request) => ({
+        supplierName: request.supplierName,
+        status: request.status,
+        requestText: request.requestText,
+        responseBreached: request.responseBreached,
+        createdAt: request.createdAt.toISOString(),
+      })),
+      messages: ticket.messages.map((message) => ({
+        role: message.senderRole ?? message.senderType,
+        createdAt: message.createdAt.toISOString(),
+        content: message.content,
+      })),
+    }));
+
+    const text = await this.aiClient.generateText(
+      `
+Ты анализируешь историю обращений одного клиента TouchSpace для администратора.
+
+Верни строго JSON без markdown:
+{
+  "executiveSummary": "краткая сводка на русском, 3-5 предложений",
+  "triggerThemes": [
+    {
+      "theme": "короткая тема",
+      "count": 2,
+      "explanation": "что именно повторяется у клиента"
+    }
+  ],
+  "recommendations": ["короткая рекомендация 1", "короткая рекомендация 2"]
+}
+
+Правила:
+- Пиши только на русском.
+- Сфокусируйся на повторных обращениях клиента, поставщиках, SLA, причинах эскалаций и управленческих действиях.
+- recommendations должны быть практичными для администратора.
+- Если данных мало, честно напиши, что устойчивый паттерн пока не виден.
+
+Клиент:
+${dialog.clientName || dialog.tradePointName || dialog.clientEmail || dialog.currentUserEmail || 'не указан'}
+
+Период:
+- с ${range.from.toISOString()}
+- по ${range.to.toISOString()}
+
+Данные:
+${JSON.stringify(compactTickets)}
+      `.trim(),
+    );
+
+    return {
+      period: range,
       model: this.aiClient.model,
       provider: this.aiClient.provider,
       insights: this.parseInsightsSummary(text),

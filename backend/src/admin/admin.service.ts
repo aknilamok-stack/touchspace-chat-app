@@ -33,6 +33,7 @@ type DialogsFilter = {
   status?: string;
   managerId?: string;
   supplierId?: string;
+  preset?: string;
   dateFrom?: string;
   dateTo?: string;
   supplierEscalated?: string;
@@ -536,8 +537,10 @@ export class AdminService {
   private buildDialogsWhere(filters: DialogsFilter) {
     const supplierEscalated = this.toBooleanFlag(filters.supplierEscalated);
     const slaBreached = this.toBooleanFlag(filters.slaBreached);
-    const from = this.toDate(filters.dateFrom);
-    const to = this.toDate(filters.dateTo);
+    const range =
+      filters.preset || filters.dateFrom || filters.dateTo
+        ? this.normalizeDateRange(filters)
+        : null;
 
     return {
       ...(filters.status ? { status: filters.status } : {}),
@@ -556,11 +559,11 @@ export class AdminService {
             ],
           }
         : {}),
-      ...(from || to
+      ...(range
         ? {
             createdAt: {
-              ...(from ? { gte: from } : {}),
-              ...(to ? { lte: to } : {}),
+              gte: range.from,
+              lte: range.to,
             },
           }
         : {}),
@@ -595,6 +598,49 @@ export class AdminService {
               },
             }),
     };
+  }
+
+  private buildClientDialogWhere(dialog: {
+    id: string;
+    clientId?: string | null;
+    clientEmail?: string | null;
+    canonicalEmail?: string | null;
+    currentUserEmail?: string | null;
+    tradePointExternalId?: string | null;
+    tradePointName?: string | null;
+    clientName?: string | null;
+  }): Prisma.TicketWhereInput {
+    const or: Prisma.TicketWhereInput[] = [{ id: dialog.id }];
+    const clientId = dialog.clientId?.trim();
+    const email =
+      dialog.canonicalEmail?.trim()?.toLowerCase() ||
+      dialog.clientEmail?.trim()?.toLowerCase() ||
+      dialog.currentUserEmail?.trim()?.toLowerCase();
+    const tradePointExternalId = dialog.tradePointExternalId?.trim();
+    const tradePointName = dialog.tradePointName?.trim();
+    const clientName = dialog.clientName?.trim();
+
+    if (clientId) {
+      or.push({ clientId });
+    }
+
+    if (email) {
+      or.push({ canonicalEmail: email }, { clientEmail: email }, { currentUserEmail: email });
+    }
+
+    if (tradePointExternalId) {
+      or.push({ tradePointExternalId });
+    }
+
+    if (tradePointName) {
+      or.push({ tradePointName });
+    }
+
+    if (clientName) {
+      or.push({ clientName });
+    }
+
+    return { OR: or };
   }
 
   async getOverview(input?: DateRangeInput) {
@@ -1917,7 +1963,15 @@ export class AdminService {
         messages: {
           select: {
             id: true,
+            content: true,
+            senderType: true,
+            senderRole: true,
+            createdAt: true,
           },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 1,
         },
       },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
@@ -1927,7 +1981,12 @@ export class AdminService {
       items: dialogs.map((dialog) => ({
         id: dialog.id,
         title: dialog.title,
-        clientName: dialog.clientName,
+        clientName:
+          dialog.clientName ||
+          dialog.tradePointName ||
+          dialog.clientEmail ||
+          dialog.currentUserEmail ||
+          'Клиент не указан',
         managerName: dialog.assignedManagerName,
         managerId: dialog.assignedManagerId,
         supplierName: dialog.supplierName,
@@ -1945,12 +2004,13 @@ export class AdminService {
           dialog.firstResponseBreached ||
           dialog.supplierRequests.some((request) => request.responseBreached),
         messagesCount: dialog.messages.length,
+        lastMessagePreview: dialog.messages[0]?.content ?? null,
       })),
       total: dialogs.length,
     };
   }
 
-  async getDialog(id: string) {
+  async getDialog(id: string, input?: DateRangeInput) {
     const dialog = await this.prisma.ticket.findUnique({
       where: { id },
       include: {
@@ -1971,8 +2031,64 @@ export class AdminService {
       throw new NotFoundException(`Dialog with id "${id}" not found`);
     }
 
+    const range = this.normalizeDateRange(input);
+    const clientWhere = this.buildClientDialogWhere(dialog);
+    const clientDialogs = await this.prisma.ticket.findMany({
+      where: {
+        AND: [
+          clientWhere,
+          {
+            createdAt: {
+              gte: range.from,
+              lte: range.to,
+            },
+          },
+        ],
+      },
+      include: {
+        supplierRequests: {
+          select: {
+            id: true,
+            responseBreached: true,
+          },
+        },
+      },
+    });
+    const supplierRequestsCount = clientDialogs.reduce(
+      (total, ticket) => total + ticket.supplierRequests.length,
+      0,
+    );
+
     return {
       ...dialog,
+      displayClientName:
+        dialog.clientName ||
+        dialog.tradePointName ||
+        dialog.clientEmail ||
+        dialog.currentUserEmail ||
+        'Клиент не указан',
+      period: range,
+      clientStats: {
+        dialogsTotal: clientDialogs.length,
+        completedDialogs: clientDialogs.filter(
+          (ticket) =>
+            ticket.status === 'resolved' ||
+            ticket.status === 'closed' ||
+            Boolean(ticket.resolvedAt) ||
+            Boolean(ticket.closedAt),
+        ).length,
+        supplierRequestsCount,
+        managerSlaBreaches: clientDialogs.filter(
+          (ticket) => ticket.slaBreached || ticket.firstResponseBreached,
+        ).length,
+        supplierSlaBreaches: clientDialogs.reduce(
+          (total, ticket) =>
+            total +
+            ticket.supplierRequests.filter((request) => request.responseBreached)
+              .length,
+          0,
+        ),
+      },
       metrics: {
         firstResponseAt: dialog.firstResponseAt,
         firstResponseTime: dialog.firstResponseTime,

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 const statusLabels: Record<string, string> = {
   pending: "На проверке",
   approved: "Подтверждён",
@@ -43,7 +45,7 @@ export function AdminPage({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -53,7 +55,7 @@ export function AdminPage({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
             <h2 className="text-3xl font-semibold tracking-tight text-slate-950">{title}</h2>
-            <p className="mt-3 text-sm leading-7 text-slate-600">{description}</p>
+            {description ? <p className="mt-3 text-sm leading-7 text-slate-600">{description}</p> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
         </div>
@@ -65,8 +67,12 @@ export function AdminPage({
 
 export function AdminCards({
   items,
+  className,
+  dense = false,
 }: {
-  items: Array<{ label: string; value: string; tone?: "default" | "good" | "warn" }>;
+  items: Array<{ label: string; value: string; tone?: "default" | "good" | "warn"; hint?: string }>;
+  className?: string;
+  dense?: boolean;
 }) {
   const toneClass = {
     default: "border-slate-200 bg-white text-slate-950",
@@ -75,18 +81,32 @@ export function AdminCards({
   };
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-      {items.map((item) => (
+    <div className={`grid gap-4 md:grid-cols-2 2xl:grid-cols-4 ${className ?? ""}`}>
+      {items.map((item, index) => (
         <article
-          key={item.label}
-          className={`rounded-[24px] border p-5 shadow-[0_16px_50px_rgba(148,163,184,0.14)] ${
+          key={`${item.label}-${index}`}
+          className={`rounded-[24px] border shadow-[0_16px_50px_rgba(148,163,184,0.14)] ${
+            dense ? "p-4" : "p-5"
+          } ${
             toneClass[item.tone ?? "default"]
           }`}
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] opacity-70">
-            {item.label}
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] opacity-70">
+              {item.label}
+            </p>
+            {item.hint ? (
+              <span className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white">
+                !
+                <span className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-30 w-[260px] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-slate-700 opacity-0 shadow-[0_18px_40px_rgba(15,23,42,0.14)] transition group-hover:opacity-100">
+                  {item.hint}
+                </span>
+              </span>
+            ) : null}
+          </div>
+          <p className={`${dense ? "mt-3 text-2xl" : "mt-4 text-3xl"} font-semibold tracking-tight`}>
+            {item.value}
           </p>
-          <p className="mt-4 text-3xl font-semibold tracking-tight">{item.value}</p>
         </article>
       ))}
     </div>
@@ -110,8 +130,8 @@ export function AdminPanel({
 
 export function AdminToolbar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-[0_16px_50px_rgba(148,163,184,0.14)]">
-      <div className="flex flex-wrap gap-3">{children}</div>
+    <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_16px_50px_rgba(148,163,184,0.14)]">
+      <div className="flex flex-wrap items-center gap-3">{children}</div>
     </div>
   );
 }
@@ -139,6 +159,80 @@ export function AdminSelect(
         props.className ?? ""
       }`}
     />
+  );
+}
+
+export function AdminPeriodSelect({
+  value,
+  onChange,
+  options = [
+    { value: "day", label: "Сегодня" },
+    { value: "yesterday", label: "Вчера" },
+    { value: "week", label: "Неделя" },
+    { value: "month", label: "Месяц" },
+    { value: "custom", label: "Произвольный" },
+  ],
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options?: Array<{ value: string; label: string }>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative min-w-[170px]">
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition hover:border-sky-200 hover:bg-white focus:border-sky-400"
+      >
+        <span>{selectedOption?.label ?? "Период"}</span>
+        <span className={`text-xs text-slate-500 transition ${isOpen ? "rotate-180" : ""}`}>⌄</span>
+      </button>
+
+      {isOpen ? (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
+          {options.map((option) => {
+            const active = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+                  active
+                    ? "bg-sky-50 text-sky-800"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                }`}
+              >
+                <span className="inline-flex w-4 justify-center text-xs">
+                  {active ? "✓" : ""}
+                </span>
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

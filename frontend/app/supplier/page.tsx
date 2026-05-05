@@ -313,6 +313,16 @@ const getMessageStatusLabel = (status?: string) => {
   return "Отправлено";
 };
 
+const MessageReadTicks = ({ status }: { status?: string }) => (
+  <span
+    className="ml-0.5 inline-flex min-w-[18px] items-center justify-end text-[12px] font-semibold leading-none text-white/78"
+    title={getMessageStatusLabel(status)}
+    aria-label={getMessageStatusLabel(status)}
+  >
+    {status === "read" ? "✓✓" : "✓"}
+  </span>
+);
+
 const formatTimeLabel = (createdAt: string) =>
   new Date(createdAt).toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -4742,13 +4752,14 @@ export default function SupplierPage() {
                                   )}
                                 </p>
                               )}
-                              <p
+                              <div
                                 className={`absolute bottom-[10px] right-4 whitespace-nowrap text-[12px] leading-none ${
                                   isOutgoing ? "text-white/65" : "text-[#8E8E93]"
                                 }`}
                               >
-                                {formatTimeLabel(message.createdAt)}
-                              </p>
+                                <span>{formatTimeLabel(message.createdAt)}</span>
+                                {isOutgoing ? <MessageReadTicks status={message.status} /> : null}
+                              </div>
                             </div>
                           </div>
                         </div>

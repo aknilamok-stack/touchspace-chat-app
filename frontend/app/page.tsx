@@ -412,6 +412,18 @@ const getMessageStatusLabel = (status?: string) => {
   return "Отправлено";
 };
 
+const MessageReadTicks = ({ status, tone = "light" }: { status?: string; tone?: "light" | "dark" }) => (
+  <span
+    className={`ml-0.5 inline-flex min-w-[18px] items-center justify-end text-[12px] font-semibold leading-none ${
+      tone === "light" ? "text-white/78" : "text-[#0A84FF]"
+    }`}
+    title={getMessageStatusLabel(status)}
+    aria-label={getMessageStatusLabel(status)}
+  >
+    {status === "read" ? "✓✓" : "✓"}
+  </span>
+);
+
 const getChatPreview = (chat: ChatItem) => {
   const lastMessage = getLastNonSystemMessage(chat) ?? chat.messages.at(-1);
 
@@ -5677,6 +5689,9 @@ export default function Home() {
                                 }`}
                               >
                                 {message.time ? <p className="shrink-0">{message.time}</p> : null}
+                                {isActiveDirectSupplierDialog && message.from === "manager" ? (
+                                  <MessageReadTicks status={message.status} />
+                                ) : null}
                               </div>
                             </div>
                           </div>

@@ -12,7 +12,7 @@ import {
   AdminMessage,
   AdminPage,
   AdminPanel,
-  AdminSelect,
+  AdminPeriodSelect,
   AdminTable,
   AdminToolbar,
 } from "@/components/admin/admin-ui";
@@ -73,16 +73,9 @@ export function AdminAnalyticsOverview() {
   return (
     <AdminPage
       title="Общая аналитика"
-      description="Рабочая аналитика, считаемая на backend: объём диалогов, среднее время ответа и закрытия, эскалации и топ причин."
       actions={
         <AdminToolbar>
-          <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">Сегодня</option>
-            <option value="yesterday">Вчера</option>
-            <option value="week">Неделя</option>
-            <option value="month">Месяц</option>
-            <option value="custom">Произвольный</option>
-          </AdminSelect>
+          <AdminPeriodSelect value={preset} onChange={setPreset} />
           {preset === "custom" ? (
             <>
               <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
@@ -101,12 +94,18 @@ export function AdminAnalyticsOverview() {
       {error ? <AdminMessage tone="error">{error}</AdminMessage> : null}
 
       <AdminCards
+        dense
+        className="xl:grid-cols-4"
         items={[
           { label: "Диалоги за период", value: String(data?.metrics?.dialogs ?? 0) },
           { label: "Новые / решённые", value: `${data?.metrics?.newDialogs ?? 0} / ${data?.metrics?.resolvedDialogs ?? 0}` },
           { label: "Среднее 1-го ответа", value: formatDuration(data?.metrics?.avgFirstResponseMs) },
           { label: "Среднее закрытия", value: formatDuration(data?.metrics?.avgCloseTimeMs) },
-          { label: "Доля эскалаций", value: String(data?.metrics?.escalatedShare ?? 0) },
+          {
+            label: "Доля эскалаций",
+            value: String(data?.metrics?.escalatedShare ?? 0),
+            hint: "Доля эскалаций показывает, какая часть диалогов за выбранный период была передана поставщику или потребовала подключения поставщика.",
+          },
           { label: "Сообщений на диалог", value: String(data?.metrics?.avgMessagesPerDialog ?? 0) },
           { label: "Просроченные", value: String(data?.metrics?.overdueDialogs ?? 0), tone: "warn" },
         ]}

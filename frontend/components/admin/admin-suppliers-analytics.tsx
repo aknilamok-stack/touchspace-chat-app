@@ -11,7 +11,7 @@ import {
   AdminMessage,
   AdminPage,
   AdminPanel,
-  AdminSelect,
+  AdminPeriodSelect,
   AdminStatusBadge,
   AdminTable,
   AdminToolbar,
@@ -108,13 +108,7 @@ export function AdminSuppliersAnalytics() {
       description="Рабочий срез эффективности поставщиков: сколько запросов получили, сколько ответили и где нарушают SLA."
       actions={
         <AdminToolbar>
-          <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">Сегодня</option>
-            <option value="yesterday">Вчера</option>
-            <option value="week">Неделя</option>
-            <option value="month">Месяц</option>
-            <option value="custom">Произвольный</option>
-          </AdminSelect>
+          <AdminPeriodSelect value={preset} onChange={setPreset} />
           {preset === "custom" ? (
             <>
               <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />

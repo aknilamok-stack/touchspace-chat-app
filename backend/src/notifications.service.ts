@@ -680,6 +680,7 @@ export class NotificationsService {
               id: true,
               content: true,
               senderType: true,
+              status: true,
               createdAt: true,
             },
           },
@@ -699,6 +700,10 @@ export class NotificationsService {
 
         const isDirectSupplierDialog =
           ticket.conversationMode === 'direct_supplier';
+
+        if (isDirectSupplierDialog && latestUnreadMessage.status === 'read') {
+          return null;
+        }
 
         if (!ticket.assignedManagerId && latestUnreadMessage.senderType !== 'client') {
           return null;

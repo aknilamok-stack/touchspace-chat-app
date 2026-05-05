@@ -10,7 +10,7 @@ import {
   AdminMessage,
   AdminPage,
   AdminPanel,
-  AdminSelect,
+  AdminPeriodSelect,
   AdminToolbar,
 } from "@/components/admin/admin-ui";
 
@@ -142,11 +142,15 @@ export function AdminInsights() {
       description="Раздел для поиска повторяющихся тем, временных пиков и частых триггеров. Здесь админ видит, когда чаще всего пишут, по каким дням идёт пик нагрузки и какие темы начинают доминировать в периоде."
       actions={
         <AdminToolbar>
-          <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">День</option>
-            <option value="week">Неделя</option>
-            <option value="month">Месяц</option>
-          </AdminSelect>
+          <AdminPeriodSelect
+            value={preset}
+            onChange={setPreset}
+            options={[
+              { value: "day", label: "Сегодня" },
+              { value: "week", label: "Неделя" },
+              { value: "month", label: "Месяц" },
+            ]}
+          />
           <AdminInput
             type="date"
             value={dateFrom}

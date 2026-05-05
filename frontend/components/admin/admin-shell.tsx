@@ -22,8 +22,7 @@ const navigation = [
   { href: "/settings", label: "Настройки уведомлений" },
 ];
 
-const isActiveLink = (pathname: string, href: string) =>
-  href === "/admin" ? pathname === href : pathname.startsWith(href);
+const isActiveLink = (pathname: string, href: string) => pathname === href;
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

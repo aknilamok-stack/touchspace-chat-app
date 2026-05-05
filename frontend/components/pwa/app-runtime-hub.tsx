@@ -8,6 +8,7 @@ import {
   enablePushNotifications,
   getInternalProfileId,
   sendTestPush,
+  unsubscribeCurrentPushSubscription,
 } from "@/lib/push-notifications";
 import { isDesktopShell } from "@/lib/runtime";
 import { usePathname } from "next/navigation";
@@ -47,13 +48,27 @@ export function AppRuntimeHub() {
     setDesktopMode(inDesktopShell);
     setIsInstalled(window.matchMedia("(display-mode: standalone)").matches || inDesktopShell);
     setDismissed(window.localStorage.getItem(runtimeHubDismissedStorageKey) === "1");
+
+    if (inDesktopShell && "serviceWorker" in navigator) {
+      void unsubscribeCurrentPushSubscription().catch(() => undefined);
+      void navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .catch(() => undefined);
+    }
+
     if ("Notification" in window) {
       setPermission(Notification.permission);
     }
   }, []);
 
   useEffect(() => {
-    if (!shouldShow || typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    if (
+      !shouldShow ||
+      isDesktopShell() ||
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator)
+    ) {
       return;
     }
 

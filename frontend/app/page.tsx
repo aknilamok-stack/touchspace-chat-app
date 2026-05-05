@@ -3030,7 +3030,12 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
+    if (
+      !authReady ||
+      isDesktopShell() ||
+      typeof window === "undefined" ||
+      !("Notification" in window)
+    ) {
       return;
     }
 

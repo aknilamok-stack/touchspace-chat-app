@@ -3443,7 +3443,12 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
+    if (
+      !authReady ||
+      isDesktopShell() ||
+      typeof window === "undefined" ||
+      !("Notification" in window)
+    ) {
       return;
     }
 

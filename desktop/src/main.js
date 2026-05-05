@@ -779,7 +779,7 @@ app.on("second-instance", () => {
 app.on("web-contents-created", (_, contents) => {
   contents.session.setPermissionRequestHandler((_, permission, callback) => {
     if (permission === "notifications") {
-      callback(true);
+      callback(false);
       return;
     }
 

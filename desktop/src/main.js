@@ -373,6 +373,10 @@ function showOverlayNotificationWindow(payload) {
 
   const bounds = getOverlayNotificationBounds();
   overlay.setBounds(bounds);
+  overlay.setAlwaysOnTop(true, "screen-saver");
+  overlay.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
   sendOverlayNotificationPayload();
   keepMainWindowInTaskbar();
   requestDesktopAttention(Math.max(lastUnreadAttentionCount + 1, 1));
@@ -658,7 +662,12 @@ app.whenReady().then(() => {
     }
 
     notificationWindowPendingShow = false;
+    notificationWindow.setAlwaysOnTop(true, "screen-saver");
+    notificationWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+    });
     notificationWindow.showInactive();
+    notificationWindow.moveTop();
     keepMainWindowInTaskbar();
   });
 

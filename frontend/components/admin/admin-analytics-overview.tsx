@@ -21,6 +21,14 @@ type DistributionRow = {
   count: number;
 };
 
+type AiReasonCategory = {
+  category: string;
+  count: number;
+  share: number;
+  explanation: string;
+  examples?: string[];
+};
+
 const monthLabels = [
   "Январь",
   "Февраль",
@@ -63,6 +71,14 @@ export function AdminAnalyticsOverview() {
   const [distributionYear, setDistributionYear] = useState(String(new Date().getFullYear()));
   const [distributionRows, setDistributionRows] = useState<DistributionRow[]>([]);
   const [distributionError, setDistributionError] = useState<string | null>(null);
+  const [reasonsPreset, setReasonsPreset] = useState("month");
+  const [reasonsDateFrom, setReasonsDateFrom] = useState("");
+  const [reasonsDateTo, setReasonsDateTo] = useState("");
+  const [reasonsYear, setReasonsYear] = useState(String(new Date().getFullYear()));
+  const [basicReasons, setBasicReasons] = useState<Array<{ label: string; count: number }>>([]);
+  const [reasonsError, setReasonsError] = useState<string | null>(null);
+  const [reasonsAiPayload, setReasonsAiPayload] = useState<any>(null);
+  const [isGeneratingReasonsAi, setIsGeneratingReasonsAi] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +98,32 @@ export function AdminAnalyticsOverview() {
       dateTo: distributionDateTo,
     });
   }, [distributionDateFrom, distributionDateTo, distributionPreset, distributionYear]);
+
+  const reasonsQuery = useMemo(() => {
+    if (reasonsPreset === "year") {
+      const safeYear = /^\d{4}$/.test(reasonsYear) ? reasonsYear : String(new Date().getFullYear());
+
+      return {
+        dateFrom: `${safeYear}-01-01`,
+        dateTo: `${safeYear}-12-31`,
+      };
+    }
+
+    return buildPeriodQuery({
+      preset: reasonsPreset,
+      dateFrom: reasonsDateFrom,
+      dateTo: reasonsDateTo,
+    });
+  }, [reasonsDateFrom, reasonsDateTo, reasonsPreset, reasonsYear]);
+
+  const reasonsPeriodLabel =
+    reasonsPreset === "year"
+      ? `год ${reasonsYear}`
+      : buildPeriodLabel({
+          preset: reasonsPreset,
+          dateFrom: reasonsDateFrom,
+          dateTo: reasonsDateTo,
+        });
 
   const load = async () => {
     try {
@@ -114,6 +156,16 @@ export function AdminAnalyticsOverview() {
     }
   };
 
+  const loadReasons = async () => {
+    try {
+      const result = await adminApi.getAnalyticsOverview(reasonsQuery);
+      setBasicReasons(result?.charts?.topTopics ?? []);
+      setReasonsError(null);
+    } catch (requestError) {
+      setReasonsError(requestError instanceof Error ? requestError.message : "Не удалось загрузить топ причин");
+    }
+  };
+
   useEffect(() => {
     void load();
   }, [preset, dateFrom, dateTo]);
@@ -121,6 +173,59 @@ export function AdminAnalyticsOverview() {
   useEffect(() => {
     void loadDistribution();
   }, [distributionQuery, distributionPreset]);
+
+  useEffect(() => {
+    void loadReasons();
+  }, [reasonsQuery]);
+
+  const generateReasonsAi = async () => {
+    try {
+      setIsGeneratingReasonsAi(true);
+      setReasonsError(null);
+      const result = await adminApi.generateReasonsAiSummary(reasonsQuery);
+      setReasonsAiPayload(result);
+    } catch (requestError) {
+      setReasonsError(requestError instanceof Error ? requestError.message : "Не удалось сгенерировать AI-причины");
+    } finally {
+      setIsGeneratingReasonsAi(false);
+    }
+  };
+
+  const downloadBasicReasons = () => {
+    downloadExcelReport(`touchspace-basic-reasons-${reasonsPeriodLabel}`, [
+      {
+        title: `Базовый топ причин за период: ${reasonsPeriodLabel}`,
+        columns: ["Причина", "Количество"],
+        rows: basicReasons.map((item) => [item.label, item.count]),
+      },
+    ]);
+  };
+
+  const downloadAiReasons = () => {
+    const categories = (reasonsAiPayload?.reasons?.categories ?? []) as AiReasonCategory[];
+
+    downloadExcelReport(`touchspace-ai-reasons-${reasonsPeriodLabel}`, [
+      {
+        title: `AI-анализ причин за период: ${reasonsPeriodLabel}`,
+        columns: ["Категория", "Количество", "Доля, %", "Пояснение", "Примеры"],
+        rows: categories.map((item) => [
+          item.category,
+          item.count,
+          item.share,
+          item.explanation,
+          (item.examples ?? []).join("; "),
+        ]),
+      },
+      {
+        title: "Сводка и рекомендации",
+        columns: ["Тип", "Текст"],
+        rows: [
+          ["Сводка", reasonsAiPayload?.reasons?.executiveSummary ?? ""],
+          ...((reasonsAiPayload?.reasons?.recommendations ?? []) as string[]).map((item) => ["Рекомендация", item]),
+        ],
+      },
+    ]);
+  };
 
   const downloadReport = () => {
     const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
@@ -266,9 +371,72 @@ export function AdminAnalyticsOverview() {
         </AdminPanel>
 
         <AdminPanel title="Топ причин">
-          {(data?.charts?.topTopics ?? []).length > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <AdminPeriodSelect
+              value={reasonsPreset}
+              onChange={setReasonsPreset}
+              options={[
+                { value: "week", label: "Неделя" },
+                { value: "month", label: "Месяц" },
+                { value: "year", label: "Год" },
+                { value: "custom", label: "Произвольный" },
+              ]}
+            />
+            {reasonsPreset === "year" ? (
+              <AdminInput
+                type="number"
+                min="2020"
+                max="2100"
+                value={reasonsYear}
+                onChange={(event) => setReasonsYear(event.target.value)}
+                aria-label="Год"
+                className="w-[130px]"
+              />
+            ) : null}
+            {reasonsPreset === "custom" ? (
+              <>
+                <AdminInput
+                  type="date"
+                  value={reasonsDateFrom}
+                  onChange={(event) => setReasonsDateFrom(event.target.value)}
+                  aria-label="Дата с"
+                />
+                <AdminInput
+                  type="date"
+                  value={reasonsDateTo}
+                  onChange={(event) => setReasonsDateTo(event.target.value)}
+                  aria-label="Дата по"
+                />
+              </>
+            ) : null}
+            <span className="group relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+              !
+              <span className="pointer-events-none absolute right-0 top-[calc(100%+10px)] z-30 w-[280px] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-slate-700 opacity-0 shadow-[0_18px_40px_rgba(15,23,42,0.14)] transition group-hover:opacity-100">
+                Базовые причины считаются сразу по данным диалогов. AI-причины генерируются DeepSeek по всем диалогам за выбранный период и группируются в понятные категории.
+              </span>
+            </span>
+            <AdminButton tone="secondary" onClick={() => void loadReasons()}>
+              Обновить
+            </AdminButton>
+            <AdminButton tone="secondary" onClick={downloadBasicReasons} disabled={basicReasons.length === 0}>
+              Скачать базовый
+            </AdminButton>
+            <AdminButton onClick={() => void generateReasonsAi()} disabled={isGeneratingReasonsAi}>
+              {isGeneratingReasonsAi ? "Генерируется..." : "Сгенерировать AI"}
+            </AdminButton>
+            <AdminButton tone="secondary" onClick={downloadAiReasons} disabled={!reasonsAiPayload}>
+              Скачать AI
+            </AdminButton>
+          </div>
+
+          {reasonsError ? <AdminMessage tone="error">{reasonsError}</AdminMessage> : null}
+          {isGeneratingReasonsAi ? (
+            <AdminMessage>Ожидайте, DeepSeek анализирует диалоги за выбранный период...</AdminMessage>
+          ) : null}
+
+          {basicReasons.length > 0 ? (
             <div className="grid gap-3">
-              {data.charts.topTopics.map((item: any) => (
+              {basicReasons.map((item: any) => (
                 <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="flex items-center justify-between gap-4">
                     <p className="text-sm font-medium text-slate-900">{item.label}</p>
@@ -280,6 +448,40 @@ export function AdminAnalyticsOverview() {
           ) : (
             <AdminEmpty title="Топ причин пока пуст" description="Нужна история обращений." />
           )}
+
+          {reasonsAiPayload ? (
+            <div className="mt-5 rounded-3xl border border-sky-100 bg-sky-50/60 p-4">
+              <p className="text-sm font-semibold text-slate-950">AI-анализ причин</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {reasonsAiPayload.reasons?.executiveSummary}
+              </p>
+              <div className="mt-4 grid gap-3">
+                {((reasonsAiPayload.reasons?.categories ?? []) as AiReasonCategory[]).map((item) => (
+                  <div key={item.category} className="rounded-2xl border border-sky-100 bg-white px-4 py-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">{item.category}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">{item.explanation}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold text-sky-800">{item.count}</p>
+                        <p className="text-xs text-slate-500">{item.share}%</p>
+                      </div>
+                    </div>
+                    {(item.examples ?? []).length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(item.examples ?? []).map((example) => (
+                          <span key={example} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                            {example}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </AdminPanel>
       </div>
     </AdminPage>

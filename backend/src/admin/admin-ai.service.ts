@@ -25,6 +25,18 @@ type InsightsAiPayload = {
   recommendations: string[];
 };
 
+type ReasonsAiPayload = {
+  executiveSummary: string;
+  categories: Array<{
+    category: string;
+    count: number;
+    share: number;
+    explanation: string;
+    examples: string[];
+  }>;
+  recommendations: string[];
+};
+
 type DateRangeInput = {
   preset?: string;
   dateFrom?: string;
@@ -188,6 +200,47 @@ export class AdminAiService {
     };
   }
 
+  private normalizeReasonsPayload(value: unknown): ReasonsAiPayload {
+    if (!value || typeof value !== 'object') {
+      return {
+        executiveSummary: 'AI не смог подготовить анализ причин.',
+        categories: [],
+        recommendations: [],
+      };
+    }
+
+    const payload = value as Partial<ReasonsAiPayload>;
+
+    return {
+      executiveSummary:
+        typeof payload.executiveSummary === 'string'
+          ? payload.executiveSummary.trim()
+          : 'AI не смог подготовить анализ причин.',
+      categories: Array.isArray(payload.categories)
+        ? payload.categories
+            .map((item) => ({
+              category:
+                typeof item?.category === 'string'
+                  ? item.category.trim()
+                  : 'Другое',
+              count: typeof item?.count === 'number' ? item.count : 0,
+              share: typeof item?.share === 'number' ? item.share : 0,
+              explanation:
+                typeof item?.explanation === 'string'
+                  ? item.explanation.trim()
+                  : '',
+              examples: this.normalizeStringArray(item?.examples).slice(0, 3),
+            }))
+            .filter((item) => item.category)
+            .slice(0, 8)
+        : [],
+      recommendations: this.normalizeStringArray(payload.recommendations).slice(
+        0,
+        5,
+      ),
+    };
+  }
+
   private extractJson(text: string) {
     const fencedMatch = text.match(/```json\s*([\s\S]*?)```/i);
 
@@ -232,6 +285,17 @@ export class AdminAiService {
     } catch {
       throw new InternalServerErrorException(
         'AI вернул ответ по инсайтам, который не удалось разобрать как JSON.',
+      );
+    }
+  }
+
+  private parseReasonsSummary(text: string): ReasonsAiPayload {
+    try {
+      const parsed = JSON.parse(this.extractJson(text));
+      return this.normalizeReasonsPayload(parsed);
+    } catch {
+      throw new InternalServerErrorException(
+        'AI вернул ответ по причинам, который не удалось разобрать как JSON.',
       );
     }
   }
@@ -469,6 +533,120 @@ ${JSON.stringify(compactTickets)}
       model: this.aiClient.model,
       provider: this.aiClient.provider,
       insights: this.parseInsightsSummary(text),
+    };
+  }
+
+  async generateReasonsSummary(input?: DateRangeInput) {
+    const range = this.normalizeDateRange(input);
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        conversationMode: {
+          not: 'direct_supplier',
+        },
+        createdAt: {
+          gte: range.from,
+          lte: range.to,
+        },
+      },
+      include: {
+        messages: {
+          where: {
+            senderType: {
+              in: ['client', 'manager', 'supplier'],
+            },
+          },
+          select: {
+            senderType: true,
+            content: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          take: 12,
+        },
+        supplierRequests: {
+          select: {
+            supplierName: true,
+            requestText: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          take: 5,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 120,
+    });
+
+    const compactTickets = tickets.map((ticket) => ({
+      title: ticket.title,
+      status: ticket.status,
+      createdAt: ticket.createdAt.toISOString(),
+      client: ticket.tradePointName || ticket.clientName || null,
+      topicCategory: ticket.topicCategory,
+      supplier: ticket.supplierName,
+      messages: ticket.messages.map((message) => ({
+        role: message.senderType,
+        createdAt: message.createdAt.toISOString(),
+        content: message.content.slice(0, 600),
+      })),
+      supplierRequests: ticket.supplierRequests.map((request) => ({
+        supplierName: request.supplierName,
+        status: request.status,
+        requestText: request.requestText.slice(0, 500),
+        createdAt: request.createdAt.toISOString(),
+      })),
+    }));
+
+    const text = await this.aiClient.generateText(
+      `
+Ты анализируешь причины обращений в TouchSpace для администратора.
+
+Верни строго JSON без markdown:
+{
+  "executiveSummary": "краткая сводка на русском, 2-4 предложения",
+  "categories": [
+    {
+      "category": "Сроки",
+      "count": 5,
+      "share": 35.7,
+      "explanation": "что именно спрашивали или где возникала проблема",
+      "examples": ["пример формулировки клиента", "пример 2"]
+    }
+  ],
+  "recommendations": ["короткая рекомендация 1", "короткая рекомендация 2"]
+}
+
+Правила:
+- Пиши только на русском.
+- Сгруппируй похожие обращения в понятные категории: сроки, оплата, доставка, наличие товара, вопрос по товару, документы, рекламация, поставщик, другое.
+- count оценивай по количеству диалогов, относящихся к категории.
+- share указывай в процентах от всех проанализированных диалогов.
+- examples должны быть короткими фразами из сообщений или близкими пересказами.
+- categories ограничь 4-8 пунктами.
+- Если данных мало, честно напиши это в executiveSummary.
+
+Период:
+- с ${range.from.toISOString()}
+- по ${range.to.toISOString()}
+
+Данные:
+${JSON.stringify(compactTickets)}
+      `.trim(),
+    );
+
+    return {
+      period: range,
+      sourceDialogs: tickets.length,
+      model: this.aiClient.model,
+      provider: this.aiClient.provider,
+      reasons: this.parseReasonsSummary(text),
     };
   }
 

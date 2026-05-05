@@ -303,6 +303,18 @@ export class AdminController {
     return this.adminAiService.generateInsightsSummary(body);
   }
 
+  @Post('analytics/reasons/ai-summary')
+  generateReasonsAiSummary(
+    @Body()
+    body?: {
+      preset?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
+    return this.adminAiService.generateReasonsSummary(body);
+  }
+
   @Get('sla')
   getSlaSummary(
     @Query('dateFrom') dateFrom?: string,

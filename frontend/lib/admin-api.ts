@@ -138,6 +138,11 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(payload ?? {}),
     }),
+  generateReasonsAiSummary: (payload?: Record<string, QueryValue>) =>
+    adminRequest<any>("/admin/analytics/reasons/ai-summary", {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    }),
   getManagersAnalytics: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/analytics/managers", undefined, query),
   getManagerAnalyticsDetail: (id: string, query?: Record<string, QueryValue>) =>

@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDuration } from "@/lib/admin-format";
+import { buildPeriodLabel, buildPeriodQuery, downloadExcelReport } from "@/lib/excel-report";
 import {
   AdminButton,
   AdminCards,
   AdminEmpty,
+  AdminInput,
   AdminMessage,
   AdminPage,
   AdminPanel,
@@ -17,12 +19,14 @@ import {
 
 export function AdminAnalyticsOverview() {
   const [preset, setPreset] = useState("month");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const result = await adminApi.getAnalyticsOverview({ preset });
+      const result = await adminApi.getAnalyticsOverview(buildPeriodQuery({ preset, dateFrom, dateTo }));
       setData(result);
       setError(null);
     } catch (requestError) {
@@ -32,7 +36,39 @@ export function AdminAnalyticsOverview() {
 
   useEffect(() => {
     void load();
-  }, [preset]);
+  }, [preset, dateFrom, dateTo]);
+
+  const downloadReport = () => {
+    const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
+    const metrics = data?.metrics ?? {};
+
+    downloadExcelReport(`touchspace-general-report-${periodLabel}`, [
+      {
+        title: `Общий отчет за период: ${periodLabel}`,
+        columns: ["Показатель", "Значение"],
+        rows: [
+          ["Диалоги за период", metrics.dialogs ?? 0],
+          ["Новые диалоги", metrics.newDialogs ?? 0],
+          ["Решенные диалоги", metrics.resolvedDialogs ?? 0],
+          ["Просроченные диалоги", metrics.overdueDialogs ?? 0],
+          ["Среднее время первого ответа", formatDuration(metrics.avgFirstResponseMs)],
+          ["Среднее время закрытия", formatDuration(metrics.avgCloseTimeMs)],
+          ["Доля эскалаций", metrics.escalatedShare ?? 0],
+          ["Сообщений на диалог", metrics.avgMessagesPerDialog ?? 0],
+        ],
+      },
+      {
+        title: "Распределение по дням",
+        columns: ["День", "Диалоги"],
+        rows: (data?.charts?.dialogsByDay ?? []).map((item: any) => [item.date, item.count]),
+      },
+      {
+        title: "Топ причин",
+        columns: ["Причина", "Количество"],
+        rows: (data?.charts?.topTopics ?? []).map((item: any) => [item.label, item.count]),
+      },
+    ]);
+  };
 
   return (
     <AdminPage
@@ -41,12 +77,23 @@ export function AdminAnalyticsOverview() {
       actions={
         <AdminToolbar>
           <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">День</option>
+            <option value="day">Сегодня</option>
+            <option value="yesterday">Вчера</option>
             <option value="week">Неделя</option>
             <option value="month">Месяц</option>
+            <option value="custom">Произвольный</option>
           </AdminSelect>
+          {preset === "custom" ? (
+            <>
+              <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              <AdminInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </>
+          ) : null}
           <AdminButton tone="secondary" onClick={() => void load()}>
             Обновить
+          </AdminButton>
+          <AdminButton onClick={downloadReport} disabled={!data}>
+            Скачать Excel
           </AdminButton>
         </AdminToolbar>
       }

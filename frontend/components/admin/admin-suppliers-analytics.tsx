@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDuration, formatDateTime } from "@/lib/admin-format";
+import { buildPeriodLabel, buildPeriodQuery, downloadExcelReport } from "@/lib/excel-report";
 import {
   AdminButton,
   AdminCards,
+  AdminInput,
   AdminMessage,
   AdminPage,
   AdminPanel,
@@ -13,10 +15,13 @@ import {
   AdminStatusBadge,
   AdminTable,
   AdminToolbar,
+  getStatusLabel,
 } from "@/components/admin/admin-ui";
 
 export function AdminSuppliersAnalytics() {
   const [preset, setPreset] = useState("month");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [payload, setPayload] = useState<any>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -24,7 +29,7 @@ export function AdminSuppliersAnalytics() {
 
   const load = async () => {
     try {
-      const result = await adminApi.getSuppliersAnalytics({ preset });
+      const result = await adminApi.getSuppliersAnalytics(buildPeriodQuery({ preset, dateFrom, dateTo }));
       setPayload(result);
       setError(null);
       setSelectedId((current) =>
@@ -39,7 +44,7 @@ export function AdminSuppliersAnalytics() {
 
   useEffect(() => {
     void load();
-  }, [preset]);
+  }, [preset, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -48,12 +53,54 @@ export function AdminSuppliersAnalytics() {
     }
 
     void adminApi
-      .getSupplierAnalyticsDetail(selectedId, { preset })
+      .getSupplierAnalyticsDetail(selectedId, buildPeriodQuery({ preset, dateFrom, dateTo }))
       .then((result) => setDetail(result))
       .catch((requestError) =>
         setError(requestError instanceof Error ? requestError.message : "Не удалось открыть поставщика"),
       );
-  }, [selectedId, preset]);
+  }, [selectedId, preset, dateFrom, dateTo]);
+
+  const downloadReport = () => {
+    const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
+    const items = payload?.items ?? [];
+
+    downloadExcelReport(`touchspace-suppliers-report-${periodLabel}`, [
+      {
+        title: `Отчет по поставщикам за период: ${periodLabel}`,
+        columns: [
+          "Поставщик",
+          "Компания",
+          "Статус",
+          "Получено запросов",
+          "Ответили",
+          "Среднее время ответа",
+          "SLA просрочки",
+          "Связанные диалоги",
+        ],
+        rows: items.map((item: any) => [
+          item.fullName,
+          item.companyName || "",
+          getStatusLabel(item.status),
+          item.receivedRequests ?? 0,
+          item.answeredRequests ?? 0,
+          formatDuration(item.avgResponseMs),
+          item.slaBreaches ?? 0,
+          item.relatedDialogs ?? 0,
+        ]),
+      },
+      {
+        title: "Итоги",
+        columns: ["Показатель", "Значение"],
+        rows: [
+          ["Поставщиков в отчете", items.length],
+          ["Всего запросов", items.reduce((sum: number, item: any) => sum + (item.receivedRequests ?? 0), 0)],
+          ["Ответили", items.reduce((sum: number, item: any) => sum + (item.answeredRequests ?? 0), 0)],
+          ["SLA просрочки", items.reduce((sum: number, item: any) => sum + (item.slaBreaches ?? 0), 0)],
+          ["Связанные диалоги", items.reduce((sum: number, item: any) => sum + (item.relatedDialogs ?? 0), 0)],
+        ],
+      },
+    ]);
+  };
 
   return (
     <AdminPage
@@ -62,12 +109,23 @@ export function AdminSuppliersAnalytics() {
       actions={
         <AdminToolbar>
           <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">День</option>
+            <option value="day">Сегодня</option>
+            <option value="yesterday">Вчера</option>
             <option value="week">Неделя</option>
             <option value="month">Месяц</option>
+            <option value="custom">Произвольный</option>
           </AdminSelect>
+          {preset === "custom" ? (
+            <>
+              <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              <AdminInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </>
+          ) : null}
           <AdminButton tone="secondary" onClick={() => void load()}>
             Обновить
+          </AdminButton>
+          <AdminButton onClick={downloadReport} disabled={!payload}>
+            Скачать Excel
           </AdminButton>
         </AdminToolbar>
       }

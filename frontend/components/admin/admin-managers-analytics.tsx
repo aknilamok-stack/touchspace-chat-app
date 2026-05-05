@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDuration, formatDateTime } from "@/lib/admin-format";
+import { buildPeriodLabel, buildPeriodQuery, downloadExcelReport } from "@/lib/excel-report";
 import {
   AdminButton,
   AdminCards,
+  AdminInput,
   AdminMessage,
   AdminPage,
   AdminPanel,
@@ -13,10 +15,13 @@ import {
   AdminStatusBadge,
   AdminTable,
   AdminToolbar,
+  getStatusLabel,
 } from "@/components/admin/admin-ui";
 
 export function AdminManagersAnalytics() {
   const [preset, setPreset] = useState("month");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [payload, setPayload] = useState<any>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -24,7 +29,7 @@ export function AdminManagersAnalytics() {
 
   const load = async () => {
     try {
-      const result = await adminApi.getManagersAnalytics({ preset });
+      const result = await adminApi.getManagersAnalytics(buildPeriodQuery({ preset, dateFrom, dateTo }));
       setPayload(result);
       setError(null);
       setSelectedId((current) =>
@@ -39,7 +44,7 @@ export function AdminManagersAnalytics() {
 
   useEffect(() => {
     void load();
-  }, [preset]);
+  }, [preset, dateFrom, dateTo]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -47,7 +52,7 @@ export function AdminManagersAnalytics() {
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, [preset]);
+  }, [preset, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -57,7 +62,10 @@ export function AdminManagersAnalytics() {
 
     const loadDetail = async () => {
       try {
-        const result = await adminApi.getManagerAnalyticsDetail(selectedId, { preset });
+        const result = await adminApi.getManagerAnalyticsDetail(
+          selectedId,
+          buildPeriodQuery({ preset, dateFrom, dateTo }),
+        );
         setDetail(result);
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Не удалось открыть менеджера");
@@ -71,7 +79,58 @@ export function AdminManagersAnalytics() {
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, [selectedId, preset]);
+  }, [selectedId, preset, dateFrom, dateTo]);
+
+  const downloadReport = () => {
+    const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
+    const items = payload?.items ?? [];
+
+    downloadExcelReport(`touchspace-managers-report-${periodLabel}`, [
+      {
+        title: `Отчет по менеджерам за период: ${periodLabel}`,
+        columns: [
+          "Менеджер",
+          "Компания",
+          "Статус",
+          "Live",
+          "Обработано диалогов",
+          "В работе",
+          "Среднее время первого ответа",
+          "Среднее время закрытия",
+          "Средняя оценка",
+          "Количество оценок",
+          "SLA просрочки",
+          "Эскалации поставщикам",
+        ],
+        rows: items.map((item: any) => [
+          item.fullName,
+          item.companyName || "",
+          getStatusLabel(item.status),
+          getStatusLabel(item.presenceStatus),
+          item.handledDialogs ?? 0,
+          item.dialogsInWork ?? 0,
+          formatDuration(item.avgFirstResponseMs),
+          formatDuration(item.avgCloseTimeMs),
+          item.ratingsCount ? Number(item.avgRating ?? 0).toFixed(1) : "",
+          item.ratingsCount ?? 0,
+          item.slaBreaches ?? 0,
+          item.escalationsToSupplier ?? 0,
+        ]),
+      },
+      {
+        title: "Итоги",
+        columns: ["Показатель", "Значение"],
+        rows: [
+          ["Менеджеров в отчете", items.length],
+          ["Сейчас online", payload?.livePresence?.online ?? 0],
+          ["На перерыве", payload?.livePresence?.break ?? 0],
+          ["Не в сети", payload?.livePresence?.offline ?? 0],
+          ["Обработано диалогов", items.reduce((sum: number, item: any) => sum + (item.handledDialogs ?? 0), 0)],
+          ["SLA просрочки", items.reduce((sum: number, item: any) => sum + (item.slaBreaches ?? 0), 0)],
+        ],
+      },
+    ]);
+  };
 
   return (
     <AdminPage
@@ -80,12 +139,23 @@ export function AdminManagersAnalytics() {
       actions={
         <AdminToolbar>
           <AdminSelect value={preset} onChange={(event) => setPreset(event.target.value)}>
-            <option value="day">День</option>
+            <option value="day">Сегодня</option>
+            <option value="yesterday">Вчера</option>
             <option value="week">Неделя</option>
             <option value="month">Месяц</option>
+            <option value="custom">Произвольный</option>
           </AdminSelect>
+          {preset === "custom" ? (
+            <>
+              <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              <AdminInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </>
+          ) : null}
           <AdminButton tone="secondary" onClick={() => void load()}>
             Обновить
+          </AdminButton>
+          <AdminButton onClick={downloadReport} disabled={!payload}>
+            Скачать Excel
           </AdminButton>
         </AdminToolbar>
       }

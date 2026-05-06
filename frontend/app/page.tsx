@@ -1982,6 +1982,14 @@ export default function Home() {
         return true;
       }
 
+      if (
+        chat.assignedManagerName &&
+        isSpecificManagerName(resolveManagerName(chat.assignedManagerId, chat.assignedManagerName)) &&
+        resolveManagerName(chat.assignedManagerId, chat.assignedManagerName) === resolvedCurrentManagerName
+      ) {
+        return true;
+      }
+
       return (
         !chat.assignedManagerId &&
         Boolean(chat.assignedManagerName) &&

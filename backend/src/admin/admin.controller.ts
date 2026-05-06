@@ -256,11 +256,13 @@ export class AdminController {
     @Query('preset') preset?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('companyName') companyName?: string,
   ) {
     return this.adminService.getSupplierAnalytics({
       preset,
       dateFrom,
       dateTo,
+      companyName,
     });
   }
 

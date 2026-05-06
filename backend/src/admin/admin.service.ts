@@ -14,6 +14,7 @@ type DateRangeInput = {
   preset?: string;
   dateFrom?: string;
   dateTo?: string;
+  companyName?: string;
 };
 
 type RegistrationsFilter = {
@@ -212,6 +213,65 @@ export class AdminService {
       .replace(/_+/g, '_');
 
     return `supplier_scope_${normalizedCompany || 'default'}`;
+  }
+
+  private getSupplierProfileScope(profile: {
+    id: string;
+    supplierId?: string | null;
+    companyName?: string | null;
+  }) {
+    const companyName = this.normalizeCompanyName(profile.companyName);
+    return (
+      profile.supplierId?.trim() ||
+      (companyName ? this.buildSupplierScopeId(companyName) : profile.id)
+    );
+  }
+
+  private isSyntheticSupplierScope(profile: {
+    id: string;
+    companyName?: string | null;
+  }) {
+    return profile.id.startsWith('supplier_scope_') && !profile.companyName?.trim();
+  }
+
+  private supplierRequestBelongsToProfile(
+    request: {
+      supplierId?: string | null;
+      assignedSupplierProfileId?: string | null;
+      ticket?: {
+        messages?: Array<{
+          senderType: string;
+          senderProfileId?: string | null;
+        }>;
+      } | null;
+    },
+    profile: {
+      id: string;
+      supplierId?: string | null;
+      companyName?: string | null;
+    },
+  ) {
+    if (request.assignedSupplierProfileId) {
+      return request.assignedSupplierProfileId === profile.id;
+    }
+
+    if (request.supplierId === profile.id) {
+      return true;
+    }
+
+    const scopeId = this.getSupplierProfileScope(profile);
+
+    if (request.supplierId !== scopeId) {
+      return false;
+    }
+
+    return Boolean(
+      request.ticket?.messages?.some(
+        (message) =>
+          message.senderType === 'supplier' &&
+          message.senderProfileId === profile.id,
+      ),
+    );
   }
 
   private async ensureUniqueProfileFields(input: {
@@ -2424,15 +2484,20 @@ export class AdminService {
 
   async getSupplierAnalytics(input?: DateRangeInput) {
     const range = this.normalizeDateRange(input);
-    const [suppliers, requests] = await Promise.all([
+    const selectedCompanyName = this.normalizeCompanyName(input?.companyName);
+    const [supplierProfiles, requests] = await Promise.all([
       this.prisma.profile.findMany({
         where: {
-          role: 'supplier',
+          role: {
+            in: ['supplier', 'supplier_supervisor'],
+          },
         },
         select: {
           id: true,
           fullName: true,
           companyName: true,
+          supplierId: true,
+          role: true,
           status: true,
         },
       }),
@@ -2449,21 +2514,60 @@ export class AdminService {
               id: true,
               title: true,
               topicCategory: true,
+              messages: {
+                where: {
+                  senderType: 'supplier',
+                },
+                select: {
+                  senderType: true,
+                  senderProfileId: true,
+                },
+              },
             },
           },
         },
       }),
     ]);
 
+    const companies = [
+      ...new Set(
+        [
+          ...supplierProfiles
+            .map((profile) => this.normalizeCompanyName(profile.companyName))
+            .filter((companyName): companyName is string => Boolean(companyName)),
+          ...requests
+            .map((request) => this.normalizeCompanyName(request.supplierName))
+            .filter((companyName): companyName is string => Boolean(companyName)),
+        ].sort((left, right) => left.localeCompare(right, 'ru')),
+      ),
+    ];
+
+    const suppliers = supplierProfiles.filter((profile) => {
+      if (profile.role !== 'supplier') {
+        return false;
+      }
+
+      if (this.isSyntheticSupplierScope(profile)) {
+        return false;
+      }
+
+      if (!selectedCompanyName) {
+        return true;
+      }
+
+      return this.normalizeCompanyName(profile.companyName) === selectedCompanyName;
+    });
+
     const items = suppliers.map((supplier) => {
       const supplierRequests = requests.filter(
-        (request) => request.supplierId === supplier.id,
+        (request) => this.supplierRequestBelongsToProfile(request, supplier),
       );
 
       return {
         id: supplier.id,
         fullName: supplier.fullName,
         companyName: supplier.companyName,
+        supplierScopeId: this.getSupplierProfileScope(supplier),
         status: supplier.status,
         receivedRequests: supplierRequests.length,
         answeredRequests: supplierRequests.filter(
@@ -2489,6 +2593,8 @@ export class AdminService {
 
     return {
       period: range,
+      companies,
+      selectedCompanyName,
       items: items.sort(
         (left, right) => right.receivedRequests - left.receivedRequests,
       ),
@@ -2505,24 +2611,45 @@ export class AdminService {
       throw new NotFoundException(`Supplier with id "${id}" not found`);
     }
 
-    const requests = await this.prisma.supplierRequest.findMany({
+    const supplierScopeId = this.getSupplierProfileScope(supplier);
+    const requestCandidates = await this.prisma.supplierRequest.findMany({
       where: {
-        supplierId: id,
+        OR: [
+          { supplierId: id },
+          { supplierId: supplierScopeId },
+          { assignedSupplierProfileId: id },
+        ],
         createdAt: {
           gte: range.from,
           lte: range.to,
         },
       },
       include: {
-        ticket: true,
+        ticket: {
+          include: {
+            messages: {
+              where: {
+                senderType: 'supplier',
+              },
+              select: {
+                senderType: true,
+                senderProfileId: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
+    const requests = requestCandidates.filter((request) =>
+      this.supplierRequestBelongsToProfile(request, supplier),
+    );
 
     return {
       supplier,
+      supplierScopeId,
       period: range,
       metrics: {
         receivedRequests: requests.length,

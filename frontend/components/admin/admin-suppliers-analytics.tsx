@@ -12,6 +12,7 @@ import {
   AdminPage,
   AdminPanel,
   AdminPeriodSelect,
+  AdminSelect,
   AdminStatusBadge,
   AdminTable,
   AdminToolbar,
@@ -22,6 +23,7 @@ export function AdminSuppliersAnalytics() {
   const [preset, setPreset] = useState("month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [payload, setPayload] = useState<any>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -29,7 +31,10 @@ export function AdminSuppliersAnalytics() {
 
   const load = async () => {
     try {
-      const result = await adminApi.getSuppliersAnalytics(buildPeriodQuery({ preset, dateFrom, dateTo }));
+      const result = await adminApi.getSuppliersAnalytics({
+        ...buildPeriodQuery({ preset, dateFrom, dateTo }),
+        companyName,
+      });
       setPayload(result);
       setError(null);
       setSelectedId((current) =>
@@ -44,7 +49,7 @@ export function AdminSuppliersAnalytics() {
 
   useEffect(() => {
     void load();
-  }, [preset, dateFrom, dateTo]);
+  }, [preset, dateFrom, dateTo, companyName]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -62,11 +67,12 @@ export function AdminSuppliersAnalytics() {
 
   const downloadReport = () => {
     const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
+    const companyLabel = companyName || "все компании";
     const items = payload?.items ?? [];
 
-    downloadExcelReport(`touchspace-suppliers-report-${periodLabel}`, [
+    downloadExcelReport(`touchspace-suppliers-report-${periodLabel}-${companyLabel}`, [
       {
-        title: `Отчет по поставщикам за период: ${periodLabel}`,
+        title: `Отчет по поставщикам за период: ${periodLabel}. Компания: ${companyLabel}`,
         columns: [
           "Поставщик",
           "Компания",
@@ -109,6 +115,14 @@ export function AdminSuppliersAnalytics() {
       actions={
         <AdminToolbar>
           <AdminPeriodSelect value={preset} onChange={setPreset} />
+          <AdminSelect value={companyName} onChange={(event) => setCompanyName(event.target.value)}>
+            <option value="">Все компании</option>
+            {(payload?.companies ?? []).map((company: string) => (
+              <option key={company} value={company}>
+                {company}
+              </option>
+            ))}
+          </AdminSelect>
           {preset === "custom" ? (
             <>
               <AdminInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
@@ -142,10 +156,11 @@ export function AdminSuppliersAnalytics() {
       />
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.3fr)_minmax(420px,0.9fr)]">
-        <AdminPanel title="Поставщики">
+        <AdminPanel title={companyName ? `Поставщики компании ${companyName}` : "Поставщики"}>
           <AdminTable
             columns={[
               { key: "fullName", label: "Поставщик" },
+              { key: "companyName", label: "Компания" },
               { key: "receivedRequests", label: "Получено" },
               { key: "answeredRequests", label: "Ответили" },
               { key: "avgResponseMs", label: "Средний ответ" },
@@ -163,6 +178,10 @@ export function AdminSuppliersAnalytics() {
                 return formatDuration(row.avgResponseMs);
               }
 
+              if (key === "companyName") {
+                return row.companyName || "не указана";
+              }
+
               return row[key];
             }}
           />
@@ -173,6 +192,7 @@ export function AdminSuppliersAnalytics() {
             <div className="grid gap-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                 <p><span className="font-medium text-slate-950">Имя:</span> {detail.supplier.fullName}</p>
+                <p className="mt-1"><span className="font-medium text-slate-950">Компания:</span> {detail.supplier.companyName || "не указана"}</p>
                 <p className="mt-1"><span className="font-medium text-slate-950">Статус:</span> <AdminStatusBadge value={detail.supplier.status} /></p>
                 <p className="mt-1"><span className="font-medium text-slate-950">Получено:</span> {detail.metrics.receivedRequests}</p>
                 <p className="mt-1"><span className="font-medium text-slate-950">Средний ответ:</span> {formatDuration(detail.metrics.avgResponseMs)}</p>

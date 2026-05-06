@@ -39,6 +39,7 @@ import { playNotificationSound } from "@/lib/notification-sound";
 import {
   isDesktopShell,
   shouldShowDesktopBackgroundNotification,
+  showDesktopShellNotification,
 } from "@/lib/runtime";
 
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
@@ -1421,15 +1422,22 @@ export default function Home() {
       options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
 
     if (isDesktopShell()) {
-      if (
-        !shouldShowDesktopBackgroundNotification() ||
-        typeof window === "undefined" ||
-        !("Notification" in window)
-      ) {
+      if (!shouldShowDesktopBackgroundNotification()) {
         return;
       }
 
-      new Notification(title, { body });
+      await showDesktopShellNotification({
+        title,
+        body,
+        url: targetUrl,
+        subtitle: options?.subtitle ?? null,
+        metaLabel: options?.metaLabel ?? null,
+        primaryLabel: options?.primaryLabel,
+        secondaryLabel: options?.secondaryLabel,
+        avatarEmoji: options?.avatarEmoji ?? null,
+        avatarColor: options?.avatarColor ?? null,
+        tone: options?.tone ?? "blue",
+      });
       return;
     }
 
@@ -2782,7 +2790,7 @@ export default function Home() {
   }, [messageText, activeChatId]);
 
   useEffect(() => {
-    if (!authReady || typeof window === "undefined" || !("Notification" in window)) {
+    if (isDesktopShell() || !authReady || typeof window === "undefined" || !("Notification" in window)) {
       return;
     }
 

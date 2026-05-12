@@ -9,6 +9,7 @@ import { UpdateSupplierRequestStatusDto } from './dto/update-supplier-request-st
 import { ProfilesService } from '../profiles.service';
 import { PushService } from '../push.service';
 import { ToggleSupplierRequestSyncDto } from './dto/toggle-supplier-request-sync.dto';
+import { isSupplierRole } from '../role.utils';
 import {
   buildSupplierRequestSyncPayload,
   getSupplierRequestSyncState,
@@ -57,6 +58,42 @@ export class SupplierRequestsService {
     return `Запрос поставщику ${supplierName} возвращён в общую очередь`;
   }
 
+  private normalizeCompanyName(value?: string | null) {
+    return value?.trim().toLowerCase() || null;
+  }
+
+  private supplierProfileMatchesRequestScope(
+    profile: {
+      id: string;
+      role: string;
+      supplierId?: string | null;
+      companyName?: string | null;
+    },
+    supplierRequest: {
+      supplierId?: string | null;
+      supplierName: string;
+    },
+  ) {
+    if (!isSupplierRole(profile.role)) {
+      return false;
+    }
+
+    const requestSupplierId = supplierRequest.supplierId?.trim();
+
+    if (
+      requestSupplierId &&
+      (profile.supplierId?.trim() === requestSupplierId ||
+        profile.id.trim() === requestSupplierId)
+    ) {
+      return true;
+    }
+
+    return (
+      this.normalizeCompanyName(profile.companyName) ===
+      this.normalizeCompanyName(supplierRequest.supplierName)
+    );
+  }
+
   private async attachSyncState<
     T extends {
       id: string;
@@ -68,7 +105,9 @@ export class SupplierRequestsService {
       return [];
     }
 
-    const uniqueTicketIds = [...new Set(requests.map((request) => request.ticketId))];
+    const uniqueTicketIds = [
+      ...new Set(requests.map((request) => request.ticketId)),
+    ];
     const controlMessages = await this.prisma.message.findMany({
       where: {
         ticketId: {
@@ -118,14 +157,17 @@ export class SupplierRequestsService {
       return accumulator;
     }, {});
 
-    const requestsByTicketId = requests.reduce<Record<string, T[]>>((accumulator, request) => {
-      if (!accumulator[request.ticketId]) {
-        accumulator[request.ticketId] = [];
-      }
+    const requestsByTicketId = requests.reduce<Record<string, T[]>>(
+      (accumulator, request) => {
+        if (!accumulator[request.ticketId]) {
+          accumulator[request.ticketId] = [];
+        }
 
-      accumulator[request.ticketId].push(request);
-      return accumulator;
-    }, {});
+        accumulator[request.ticketId].push(request);
+        return accumulator;
+      },
+      {},
+    );
 
     const ticketsById = Object.fromEntries(
       tickets.map((ticket) => [ticket.id, ticket]),
@@ -150,14 +192,14 @@ export class SupplierRequestsService {
         supplierSyncResumeDeferredAt: state.lastResumeDeferredAt,
         supplierSyncManagerPromptAvailableAt: state.managerPromptAvailableAt,
         supplierSyncRecentActivityAt: relatedTicket
-          ? [
+          ? ([
               relatedTicket.lastClientMessageAt,
               relatedTicket.lastManagerReplyAt,
             ]
               .filter(Boolean)
               .map((value) => new Date(value as Date).toISOString())
               .sort()
-              .at(-1) ?? null
+              .at(-1) ?? null)
           : null,
       };
     });
@@ -326,7 +368,9 @@ export class SupplierRequestsService {
       });
 
       if (!supplierRequest) {
-        throw new NotFoundException(`SupplierRequest with id "${id}" not found`);
+        throw new NotFoundException(
+          `SupplierRequest with id "${id}" not found`,
+        );
       }
 
       if (
@@ -334,24 +378,34 @@ export class SupplierRequestsService {
         supplierRequest.status === 'cancelled' ||
         supplierRequest.closedAt
       ) {
-        throw new BadRequestException('Запрос уже завершён, пауза больше недоступна');
+        throw new BadRequestException(
+          'Запрос уже завершён, пауза больше недоступна',
+        );
       }
 
       if (input.action === 'pause' && input.actorType !== 'manager') {
-        throw new BadRequestException('Поставить запрос на паузу может только менеджер');
+        throw new BadRequestException(
+          'Поставить запрос на паузу может только менеджер',
+        );
       }
 
       if (input.action === 'resume' && input.actorType !== 'manager') {
-        throw new BadRequestException('Впустить поставщика в чат может только менеджер');
+        throw new BadRequestException(
+          'Впустить поставщика в чат может только менеджер',
+        );
       }
 
       if (input.action === 'resume_defer' && input.actorType !== 'manager') {
-        throw new BadRequestException('Отложить вход поставщика может только менеджер');
+        throw new BadRequestException(
+          'Отложить вход поставщика может только менеджер',
+        );
       }
 
       if (input.action === 'resume_request') {
         if (input.actorType !== 'supplier') {
-          throw new BadRequestException('Вернуться в диалог может только поставщик');
+          throw new BadRequestException(
+            'Вернуться в диалог может только поставщик',
+          );
         }
 
         if (
@@ -419,7 +473,8 @@ export class SupplierRequestsService {
       );
       const hasRecentConversationActivity =
         Number.isFinite(latestConversationActivityAtMs) &&
-        Date.now() - latestConversationActivityAtMs < SUPPLIER_RESUME_ACTIVITY_WINDOW_MS;
+        Date.now() - latestConversationActivityAtMs <
+          SUPPLIER_RESUME_ACTIVITY_WINDOW_MS;
 
       if (
         (input.action === 'pause' && state.isPaused) ||
@@ -468,14 +523,25 @@ export class SupplierRequestsService {
     let resolvedAssignedSupplierProfileName =
       input.assignedSupplierProfileName?.trim() || null;
 
+    let existingSupplierProfile: {
+      id: string;
+      fullName: string;
+      role: string;
+      supplierId: string | null;
+      companyName: string | null;
+    } | null = null;
+
     if (input.assignedSupplierProfileId?.trim()) {
       const normalizedAssignedSupplierProfileId =
         input.assignedSupplierProfileId.trim();
-      const existingSupplierProfile = await this.prisma.profile.findUnique({
+      existingSupplierProfile = await this.prisma.profile.findUnique({
         where: { id: normalizedAssignedSupplierProfileId },
         select: {
           id: true,
           fullName: true,
+          role: true,
+          supplierId: true,
+          companyName: true,
         },
       });
 
@@ -483,13 +549,9 @@ export class SupplierRequestsService {
         resolvedAssignedSupplierProfileName =
           existingSupplierProfile.fullName.trim();
       } else {
-        await this.profilesService.ensureProfile({
-          id: normalizedAssignedSupplierProfileId,
-          fullName:
-            resolvedAssignedSupplierProfileName ||
-            normalizedAssignedSupplierProfileId,
-          role: 'supplier',
-        });
+        throw new BadRequestException(
+          'Выбранный сотрудник поставщика не найден',
+        );
       }
     }
 
@@ -504,6 +566,18 @@ export class SupplierRequestsService {
         );
       }
 
+      if (
+        existingSupplierProfile &&
+        !this.supplierProfileMatchesRequestScope(
+          existingSupplierProfile,
+          supplierRequest,
+        )
+      ) {
+        throw new BadRequestException(
+          'Передать запрос можно только сотруднику этой же компании поставщика',
+        );
+      }
+
       const now = new Date();
       const nextStatus = input.status;
       const clearAssignedSupplier = Boolean(input.clearAssignedSupplier);
@@ -513,23 +587,18 @@ export class SupplierRequestsService {
       const nextAssignedSupplierProfileId =
         clearAssignedSupplier && nextStatus === 'pending'
           ? null
-          : assignedSupplierProfileId ?? supplierRequest.assignedSupplierProfileId;
+          : (assignedSupplierProfileId ??
+            supplierRequest.assignedSupplierProfileId);
       const nextAssignedSupplierProfileName =
         clearAssignedSupplier && nextStatus === 'pending'
           ? null
-          : assignedSupplierProfileName ??
-            supplierRequest.assignedSupplierProfileName;
-
-      if (
+          : (assignedSupplierProfileName ??
+            supplierRequest.assignedSupplierProfileName);
+      const shouldStartNewWorkCycle =
         nextStatus === 'in_progress' &&
-        assignedSupplierProfileId &&
-        supplierRequest.assignedSupplierProfileId &&
-        supplierRequest.assignedSupplierProfileId !== assignedSupplierProfileId
-      ) {
-        throw new BadRequestException(
-          'Этот запрос уже взят в работу другим сотрудником поставщика',
-        );
-      }
+        (supplierRequest.status !== 'in_progress' ||
+          supplierRequest.assignedSupplierProfileId !==
+            nextAssignedSupplierProfileId);
 
       const updatedSupplierRequest = await tx.supplierRequest.update({
         where: { id },
@@ -537,9 +606,10 @@ export class SupplierRequestsService {
           status: nextStatus,
           assignedSupplierProfileId: nextAssignedSupplierProfileId,
           assignedSupplierProfileName: nextAssignedSupplierProfileName,
-          claimedAt:
-            nextStatus === 'in_progress'
-              ? supplierRequest.claimedAt ?? now
+          claimedAt: shouldStartNewWorkCycle
+            ? now
+            : nextStatus === 'in_progress'
+              ? (supplierRequest.claimedAt ?? now)
               : nextStatus === 'pending' && clearAssignedSupplier
                 ? null
                 : supplierRequest.claimedAt,
@@ -560,7 +630,8 @@ export class SupplierRequestsService {
       const shouldCreateClaimMessage =
         nextStatus === 'in_progress' &&
         Boolean(assignedSupplierProfileId) &&
-        (!supplierRequest.assignedSupplierProfileId ||
+        (supplierRequest.assignedSupplierProfileId !==
+          assignedSupplierProfileId ||
           supplierRequest.status === 'pending');
 
       await tx.message.create({

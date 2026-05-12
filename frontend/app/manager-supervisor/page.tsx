@@ -534,6 +534,27 @@ const formatDuration = (durationMs: number) => {
   return `${seconds} сек`;
 };
 
+const parseTimestamp = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const getLatestTimestamp = (...values: Array<string | null | undefined>) => {
+  const timestamps = values
+    .map(parseTimestamp)
+    .filter((timestamp): timestamp is number => timestamp !== null);
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
+};
+
 const getSlaTone = (progressRatio: number) => {
   if (progressRatio < 0.5) {
     return {
@@ -1040,14 +1061,18 @@ const getFirstResponseWaitLabel = (chat: ChatItem) => {
 };
 
 const getDialogDurationLabel = (chat: ChatItem) => {
-  if (!chat.handedToManagerAt) {
+  const startTime = getLatestTimestamp(
+    chat.handedToManagerAt,
+    chat.claimedAt,
+    chat.firstResponseStartedAt
+  );
+
+  if (startTime === null) {
     return "—";
   }
 
-  const startTime = new Date(chat.handedToManagerAt).getTime();
-  const endTime = chat.resolvedAt
-    ? new Date(chat.resolvedAt).getTime()
-    : Date.now();
+  const resolvedAt = parseTimestamp(chat.resolvedAt);
+  const endTime = resolvedAt && resolvedAt >= startTime ? resolvedAt : Date.now();
 
   return formatDuration(Math.max(endTime - startTime, 0));
 };

@@ -83,6 +83,7 @@ type SupplierRequest = {
   slaMinutes?: number | null;
   createdByManagerId?: string | null;
   claimedAt?: string | null;
+  responseStartedAt?: string | null;
   firstResponseAt?: string | null;
   responseTime?: number | null;
   responseBreached?: boolean;
@@ -781,12 +782,18 @@ const getSupplierFirstResponseLabel = (request: SupplierRequest) => {
 };
 
 const getSupplierRequestDurationLabel = (request: SupplierRequest) => {
-  const startTime = new Date(request.createdAt).getTime();
-  const endTime = request.closedAt ? new Date(request.closedAt).getTime() : Date.now();
+  const startTime = getLatestTimestamp(
+    request.claimedAt,
+    request.responseStartedAt,
+    request.createdAt
+  );
 
-  if (!Number.isFinite(startTime)) {
+  if (startTime === null) {
     return "—";
   }
+
+  const closedAt = parseTimestamp(request.closedAt);
+  const endTime = closedAt && closedAt >= startTime ? closedAt : Date.now();
 
   return formatDuration(Math.max(endTime - startTime, 0));
 };
@@ -885,6 +892,27 @@ const formatDuration = (durationMs: number) => {
   }
 
   return `${seconds} сек`;
+};
+
+const parseTimestamp = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const getLatestTimestamp = (...values: Array<string | null | undefined>) => {
+  const timestamps = values
+    .map(parseTimestamp)
+    .filter((timestamp): timestamp is number => timestamp !== null);
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
 };
 
 const buildSupplierPanelStatus = ({

@@ -13,13 +13,15 @@
         --card-width: 420px;
         --card-radius: 24px;
         --footer-radius: 16px;
-        --card-bg: #0A84FF;
-        --card-shadow: none;
+        --touchspace-blue: #0A84FF;
+        --card-bg: var(--touchspace-blue);
+        --card-border: var(--touchspace-blue);
+        --card-shadow: 0 26px 60px rgba(10, 132, 255, 0.32);
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
         --text-meta: rgba(255, 255, 255, 0.8);
-        --footer-bg: #0A84FF;
-        --footer-border: rgba(255, 255, 255, 0.12);
+        --footer-bg: var(--touchspace-blue);
+        --footer-border: rgba(255, 255, 255, 0.2);
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
@@ -60,42 +62,46 @@
         width: min(var(--card-width), calc(100vw - 24px));
         overflow: hidden;
         border-radius: var(--card-radius);
-        border: 1px solid var(--card-bg);
+        border: 1px solid var(--card-border);
         background: var(--card-bg);
+        background-image: none;
         color: var(--text-primary);
         box-shadow: var(--card-shadow);
         user-select: none;
       }
 
       .tone-blue {
-        --card-bg: #0A84FF;
-        --card-shadow: none;
+        --card-bg: var(--touchspace-blue);
+        --card-border: var(--touchspace-blue);
+        --card-shadow: 0 26px 60px rgba(10, 132, 255, 0.32);
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
         --text-meta: rgba(255, 255, 255, 0.8);
-        --footer-bg: #0A84FF;
-        --footer-border: rgba(255, 255, 255, 0.12);
+        --footer-bg: var(--touchspace-blue);
+        --footer-border: rgba(255, 255, 255, 0.2);
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .tone-green {
         --card-bg: #34C759;
-        --card-shadow: none;
+        --card-border: #34C759;
+        --card-shadow: 0 26px 60px rgba(52, 199, 89, 0.28);
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
         --text-meta: rgba(255, 255, 255, 0.8);
-        --footer-bg: rgba(0, 0, 0, 0.1);
-        --footer-border: rgba(255, 255, 255, 0.12);
+        --footer-bg: #2EAD4F;
+        --footer-border: rgba(255, 255, 255, 0.2);
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .tone-amber {
         --card-bg: #FFCC00;
-        --card-shadow: none;
+        --card-border: #FFCC00;
+        --card-shadow: 0 26px 60px rgba(255, 204, 0, 0.28);
         --text-primary: #3A2A00;
         --text-subtle: rgba(58, 42, 0, 0.88);
         --text-meta: rgba(58, 42, 0, 0.72);
-        --footer-bg: rgba(0, 0, 0, 0.08);
+        --footer-bg: #E6B800;
         --footer-border: rgba(0, 0, 0, 0.12);
         --action-hover: rgba(255, 255, 255, 0.22);
       }

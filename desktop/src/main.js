@@ -210,7 +210,7 @@ function ensureDockIconVisible() {
     return;
   }
 
-  app.dock.show();
+  void app.dock.show();
   app.dock.setIcon(windowIconPath);
 }
 
@@ -220,6 +220,11 @@ function keepMainWindowInTaskbar() {
   }
 
   mainWindow.setSkipTaskbar(false);
+}
+
+function keepDesktopAppVisible() {
+  ensureDockIconVisible();
+  keepMainWindowInTaskbar();
 }
 
 function getOverlayNotificationBounds() {
@@ -257,7 +262,7 @@ function focusMainWindow(targetUrl) {
 
   if (process.platform === "darwin") {
     app.focus({ steal: true });
-    app.dock?.show();
+    keepDesktopAppVisible();
   }
 
   if (mainWindow.isMinimized()) {
@@ -363,8 +368,7 @@ function createNotificationWindow() {
 function showOverlayNotificationWindow(payload) {
   pendingNotificationPayload = payload;
   notificationWindowPendingShow = true;
-  ensureDockIconVisible();
-  keepMainWindowInTaskbar();
+  keepDesktopAppVisible();
   const overlay = createNotificationWindow();
 
   if (!overlay) {
@@ -378,7 +382,7 @@ function showOverlayNotificationWindow(payload) {
     visibleOnFullScreen: true,
   });
   sendOverlayNotificationPayload();
-  keepMainWindowInTaskbar();
+  keepDesktopAppVisible();
   requestDesktopAttention(Math.max(lastUnreadAttentionCount + 1, 1));
   return true;
 }
@@ -388,7 +392,7 @@ function requestDesktopAttention(unreadCount) {
     return;
   }
 
-  ensureDockIconVisible();
+  keepDesktopAppVisible();
 
   if (typeof app.setBadgeCount === "function") {
     app.setBadgeCount(unreadCount);
@@ -518,7 +522,7 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => {
     if (process.platform === "darwin") {
-      app.dock?.show();
+      ensureDockIconVisible();
       app.focus({ steal: true });
     }
 
@@ -579,6 +583,7 @@ function createWindow() {
 app.whenReady().then(() => {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setIcon(windowIconPath);
+    void app.dock.show();
   }
 
   ipcMain.handle("desktop:get-meta", () => ({
@@ -668,7 +673,8 @@ app.whenReady().then(() => {
     });
     notificationWindow.showInactive();
     notificationWindow.moveTop();
-    keepMainWindowInTaskbar();
+    keepDesktopAppVisible();
+    setTimeout(keepDesktopAppVisible, 250);
   });
 
   ipcMain.on("desktop:auth-storage:get", (event) => {
@@ -739,7 +745,7 @@ app.whenReady().then(() => {
     }
 
     if (process.platform === "darwin") {
-      app.dock?.show();
+      ensureDockIconVisible();
       app.focus({ steal: true });
     }
 

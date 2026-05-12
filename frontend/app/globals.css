@@ -24,3 +24,26 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.touchspace-incoming-alert-card {
+  background: var(--touchspace-alert-bg, #0a84ff) !important;
+  background-color: var(--touchspace-alert-bg, #0a84ff) !important;
+  background-image: none !important;
+  border-color: var(--touchspace-alert-border, #0a84ff) !important;
+  color: var(--touchspace-alert-fg, #ffffff) !important;
+  opacity: 1 !important;
+  box-shadow: var(--touchspace-alert-shadow, 0 26px 60px rgba(10, 132, 255, 0.32)) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.touchspace-incoming-alert-card * {
+  color: inherit;
+}
+
+.touchspace-incoming-alert-footer {
+  background: var(--touchspace-alert-footer-bg, #0a84ff) !important;
+  background-color: var(--touchspace-alert-footer-bg, #0a84ff) !important;
+  background-image: none !important;
+  border-color: var(--touchspace-alert-footer-border, rgba(255, 255, 255, 0.2)) !important;
+}

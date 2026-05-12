@@ -32,7 +32,7 @@ body {
   border-color: var(--touchspace-alert-border, #0a84ff) !important;
   color: var(--touchspace-alert-fg, #ffffff) !important;
   opacity: 1 !important;
-  box-shadow: var(--touchspace-alert-shadow, 0 26px 60px rgba(10, 132, 255, 0.32)) !important;
+  box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }

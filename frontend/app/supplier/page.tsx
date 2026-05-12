@@ -10,6 +10,7 @@ import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
 import { MessageStatusChecks } from "@/components/chat/message-status-checks";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
+import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
 import {
   clearAuthSession,
   getHomePathForRole,
@@ -1175,6 +1176,8 @@ export default function SupplierPage() {
   const [eventNotificationCandidates, setEventNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
+  const [notificationNow, setNotificationNow] = useState(() => Date.now());
+  const [dismissedNotificationUntil, setDismissedNotificationUntil] = useState<Record<string, number>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const [currentTimeMs, setCurrentTimeMs] = useState<number | null>(null);
@@ -1201,6 +1204,7 @@ export default function SupplierPage() {
   const replyHoverTimeoutRef = useRef<number | null>(null);
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
+  const visibleNotificationRequestIdsRef = useRef<Set<string>>(new Set());
   const defaultDocumentTitleRef = useRef("");
   const titleFlashIntervalRef = useRef<number | null>(null);
   const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
@@ -3477,6 +3481,80 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNotificationNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const visibleFloatingNotifications = effectiveNotificationCandidates
+    .filter((candidate) => {
+      const hiddenUntil = dismissedNotificationUntil[candidate.notificationKey] ?? 0;
+      if (hiddenUntil > notificationNow) {
+        return false;
+      }
+
+      if (candidate.scopeStatus !== "claimed_by_other_recently") {
+        return true;
+      }
+
+      const originalNotificationKey = candidate.requestId
+        ? `supplier-request:${candidate.requestId}`
+        : "";
+      const originalHiddenUntil = originalNotificationKey
+        ? dismissedNotificationUntil[originalNotificationKey] ?? 0
+        : 0;
+
+      return (
+        Boolean(candidate.requestId) &&
+        visibleNotificationRequestIdsRef.current.has(candidate.requestId as string) &&
+        originalHiddenUntil <= notificationNow
+      );
+    })
+    .slice(0, 3);
+
+  useEffect(() => {
+    visibleNotificationRequestIdsRef.current = new Set(
+      visibleFloatingNotifications
+        .map((candidate) => candidate.requestId)
+        .filter((requestId): requestId is string => Boolean(requestId))
+    );
+  }, [visibleFloatingNotifications]);
+
+  const dismissFloatingNotification = (notificationKey: string) => {
+    setDismissedNotificationUntil((current) => ({
+      ...current,
+      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+    }));
+  };
+
+  const handlePrimaryFloatingNotification = (notificationKey: string) => {
+    const candidate = effectiveNotificationCandidates.find(
+      (item) => item.notificationKey === notificationKey
+    );
+
+    if (!candidate) {
+      return;
+    }
+
+    setIsChatPaneDismissed(false);
+
+    if (candidate.kind === "direct") {
+      setActiveSupplierSection("manager");
+      setSelectedRequestId("");
+      setSelectedManagerTicketId(candidate.ticketId);
+    } else if (candidate.requestId) {
+      setActiveSupplierSection("requests");
+      setSelectedManagerTicketId("");
+      setSelectedRequestId(candidate.requestId);
+      setActiveQueueTab(candidate.scopeStatus === "owned_active" ? "in_progress" : "new");
+    }
+
+    dismissFloatingNotification(notificationKey);
+  };
+
+  useEffect(() => {
     if (
       !authReady ||
       isDesktopShell() ||
@@ -4645,6 +4723,62 @@ export default function SupplierPage() {
         </aside>
 
         <section className="relative flex min-w-0 flex-1 overflow-hidden bg-[#F7F7FA]">
+          {!isDesktopShell() ? (
+            <IncomingAlertStack
+              items={visibleFloatingNotifications.map((candidate) => ({
+                id: candidate.notificationKey,
+                title:
+                  candidate.tradePointName?.trim() ||
+                  candidate.title ||
+                  "Запрос поставщику",
+                subtitle:
+                  candidate.scopeStatus === "claimed_by_other_recently"
+                    ? candidate.assignedSupplierProfileName
+                      ? `Уже ведёт ${candidate.assignedSupplierProfileName}`
+                      : "Запрос уже забрал коллега"
+                    : candidate.kind === "request"
+                      ? "Новый запрос поставщику"
+                      : candidate.kind === "direct"
+                        ? "Новое сообщение от менеджера"
+                        : candidate.senderType === "client"
+                          ? "Новое сообщение от клиента"
+                          : "Новое сообщение от менеджера",
+                preview:
+                  candidate.scopeStatus === "claimed_by_other_recently"
+                    ? candidate.assignedSupplierProfileName
+                      ? `Сейчас этот запрос ведёт ${candidate.assignedSupplierProfileName}`
+                      : "Сейчас этот запрос ведёт другой сотрудник поставщика"
+                    : candidate.messageText,
+                tone:
+                  candidate.scopeStatus === "claimed_by_other_recently"
+                    ? "amber"
+                    : candidate.kind === "direct"
+                      ? "green"
+                      : "blue",
+                avatarEmoji: candidate.avatarEmoji,
+                avatarColor: candidate.avatarColor,
+                metaLabel:
+                  candidate.scopeStatus === "missed_unclaimed"
+                    ? "Пропущенный запрос более 10 минут"
+                    : candidate.scopeStatus === "owned_active"
+                      ? "Новое сообщение в вашем запросе"
+                      : candidate.waitSeconds > 0
+                        ? `Ожидание ${Math.floor(candidate.waitSeconds / 60)} мин ${candidate.waitSeconds % 60} сек`
+                        : null,
+                primaryLabel:
+                  candidate.scopeStatus === "claimed_by_other_recently"
+                    ? "Открыть"
+                    : candidate.scopeStatus === "new_unclaimed" ||
+                        candidate.scopeStatus === "missed_unclaimed"
+                      ? "Взять в работу"
+                      : "Ответить",
+                secondaryLabel: "Позже",
+              }))}
+              onClose={dismissFloatingNotification}
+              onSecondary={dismissFloatingNotification}
+              onPrimary={handlePrimaryFloatingNotification}
+            />
+          ) : null}
           {activeSupplierSection === "manager" && selectedManagerTicket ? (
             <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">

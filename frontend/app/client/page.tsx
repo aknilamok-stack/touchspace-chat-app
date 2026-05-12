@@ -67,7 +67,8 @@ const isHiddenClientSystemMessage = (message: Message) =>
     message.content === "Клиент возобновил диалог" ||
     message.content.includes("AI-помощник подключён к диалогу") ||
     message.content.includes("AI-помощник отключён. Диалог снова ведёт менеджер") ||
-    message.content.startsWith("Чат возвращён в общую очередь:"));
+    message.content.startsWith("Чат возвращён в общую очередь:") ||
+    message.content.startsWith("Пропущенное сообщение более 10 минут"));
 
 const formatMessageTime = (createdAt: string) =>
   new Date(createdAt).toLocaleTimeString("ru-RU", {

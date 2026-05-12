@@ -1626,12 +1626,12 @@ export default function ClientPage() {
                                 </div>
                               </button>
                             ) : null}
-                            <div className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1">
+                            <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
                               <p className="min-w-0 break-words leading-6 [overflow-wrap:anywhere]">
                                 {message.displayContent}
                               </p>
                               <div
-                                className={`ml-auto flex shrink-0 items-center gap-1 text-[10px] leading-none ${
+                                className={`ml-auto flex shrink-0 pl-5 items-center gap-1 text-[10px] leading-none ${
                                   message.senderType === "client"
                                     ? "text-white/78"
                                     : message.senderType === "supplier"

@@ -4129,7 +4129,7 @@ export default function SupplierPage() {
                                         }
                                       />
                                     ) : (
-                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[56px] [overflow-wrap:break-word] [word-break:normal]">
+                                      <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[76px] [overflow-wrap:break-word] [word-break:normal]">
                                         {renderHighlightedText(
                                           message.displayContent,
                                           chatSearchQuery

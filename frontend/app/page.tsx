@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
+import { MessageStatusChecks } from "@/components/chat/message-status-checks";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
@@ -400,30 +401,6 @@ const getStatusLabel = (status?: string) => {
 
   return statusLabels[status] ?? status;
 };
-
-const getMessageStatusLabel = (status?: string) => {
-  if (status === "read") {
-    return "Прочитано";
-  }
-
-  if (status === "delivered") {
-    return "Доставлено";
-  }
-
-  return "Отправлено";
-};
-
-const MessageReadTicks = ({ status, tone = "light" }: { status?: string; tone?: "light" | "dark" }) => (
-  <span
-    className={`ml-0.5 inline-flex min-w-[18px] items-center justify-end text-[12px] font-semibold leading-none ${
-      tone === "light" ? "text-white/78" : "text-[#0A84FF]"
-    }`}
-    title={getMessageStatusLabel(status)}
-    aria-label={getMessageStatusLabel(status)}
-  >
-    {status === "read" ? "✓✓" : "✓"}
-  </span>
-);
 
 const getChatPreview = (chat: ChatItem) => {
   const lastMessage = getLastNonSystemMessage(chat) ?? chat.messages.at(-1);
@@ -5750,8 +5727,8 @@ export default function Home() {
                                 }`}
                               >
                                 {message.time ? <p className="shrink-0">{message.time}</p> : null}
-                                {isActiveDirectSupplierDialog && message.from === "manager" ? (
-                                  <MessageReadTicks status={message.status} />
+                                {message.from === "manager" ? (
+                                  <MessageStatusChecks status={message.status} />
                                 ) : null}
                               </div>
                             </div>

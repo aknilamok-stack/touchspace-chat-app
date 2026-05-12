@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
+import { MessageStatusChecks } from "@/components/chat/message-status-checks";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import {
@@ -30,8 +31,9 @@ import {
   isSupplierSyncControlMessage,
 } from "@/lib/supplier-request-sync";
 import {
-  fetchManagerStatuses,
+  fetchSupplierStatusRecords,
   fetchSupplierStatuses,
+  type SupplierPresenceRecord,
   updateSupplierPresence,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
@@ -301,28 +303,6 @@ const renderHighlightedText = (text: string, query: string) => {
   );
 };
 
-const getMessageStatusLabel = (status?: string) => {
-  if (status === "read") {
-    return "Прочитано";
-  }
-
-  if (status === "delivered") {
-    return "Доставлено";
-  }
-
-  return "Отправлено";
-};
-
-const MessageReadTicks = ({ status }: { status?: string }) => (
-  <span
-    className="ml-0.5 inline-flex min-w-[18px] items-center justify-end text-[12px] font-semibold leading-none text-white/78"
-    title={getMessageStatusLabel(status)}
-    aria-label={getMessageStatusLabel(status)}
-  >
-    {status === "read" ? "✓✓" : "✓"}
-  </span>
-);
-
 const formatTimeLabel = (createdAt: string) =>
   new Date(createdAt).toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -488,9 +468,6 @@ const supplierQueueTabs: Array<{
 
 const managerNameById = Object.fromEntries(
   managerAccounts.map((manager) => [manager.id, manager.name])
-);
-const uniqueManagers = Array.from(
-  new Map(managerAccounts.map((manager) => [manager.id, manager])).values()
 );
 
 const areRequestsEqual = (
@@ -1160,7 +1137,7 @@ export default function SupplierPage() {
     useState<SupplierRequestHistoryFilter>("all");
   const [requestHistoryCustomDate, setRequestHistoryCustomDate] = useState("");
   const [isRequestHistoryOpen, setIsRequestHistoryOpen] = useState(false);
-  const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [supplierPresenceRecords, setSupplierPresenceRecords] = useState<SupplierPresenceRecord[]>([]);
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
@@ -1342,13 +1319,25 @@ export default function SupplierPage() {
     resolvedSupplierEmployeeName !== supplierCompanyName
       ? `${resolvedSupplierEmployeeName} • ${supplierStatusLabels[supplierStatus]}`
       : supplierStatusLabels[supplierStatus];
-  const availableManagers = uniqueManagers.map((manager) => ({
-    ...manager,
-    status: managerStatuses[manager.id] ?? "offline",
-  }));
-  const firstOnlineManagerId =
-    availableManagers.find((manager) => manager.status === "online")?.id ??
-    availableManagers[0]?.id ??
+  const normalizedSupplierCompanyName = supplierCompanyName.trim().toLowerCase();
+  const availableSupplierColleagues = supplierPresenceRecords
+    .filter((supplier) => {
+      if (supplier.id === supplierProfileId) {
+        return false;
+      }
+
+      const recordSupplierId = supplier.supplierId?.trim();
+      const recordCompanyName = supplier.companyName?.trim().toLowerCase();
+
+      return (
+        Boolean(supplierId && recordSupplierId === supplierId) ||
+        Boolean(recordCompanyName && recordCompanyName === normalizedSupplierCompanyName)
+      );
+    })
+    .sort((left, right) => left.fullName.localeCompare(right.fullName, "ru"));
+  const firstOnlineSupplierColleagueId =
+    availableSupplierColleagues.find((supplier) => supplier.status === "online")?.id ??
+    availableSupplierColleagues[0]?.id ??
     "";
   const localNotificationCandidates = useMemo<SupplierNotificationCandidate[]>(() => {
     if (!authReady || !supplierProfileId) {
@@ -1743,24 +1732,24 @@ export default function SupplierPage() {
       return;
     }
 
-    const loadStatuses = async () => {
+    const loadSupplierPresenceRecords = async () => {
       try {
-        const statuses = await fetchManagerStatuses();
-        setManagerStatuses(statuses);
+        const records = await fetchSupplierStatusRecords();
+        setSupplierPresenceRecords(records);
       } catch (error) {
-        console.error("Ошибка загрузки статусов менеджеров:", error);
-        setManagerStatuses({});
+        console.error("Ошибка загрузки сотрудников поставщика:", error);
+        setSupplierPresenceRecords([]);
       }
     };
 
-    void loadStatuses();
+    void loadSupplierPresenceRecords();
 
     const intervalId = window.setInterval(() => {
-      void loadStatuses();
+      void loadSupplierPresenceRecords();
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady]);
+  }, [authReady, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady || !supplierProfileId) {
@@ -3676,16 +3665,16 @@ export default function SupplierPage() {
   };
 
   const handleInviteManager = async () => {
-    if (!selectedRequest) {
+    if (!selectedActiveRequest) {
       return;
     }
 
-    const manager = availableManagers.find(
-      (availableManager) => availableManager.id === selectedInvitedManagerId
+    const supplier = availableSupplierColleagues.find(
+      (availableSupplier) => availableSupplier.id === selectedInvitedManagerId
     );
 
-    if (!manager || manager.status !== "online") {
-      setInviteManagerError("Выберите менеджера со статусом «В сети»");
+    if (!supplier || supplier.status !== "online") {
+      setInviteManagerError("Выберите сотрудника поставщика со статусом «В сети»");
       return;
     }
 
@@ -3693,49 +3682,55 @@ export default function SupplierPage() {
     setInviteManagerError("");
 
     try {
-      const response = await fetch(
-        apiUrl(`/tickets/${selectedRequest.ticketId}/invite-manager`),
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: manager.id,
-            managerName: manager.name,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "in_progress",
+          assignedSupplierProfileId: supplier.id,
+          assignedSupplierProfileName: supplier.fullName,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error("Не удалось пригласить менеджера");
+        throw new Error("Не удалось пригласить сотрудника поставщика");
       }
 
-      const updatedTicket = (await response.json()) as Ticket;
-      setTicketsById((current) => ({
-        ...current,
-        [updatedTicket.id]: updatedTicket,
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(supplierId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
+      ]);
+
+      syncSupplierRequests(updatedRequests);
+      setTicketsById(updatedTicketsMap);
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((currentMap) => ({
+        ...currentMap,
+        [selectedActiveRequest.ticketId]: refreshedMessages,
       }));
       setIsInviteModalOpen(false);
     } catch (error) {
-      console.error("Ошибка приглашения менеджера:", error);
-      setInviteManagerError("Не удалось пригласить менеджера");
+      console.error("Ошибка приглашения сотрудника поставщика:", error);
+      setInviteManagerError("Не удалось пригласить сотрудника поставщика");
     } finally {
       setIsInvitingManager(false);
     }
   };
 
   const handleTransferDialog = async () => {
-    if (!selectedRequest) {
+    if (!selectedActiveRequest) {
       return;
     }
 
-    const manager = availableManagers.find(
-      (availableManager) => availableManager.id === selectedTransferManagerId
+    const supplier = availableSupplierColleagues.find(
+      (availableSupplier) => availableSupplier.id === selectedTransferManagerId
     );
 
-    if (!manager || manager.status !== "online") {
-      setTransferDialogError("Выберите менеджера со статусом «В сети»");
+    if (!supplier || supplier.status !== "online") {
+      setTransferDialogError("Выберите сотрудника поставщика со статусом «В сети»");
       return;
     }
 
@@ -3743,28 +3738,34 @@ export default function SupplierPage() {
     setTransferDialogError("");
 
     try {
-      const response = await fetch(
-        apiUrl(`/tickets/${selectedRequest.ticketId}/assign-manager`),
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            managerId: manager.id,
-            managerName: manager.name,
-          }),
-        }
-      );
+      const response = await fetch(apiUrl(`/supplier-requests/${selectedActiveRequest.id}/status`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "in_progress",
+          assignedSupplierProfileId: supplier.id,
+          assignedSupplierProfileName: supplier.fullName,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Не удалось передать диалог");
       }
 
-      const updatedTicket = (await response.json()) as Ticket;
-      setTicketsById((current) => ({
-        ...current,
-        [updatedTicket.id]: updatedTicket,
+      const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
+        fetchSupplierRequests(),
+        fetchTicketsMap(supplierId),
+        fetchTicketMessages(selectedActiveRequest.ticketId),
+      ]);
+
+      syncSupplierRequests(updatedRequests);
+      setTicketsById(updatedTicketsMap);
+      setTicketMessages(refreshedMessages);
+      setTicketMessagesByTicketId((currentMap) => ({
+        ...currentMap,
+        [selectedActiveRequest.ticketId]: refreshedMessages,
       }));
       setIsTransferModalOpen(false);
     } catch (error) {
@@ -4758,12 +4759,14 @@ export default function SupplierPage() {
                                 </p>
                               )}
                               <div
-                                className={`absolute bottom-[10px] right-4 whitespace-nowrap text-[12px] leading-none ${
+                                className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
                                   isOutgoing ? "text-white/65" : "text-[#8E8E93]"
                                 }`}
                               >
                                 <span>{formatTimeLabel(message.createdAt)}</span>
-                                {isOutgoing ? <MessageReadTicks status={message.status} /> : null}
+                                {isOutgoing ? (
+                                  <MessageStatusChecks status={message.status} />
+                                ) : null}
                               </div>
                             </div>
                           </div>
@@ -5060,7 +5063,7 @@ export default function SupplierPage() {
                       <div className="relative">
                         <button
                           onClick={() => {
-                            setSelectedInvitedManagerId(firstOnlineManagerId);
+                            setSelectedInvitedManagerId(firstOnlineSupplierColleagueId);
                             setInviteManagerError("");
                             setIsInviteModalOpen(true);
                           }}
@@ -5078,7 +5081,7 @@ export default function SupplierPage() {
                         </button>
                         {hoveredHeaderAction === "invite" ? (
                           <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs text-[#1E1E1E] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                            Пригласить менеджера
+                            Пригласить поставщика
                           </div>
                         ) : null}
                       </div>
@@ -5086,7 +5089,7 @@ export default function SupplierPage() {
                       <div className="relative">
                         <button
                           onClick={() => {
-                            setSelectedTransferManagerId(firstOnlineManagerId);
+                            setSelectedTransferManagerId(firstOnlineSupplierColleagueId);
                             setTransferDialogError("");
                             setIsTransferModalOpen(true);
                           }}
@@ -5513,6 +5516,9 @@ export default function SupplierPage() {
                                       <p className="shrink-0">
                                         {formatTimeLabel(message.createdAt)}
                                       </p>
+                                      {message.senderType === "supplier" ? (
+                                        <MessageStatusChecks status={message.status} />
+                                      ) : null}
                                     </div>
                                   </div>
                                 </div>
@@ -6355,10 +6361,10 @@ export default function SupplierPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8E8E93]">
-                  Пригласить менеджера
+                  Пригласить поставщика
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-[#1E1E1E]">
-                  Подключить менеджера к диалогу
+                  Подключить сотрудника своей компании
                 </h3>
               </div>
               <button
@@ -6370,34 +6376,38 @@ export default function SupplierPage() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {availableManagers.map((manager) => (
+              {availableSupplierColleagues.length > 0 ? availableSupplierColleagues.map((supplier) => (
                 <button
-                  key={manager.id}
+                  key={supplier.id}
                   onClick={() =>
-                    manager.status === "online"
-                      ? setSelectedInvitedManagerId(manager.id)
+                    supplier.status === "online"
+                      ? setSelectedInvitedManagerId(supplier.id)
                       : undefined
                   }
-                  disabled={manager.status !== "online"}
+                  disabled={supplier.status !== "online"}
                   className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                    selectedInvitedManagerId === manager.id
+                    selectedInvitedManagerId === supplier.id
                       ? "border-[#CFE1FF] bg-[#F3F8FF]"
-                      : manager.status === "online"
+                      : supplier.status === "online"
                         ? "border-[#E5E5EA] bg-white"
                         : "border-[#E5E5EA] bg-[#F7F7FA] opacity-60"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${supplierStatusDots[manager.status]}`} />
-                      <p className="text-sm font-medium text-[#1E1E1E]">{manager.name}</p>
+                      <span className={`h-2.5 w-2.5 rounded-full ${supplierStatusDots[supplier.status]}`} />
+                      <p className="text-sm font-medium text-[#1E1E1E]">{supplier.fullName}</p>
                     </div>
                     <span className="text-xs text-[#8E8E93]">
-                      {supplierStatusLabels[manager.status]}
+                      {supplierStatusLabels[supplier.status]}
                     </span>
                   </div>
                 </button>
-              ))}
+              )) : (
+                <p className="rounded-2xl border border-[#E5E5EA] bg-[#F7F7FA] px-4 py-3 text-sm text-[#6C6C70]">
+                  В этой компании пока нет других сотрудников поставщика.
+                </p>
+              )}
             </div>
 
             {inviteManagerError ? (
@@ -6415,7 +6425,7 @@ export default function SupplierPage() {
                 onClick={handleInviteManager}
                 disabled={
                   isInvitingManager ||
-                  availableManagers.find((manager) => manager.id === selectedInvitedManagerId)
+                  availableSupplierColleagues.find((supplier) => supplier.id === selectedInvitedManagerId)
                     ?.status !== "online"
                 }
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
@@ -6436,7 +6446,7 @@ export default function SupplierPage() {
                   Передать диалог
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-[#1E1E1E]">
-                  Выберите нового ответственного
+                  Выберите сотрудника своей компании
                 </h3>
               </div>
               <button
@@ -6448,34 +6458,38 @@ export default function SupplierPage() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {availableManagers.map((manager) => (
+              {availableSupplierColleagues.length > 0 ? availableSupplierColleagues.map((supplier) => (
                 <button
-                  key={manager.id}
+                  key={supplier.id}
                   onClick={() =>
-                    manager.status === "online"
-                      ? setSelectedTransferManagerId(manager.id)
+                    supplier.status === "online"
+                      ? setSelectedTransferManagerId(supplier.id)
                       : undefined
                   }
-                  disabled={manager.status !== "online"}
+                  disabled={supplier.status !== "online"}
                   className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                    selectedTransferManagerId === manager.id
+                    selectedTransferManagerId === supplier.id
                       ? "border-[#CFE1FF] bg-[#F3F8FF]"
-                      : manager.status === "online"
+                      : supplier.status === "online"
                         ? "border-[#E5E5EA] bg-white"
                         : "border-[#E5E5EA] bg-[#F7F7FA] opacity-60"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${supplierStatusDots[manager.status]}`} />
-                      <p className="text-sm font-medium text-[#1E1E1E]">{manager.name}</p>
+                      <span className={`h-2.5 w-2.5 rounded-full ${supplierStatusDots[supplier.status]}`} />
+                      <p className="text-sm font-medium text-[#1E1E1E]">{supplier.fullName}</p>
                     </div>
                     <span className="text-xs text-[#8E8E93]">
-                      {supplierStatusLabels[manager.status]}
+                      {supplierStatusLabels[supplier.status]}
                     </span>
                   </div>
                 </button>
-              ))}
+              )) : (
+                <p className="rounded-2xl border border-[#E5E5EA] bg-[#F7F7FA] px-4 py-3 text-sm text-[#6C6C70]">
+                  В этой компании пока нет других сотрудников поставщика.
+                </p>
+              )}
             </div>
 
             {transferDialogError ? (
@@ -6493,7 +6507,7 @@ export default function SupplierPage() {
                 onClick={handleTransferDialog}
                 disabled={
                   isTransferringDialog ||
-                  availableManagers.find((manager) => manager.id === selectedTransferManagerId)
+                  availableSupplierColleagues.find((supplier) => supplier.id === selectedTransferManagerId)
                     ?.status !== "online"
                 }
                 className="rounded-2xl bg-[#0A84FF] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"

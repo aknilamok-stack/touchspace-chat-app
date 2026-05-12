@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
+import { MessageStatusChecks } from "@/components/chat/message-status-checks";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
 import { IncomingAlertStack } from "@/components/notifications/incoming-alert-stack";
@@ -275,18 +276,6 @@ const renderHighlightedText = (text: string, query: string) => {
       <span key={`${part}-${index}`}>{part}</span>
     )
   );
-};
-
-const getMessageStatusLabel = (status?: string) => {
-  if (status === "read") {
-    return "Прочитано";
-  }
-
-  if (status === "delivered") {
-    return "Доставлено";
-  }
-
-  return "Отправлено";
 };
 
 const formatTimeLabel = (createdAt: string) =>
@@ -4132,6 +4121,9 @@ export default function SupplierPage() {
                                       <p className="shrink-0">
                                         {formatTimeLabel(message.createdAt)}
                                       </p>
+                                      {message.senderType === "supplier" ? (
+                                        <MessageStatusChecks status={message.status} />
+                                      ) : null}
                                     </div>
                                   </div>
                                 </div>

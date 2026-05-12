@@ -33,7 +33,9 @@ import {
   fetchManagerStatusRecords,
   fetchManagerStatuses,
   fetchSupplierStatusRecords,
+  resolveManagerProfileId,
   updateManagerPresence,
+  type ManagerPresenceRecord,
   type SupplierPresenceRecord,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
@@ -1093,7 +1095,7 @@ export default function Home() {
   const [isManagerMenuOpen, setIsManagerMenuOpen] = useState(false);
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [managerPresenceRecords, setManagerPresenceRecords] = useState<
-    Array<{ id: string; fullName: string; status: ManagerPresence; lastLoginAt?: string | null }>
+    ManagerPresenceRecord[]
   >([]);
   const [activeChatId, setActiveChatId] = useState("");
   const [messageText, setMessageText] = useState("");
@@ -1655,10 +1657,12 @@ export default function Home() {
     );
   };
 
-  const fetchManagerNotificationCandidates = async (): Promise<NotificationCandidate[]> => {
+  const fetchManagerNotificationCandidates = async (
+    managerProfileId = currentManagerId
+  ): Promise<NotificationCandidate[]> => {
     const response = await fetch(
       apiUrl(
-        `/notifications/manager-candidates?profileId=${encodeURIComponent(currentManagerId)}`
+        `/notifications/manager-candidates?profileId=${encodeURIComponent(managerProfileId)}`
       )
     );
 
@@ -1676,12 +1680,17 @@ export default function Home() {
     }
 
     try {
-      const candidates = await fetchManagerNotificationCandidates();
+      const notificationManagerId = resolveManagerProfileId(
+        currentManagerId,
+        currentManagerName,
+        managerPresenceRecords
+      );
+      const candidates = await fetchManagerNotificationCandidates(notificationManagerId);
       setNotificationCandidates(candidates);
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений:", error);
     }
-  }, [currentManagerId]);
+  }, [currentManagerId, currentManagerName, managerPresenceRecords]);
 
   const syncMessagesForTickets = useCallback(
     async (ticketIds: string[]) => {
@@ -2360,7 +2369,6 @@ export default function Home() {
           remoteStatuses,
           remoteManagerRecords,
           supplierStatuses,
-          candidates,
           nextSupplierCompanies,
         ] =
           await Promise.all([
@@ -2368,20 +2376,18 @@ export default function Home() {
           fetchManagerStatuses().catch(
             (): Record<string, ManagerPresence> => ({})
           ),
-          fetchManagerStatusRecords().catch(
-            (): Array<{
-              id: string;
-              fullName: string;
-              status: ManagerPresence;
-              lastLoginAt?: string | null;
-            }> => []
-          ),
+          fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
           fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
-          fetchManagerNotificationCandidates().catch(
-            (): NotificationCandidate[] => []
-          ),
           fetchSupplierCompanies().catch((): SupplierCompanyOption[] => []),
         ]);
+        const notificationManagerId = resolveManagerProfileId(
+          currentManagerId,
+          currentManagerName,
+          remoteManagerRecords
+        );
+        const candidates = await fetchManagerNotificationCandidates(notificationManagerId).catch(
+          (): NotificationCandidate[] => []
+        );
 
         setManagerStatuses(remoteStatuses);
         setManagerPresenceRecords(remoteManagerRecords);
@@ -2426,7 +2432,14 @@ export default function Home() {
     };
 
     void loadInitialTickets();
-  }, [authReady, currentManagerId, deepLinkTicketId, isChatPaneDismissed, syncMessagesForTickets]);
+  }, [
+    authReady,
+    currentManagerId,
+    currentManagerName,
+    deepLinkTicketId,
+    isChatPaneDismissed,
+    syncMessagesForTickets,
+  ]);
 
   useEffect(() => {
     if (!deepLinkTicketId || chatData.length === 0 || isChatPaneDismissed) {
@@ -2447,25 +2460,23 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
-          const [tickets, remoteStatuses, remoteManagerRecords, supplierStatuses, candidates] =
+          const [tickets, remoteStatuses, remoteManagerRecords, supplierStatuses] =
             await Promise.all([
             fetchTickets(),
             fetchManagerStatuses().catch(
               (): Record<string, ManagerPresence> => ({})
             ),
-            fetchManagerStatusRecords().catch(
-              (): Array<{
-                id: string;
-                fullName: string;
-                status: ManagerPresence;
-                lastLoginAt?: string | null;
-              }> => []
-            ),
+            fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
             fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
-            fetchManagerNotificationCandidates().catch(
-              (): NotificationCandidate[] => []
-            ),
           ]);
+          const notificationManagerId = resolveManagerProfileId(
+            currentManagerId,
+            currentManagerName,
+            remoteManagerRecords
+          );
+          const candidates = await fetchManagerNotificationCandidates(notificationManagerId).catch(
+            (): NotificationCandidate[] => []
+          );
 
           setManagerStatuses(remoteStatuses);
           setManagerPresenceRecords(remoteManagerRecords);
@@ -2493,7 +2504,7 @@ export default function Home() {
     }, 2000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, activeChatId, currentManagerId, syncMessagesForTickets]);
+  }, [authReady, activeChatId, currentManagerId, currentManagerName, syncMessagesForTickets]);
 
   useEffect(() => {
     if (!authReady || !currentManagerId || !currentManagerName) {
@@ -2511,9 +2522,16 @@ export default function Home() {
           return;
         }
 
+        const notificationManagerId = resolveManagerProfileId(
+          currentManagerId,
+          currentManagerName,
+          managerPresenceRecords
+        );
         const [tickets, candidates] = await Promise.all([
           fetchTickets().catch((): ApiTicket[] => []),
-          fetchManagerNotificationCandidates().catch((): NotificationCandidate[] => []),
+          fetchManagerNotificationCandidates(notificationManagerId).catch(
+            (): NotificationCandidate[] => []
+          ),
         ]);
 
         if (tickets.length > 0) {
@@ -2531,6 +2549,7 @@ export default function Home() {
     currentManagerId,
     currentManagerName,
     currentManagerStatus,
+    managerPresenceRecords,
     syncMessagesForTickets,
   ]);
 

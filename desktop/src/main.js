@@ -36,6 +36,7 @@ let isAppQuitting = false;
 let desktopNotificationPollInterval = null;
 let isDesktopNotificationPollInFlight = false;
 const lastBackgroundNotificationMessageByKey = new Map();
+let managerProfileResolveCache = null;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -145,6 +146,69 @@ function getDesktopManagerName() {
   );
 }
 
+function normalizeProfileName(value) {
+  return typeof value === "string"
+    ? value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU")
+    : "";
+}
+
+async function resolveDesktopManagerProfileId(profileId, managerName) {
+  const normalizedProfileId = typeof profileId === "string" ? profileId.trim() : "";
+
+  if (!normalizedProfileId) {
+    return "";
+  }
+
+  const normalizedManagerName = normalizeProfileName(managerName);
+  const cacheKey = `${normalizedProfileId}:${normalizedManagerName}`;
+
+  if (
+    managerProfileResolveCache?.cacheKey === cacheKey &&
+    managerProfileResolveCache.expiresAt > Date.now()
+  ) {
+    return managerProfileResolveCache.profileId;
+  }
+
+  let resolvedProfileId = normalizedProfileId;
+
+  try {
+    const response = await fetch(`${getDesktopApiBaseUrl()}/profiles/manager-statuses`, {
+      cache: "no-store",
+    });
+
+    if (response.ok) {
+      const managers = await response.json();
+      const managerRecords = Array.isArray(managers) ? managers : [];
+      const exactManager = managerRecords.find((manager) => manager?.id === normalizedProfileId);
+
+      if (
+        exactManager &&
+        (!normalizedManagerName ||
+          normalizeProfileName(exactManager.fullName) === normalizedManagerName)
+      ) {
+        resolvedProfileId = normalizedProfileId;
+      } else if (normalizedManagerName) {
+        resolvedProfileId =
+          managerRecords.find(
+            (manager) => normalizeProfileName(manager?.fullName) === normalizedManagerName,
+          )?.id ||
+          exactManager?.id ||
+          normalizedProfileId;
+      }
+    }
+  } catch {
+    resolvedProfileId = normalizedProfileId;
+  }
+
+  managerProfileResolveCache = {
+    cacheKey,
+    profileId: resolvedProfileId,
+    expiresAt: Date.now() + 60_000,
+  };
+
+  return resolvedProfileId;
+}
+
 function isMainWindowInBackground() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
@@ -223,7 +287,10 @@ async function pollDesktopManagerNotifications() {
     return;
   }
 
-  const profileId = getDesktopManagerProfileId();
+  const profileId = await resolveDesktopManagerProfileId(
+    getDesktopManagerProfileId(),
+    getDesktopManagerName(),
+  );
 
   if (!profileId) {
     lastBackgroundNotificationMessageByKey.clear();
@@ -893,8 +960,11 @@ app.whenReady().then(() => {
       const shouldClaimTicket = ticketId && primaryLabel === "Взять в работу";
 
       if (shouldClaimTicket) {
-        const managerId = getDesktopManagerProfileId();
         const managerName = getDesktopManagerName();
+        const managerId = await resolveDesktopManagerProfileId(
+          getDesktopManagerProfileId(),
+          managerName,
+        );
 
         if (managerId) {
           try {
@@ -953,6 +1023,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on("desktop:auth-storage:set", (event, rawValue) => {
+    managerProfileResolveCache = null;
     event.returnValue =
       typeof rawValue === "string" && rawValue.trim()
         ? writeDesktopAuthSession(rawValue)
@@ -961,6 +1032,7 @@ app.whenReady().then(() => {
 
   ipcMain.on("desktop:auth-storage:clear", (event) => {
     lastBackgroundNotificationMessageByKey.clear();
+    managerProfileResolveCache = null;
     event.returnValue = clearDesktopAuthSession();
   });
 

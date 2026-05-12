@@ -28,6 +28,51 @@ export type SupplierPresenceRecord = {
   lastLoginAt?: string | null;
 };
 
+export type ManagerPresenceRecord = {
+  id: string;
+  fullName: string;
+  status: ManagerPresence;
+  lastLoginAt?: string | null;
+};
+
+const normalizeProfileName = (value?: string | null) =>
+  value?.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU") ?? "";
+
+export function resolveManagerProfileId(
+  managerId: string,
+  managerName: string,
+  managerRecords: ManagerPresenceRecord[],
+) {
+  const normalizedManagerId = managerId.trim();
+
+  if (!normalizedManagerId) {
+    return normalizedManagerId;
+  }
+
+  const normalizedManagerName = normalizeProfileName(managerName);
+  const exactManager = managerRecords.find((manager) => manager.id === normalizedManagerId);
+
+  if (
+    exactManager &&
+    (!normalizedManagerName ||
+      normalizeProfileName(exactManager.fullName) === normalizedManagerName)
+  ) {
+    return normalizedManagerId;
+  }
+
+  if (!normalizedManagerName) {
+    return normalizedManagerId;
+  }
+
+  return (
+    managerRecords.find(
+      (manager) => normalizeProfileName(manager.fullName) === normalizedManagerName,
+    )?.id ??
+    exactManager?.id ??
+    normalizedManagerId
+  );
+}
+
 export async function fetchManagerStatuses() {
   const response = await fetch(apiUrl("/profiles/manager-statuses"));
 
@@ -67,12 +112,7 @@ export async function fetchManagerStatusRecords() {
         ? manager.managerStatus
         : "offline",
     lastLoginAt: manager.lastLoginAt ?? null,
-  })) as Array<{
-    id: string;
-    fullName: string;
-    status: ManagerPresence;
-    lastLoginAt?: string | null;
-  }>;
+  })) as ManagerPresenceRecord[];
 }
 
 export async function updateManagerPresence(

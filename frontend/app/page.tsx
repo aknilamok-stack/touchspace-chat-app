@@ -2424,14 +2424,32 @@ export default function Home() {
           return nextSupplierCompanies[0]?.companyName ?? "";
         });
         syncTickets(data);
-        await syncMessagesForTickets(data.map((ticket) => ticket.id));
+        const initialTicketId =
+          (!isChatPaneDismissed &&
+            (data.some((ticket) => ticket.id === deepLinkTicketId)
+              ? deepLinkTicketId
+              : data[0]?.id)) ||
+          "";
+
+        if (initialTicketId) {
+          try {
+            const messages = await fetchMessages(initialTicketId, true);
+            applyMessagesToTicket(initialTicketId, messages);
+          } catch (error) {
+            console.error(`Ошибка загрузки сообщений активного тикета ${initialTicketId}:`, error);
+          }
+        }
+
+        void syncMessagesForTickets(
+          data.map((ticket) => ticket.id).filter((ticketId) => ticketId !== initialTicketId)
+        );
       } catch (error) {
         console.error("Ошибка загрузки тикетов:", error);
       }
     };
 
     void loadInitialTickets();
-  }, [authReady, currentManagerId, syncMessagesForTickets]);
+  }, [authReady, currentManagerId, deepLinkTicketId, isChatPaneDismissed, syncMessagesForTickets]);
 
   useEffect(() => {
     if (!deepLinkTicketId || chatData.length === 0 || isChatPaneDismissed) {

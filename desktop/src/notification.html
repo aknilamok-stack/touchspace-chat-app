@@ -63,11 +63,15 @@
         overflow: hidden;
         border-radius: var(--card-radius);
         border: 1px solid var(--card-border);
-        background: var(--card-bg);
-        background-image: none;
+        background: var(--card-bg) !important;
+        background-color: var(--card-bg) !important;
+        background-image: none !important;
+        opacity: 1;
         color: var(--text-primary);
         box-shadow: var(--card-shadow);
         user-select: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
       }
 
       .tone-blue {
@@ -210,7 +214,9 @@
         gap: 0;
         padding: 8px;
         border-top: 1px solid var(--footer-border);
-        background: var(--footer-bg);
+        background: var(--footer-bg) !important;
+        background-color: var(--footer-bg) !important;
+        background-image: none !important;
       }
 
       .action {

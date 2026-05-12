@@ -15,16 +15,28 @@ type IncomingAlertItem = {
 
 const notificationTone = {
   blue: {
-    card: "border-[#0A84FF] bg-[#0A84FF] text-white shadow-[0_26px_60px_rgba(10,132,255,0.32)]",
-    footer: "border-white/20 bg-[#0A84FF]",
+    backgroundColor: "#0A84FF",
+    borderColor: "#0A84FF",
+    color: "#FFFFFF",
+    boxShadow: "0 26px 60px rgba(10, 132, 255, 0.32)",
+    footerBackgroundColor: "#0A84FF",
+    footerBorderColor: "rgba(255, 255, 255, 0.2)",
   },
   green: {
-    card: "bg-[#34C759] text-white shadow-[0_26px_60px_rgba(52,199,89,0.28)]",
-    footer: "border-white/20 bg-[#2EAD4F]",
+    backgroundColor: "#34C759",
+    borderColor: "#34C759",
+    color: "#FFFFFF",
+    boxShadow: "0 26px 60px rgba(52, 199, 89, 0.28)",
+    footerBackgroundColor: "#2EAD4F",
+    footerBorderColor: "rgba(255, 255, 255, 0.2)",
   },
   amber: {
-    card: "bg-[#FFCC00] text-[#3A2A00] shadow-[0_26px_60px_rgba(255,204,0,0.28)]",
-    footer: "border-black/10 bg-[#E6B800]",
+    backgroundColor: "#FFCC00",
+    borderColor: "#FFCC00",
+    color: "#3A2A00",
+    boxShadow: "0 26px 60px rgba(255, 204, 0, 0.28)",
+    footerBackgroundColor: "#E6B800",
+    footerBorderColor: "rgba(0, 0, 0, 0.1)",
   },
 } as const;
 
@@ -63,7 +75,13 @@ export function IncomingAlertStack({
         return (
           <section
             key={item.id}
-            className={`pointer-events-auto overflow-hidden rounded-[24px] border ${tone.card}`}
+            className="pointer-events-auto overflow-hidden rounded-[24px] border"
+            style={{
+              backgroundColor: tone.backgroundColor,
+              borderColor: tone.borderColor,
+              color: tone.color,
+              boxShadow: tone.boxShadow,
+            }}
           >
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
               <p className="text-[15px] font-semibold tracking-[0.01em]">Входящее сообщение</p>
@@ -115,7 +133,13 @@ export function IncomingAlertStack({
               </div>
             </div>
 
-            <div className={`grid grid-cols-2 gap-0 border-t px-2 py-2 ${tone.footer}`}>
+            <div
+              className="grid grid-cols-2 gap-0 border-t px-2 py-2"
+              style={{
+                backgroundColor: tone.footerBackgroundColor,
+                borderColor: tone.footerBorderColor,
+              }}
+            >
               <button
                 type="button"
                 onClick={(event) => {

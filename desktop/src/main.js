@@ -135,6 +135,16 @@ function getDesktopManagerProfileId() {
   );
 }
 
+function getDesktopManagerName() {
+  const session = readDesktopAuthSessionJson();
+
+  return (
+    (typeof session?.managerName === "string" && session.managerName.trim()) ||
+    (typeof session?.fullName === "string" && session.fullName.trim()) ||
+    "Менеджер"
+  );
+}
+
 function isMainWindowInBackground() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
@@ -193,6 +203,8 @@ function buildManagerNotificationPayload(candidate) {
     primaryLabel,
     secondaryLabel: "Позже",
     header: "Входящее сообщение",
+    ticketId: candidate?.ticketId,
+    scopeStatus: candidate?.scopeStatus,
     avatarEmoji: candidate?.avatarEmoji || "",
     avatarColor: candidate?.avatarColor || "",
     tone: isDirectSupplierDialog ? "green" : "blue",
@@ -855,13 +867,54 @@ app.whenReady().then(() => {
           ? payload.tone
           : "blue",
       tag,
+      ticketId:
+        typeof payload.ticketId === "string" && payload.ticketId.trim()
+          ? payload.ticketId.trim()
+          : "",
+      scopeStatus:
+        typeof payload.scopeStatus === "string" && payload.scopeStatus.trim()
+          ? payload.scopeStatus.trim()
+          : "",
     });
   });
 
-  ipcMain.handle("desktop:overlay-notification-action", (_, payload) => {
+  ipcMain.handle("desktop:overlay-notification-action", async (_, payload) => {
     const action = payload?.action;
 
     if (action === "primary") {
+      const ticketId =
+        typeof pendingNotificationPayload?.ticketId === "string"
+          ? pendingNotificationPayload.ticketId.trim()
+          : "";
+      const primaryLabel =
+        typeof pendingNotificationPayload?.primaryLabel === "string"
+          ? pendingNotificationPayload.primaryLabel.trim()
+          : "";
+      const shouldClaimTicket = ticketId && primaryLabel === "Взять в работу";
+
+      if (shouldClaimTicket) {
+        const managerId = getDesktopManagerProfileId();
+        const managerName = getDesktopManagerName();
+
+        if (managerId) {
+          try {
+            await fetch(`${getDesktopApiBaseUrl()}/tickets/${encodeURIComponent(ticketId)}/claim`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                managerId,
+                managerName,
+                resolverRole: "manager",
+              }),
+            });
+          } catch {
+            // The renderer will refresh the ticket state after focus even if claim fails.
+          }
+        }
+      }
+
       focusMainWindow(
         typeof payload?.url === "string" && payload.url.trim()
           ? payload.url.trim()

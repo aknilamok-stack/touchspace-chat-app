@@ -9,6 +9,8 @@ export type DesktopShellNotificationPayload = {
   title: string;
   body?: string;
   url?: string;
+  ticketId?: string;
+  scopeStatus?: string;
   subtitle?: string | null;
   metaLabel?: string | null;
   primaryLabel?: string;

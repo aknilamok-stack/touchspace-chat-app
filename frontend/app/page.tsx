@@ -1459,6 +1459,7 @@ export default function Home() {
       tag?: string;
       ticketId?: string;
       messageId?: string;
+      scopeStatus?: string;
       subtitle?: string | null;
       metaLabel?: string | null;
       primaryLabel?: string;
@@ -1480,6 +1481,8 @@ export default function Home() {
         title,
         body,
         url: targetUrl,
+        ticketId: options?.ticketId,
+        scopeStatus: options?.scopeStatus,
         messageId: options?.messageId,
         subtitle: options?.subtitle ?? null,
         metaLabel: options?.metaLabel ?? null,
@@ -2988,6 +2991,10 @@ export default function Home() {
         return false;
       }
 
+      if (candidate.ticketId === activeChatId) {
+        return false;
+      }
+
       if (candidate.scopeStatus !== "claimed_by_other_recently") {
         return true;
       }
@@ -3029,6 +3036,18 @@ export default function Home() {
 
     setIsChatPaneDismissed(false);
     setActiveChatId(candidate.ticketId);
+    dismissFloatingNotification(notificationKey);
+
+    if (
+      candidate.conversationMode !== "direct_supplier" &&
+      (candidate.scopeStatus === "new_unclaimed" ||
+        candidate.scopeStatus === "missed_unclaimed" ||
+        candidate.scopeStatus === "rescue_queue")
+    ) {
+      await handleClaimIncoming(candidate.ticketId);
+      return;
+    }
+
     setFilter(
       candidate.conversationMode === "direct_supplier"
         ? "supplier"
@@ -3036,7 +3055,6 @@ export default function Home() {
           ? "in_progress"
           : "incoming"
     );
-    dismissFloatingNotification(notificationKey);
   };
 
   useEffect(() => {
@@ -3141,6 +3159,7 @@ export default function Home() {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
         messageId: candidate.messageId,
+        scopeStatus: candidate.scopeStatus,
         subtitle: notificationSubtitle,
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,

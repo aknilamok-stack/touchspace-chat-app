@@ -7,6 +7,8 @@ import {
   SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
 } from './supplier-requests/supplier-request-sync.util';
 
+const MANAGER_SUPPLIER_CLIENT_ESCALATION_MS = 2 * 60 * 1000;
+
 type NotificationPreferencesInput = {
   notificationPushEnabled?: boolean;
   notifyClientChats?: boolean;
@@ -684,11 +686,68 @@ export class NotificationsService {
               createdAt: true,
             },
           },
+          supplierRequests: {
+            where: {
+              status: {
+                notIn: ['closed', 'cancelled', 'resolved'],
+              },
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              assignedSupplierProfileId: true,
+              claimedAt: true,
+              lastSupplierReplyAt: true,
+              closedAt: true,
+            },
+          },
         },
       }),
     ]);
 
     const activeManagerIdsSet = new Set(activeManagerIds);
+    const ticketIds = tickets.map((ticket) => ticket.id);
+    const controlMessages =
+      ticketIds.length === 0
+        ? []
+        : await this.prisma.message.findMany({
+            where: {
+              ticketId: {
+                in: ticketIds,
+              },
+              messageType: SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
+            },
+            select: {
+              ticketId: true,
+              content: true,
+              createdAt: true,
+              messageType: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          });
+    const controlMessagesByTicketId = controlMessages.reduce<
+      Record<
+        string,
+        Array<{
+          content: string;
+          createdAt: Date;
+          messageType: string | null;
+        }>
+      >
+    >((accumulator, message) => {
+      if (!accumulator[message.ticketId]) {
+        accumulator[message.ticketId] = [];
+      }
+
+      accumulator[message.ticketId].push(message);
+      return accumulator;
+    }, {});
 
     const items = tickets
       .map((ticket) => {
@@ -705,8 +764,53 @@ export class NotificationsService {
           return null;
         }
 
-        if (!ticket.assignedManagerId && latestUnreadMessage.senderType !== 'client') {
+        if (
+          !ticket.assignedManagerId &&
+          latestUnreadMessage.senderType !== 'client'
+        ) {
           return null;
+        }
+
+        const activeSupplierRequest = [...ticket.supplierRequests]
+          .reverse()
+          .find(
+            (request) =>
+              request.assignedSupplierProfileId &&
+              !request.closedAt &&
+              request.status !== 'closed' &&
+              request.status !== 'cancelled' &&
+              request.status !== 'resolved',
+          );
+
+        if (activeSupplierRequest) {
+          const syncState = getSupplierRequestSyncState(
+            ticket.supplierRequests,
+            controlMessagesByTicketId[ticket.id] ?? [],
+            activeSupplierRequest.id,
+          );
+          const supplierIsLive = !syncState.isPaused;
+          const latestClientMessage =
+            latestUnreadMessage.senderType === 'client'
+              ? latestUnreadMessage
+              : null;
+          const supplierReplyAt =
+            activeSupplierRequest.lastSupplierReplyAt?.getTime() ??
+            activeSupplierRequest.claimedAt?.getTime() ??
+            activeSupplierRequest.createdAt.getTime();
+          const clientIsWaitingForSupplier =
+            latestClientMessage &&
+            latestClientMessage.createdAt.getTime() > supplierReplyAt;
+          const clientWaitMs = latestClientMessage
+            ? Date.now() - latestClientMessage.createdAt.getTime()
+            : 0;
+
+          if (
+            supplierIsLive &&
+            (!clientIsWaitingForSupplier ||
+              clientWaitMs < MANAGER_SUPPLIER_CLIENT_ESCALATION_MS)
+          ) {
+            return null;
+          }
         }
 
         const candidate: ManagerNotificationCandidate = {
@@ -958,7 +1062,7 @@ export class NotificationsService {
       ticketId: string;
       content: string;
       createdAt: Date;
-      senderType: 'manager' | 'client' | string;
+      senderType: string;
     }>;
 
     const requestsByTicketId = requests.reduce<
@@ -979,7 +1083,16 @@ export class NotificationsService {
         createdAt: Date;
         messageType: string | null;
       }>
-    > = controlMessages.reduce((accumulator, message) => {
+    > = controlMessages.reduce<
+      Record<
+        string,
+        Array<{
+          content: string;
+          createdAt: Date;
+          messageType: string | null;
+        }>
+      >
+    >((accumulator, message) => {
       if (!accumulator[message.ticketId]) {
         accumulator[message.ticketId] = [];
       }
@@ -996,7 +1109,17 @@ export class NotificationsService {
         createdAt: Date;
         senderType: 'manager' | 'client' | 'supplier';
       }>
-    > = chatMessages.reduce((accumulator, message) => {
+    > = chatMessages.reduce<
+      Record<
+        string,
+        Array<{
+          id: string;
+          content: string;
+          createdAt: Date;
+          senderType: 'manager' | 'client' | 'supplier';
+        }>
+      >
+    >((accumulator, message) => {
       if (!accumulator[message.ticketId]) {
         accumulator[message.ticketId] = [];
       }
@@ -1026,7 +1149,9 @@ export class NotificationsService {
         return;
       }
 
-      const ticketRequests = [...(requestsByTicketId[request.ticketId] ?? [])].sort(
+      const ticketRequests = [
+        ...(requestsByTicketId[request.ticketId] ?? []),
+      ].sort(
         (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
       );
       const requestIndex = ticketRequests.findIndex(
@@ -1104,22 +1229,24 @@ export class NotificationsService {
         requestIndex < ticketRequests.length - 1
           ? ticketRequests[requestIndex + 1].createdAt.getTime()
           : Number.POSITIVE_INFINITY;
-      const requestWindowMessages = (chatMessagesByTicketId[request.ticketId] ?? []).filter(
-        (message) => {
-          const createdAtMs = message.createdAt.getTime();
+      const requestWindowMessages = (
+        chatMessagesByTicketId[request.ticketId] ?? []
+      ).filter((message) => {
+        const createdAtMs = message.createdAt.getTime();
 
-          return (
-            createdAtMs >= request.createdAt.getTime() &&
-            createdAtMs < nextRequestStartedAt
-          );
-        },
-      );
+        return (
+          createdAtMs >= request.createdAt.getTime() &&
+          createdAtMs < nextRequestStartedAt
+        );
+      });
       const latestSupplierMessage =
-        requestWindowMessages.filter((message) => message.senderType === 'supplier').at(-1) ??
-        null;
+        requestWindowMessages
+          .filter((message) => message.senderType === 'supplier')
+          .at(-1) ?? null;
       const latestManagerMessage =
-        requestWindowMessages.filter((message) => message.senderType === 'manager').at(-1) ??
-        null;
+        requestWindowMessages
+          .filter((message) => message.senderType === 'manager')
+          .at(-1) ?? null;
       const baselineAt = Math.max(
         request.claimedAt?.getTime() ?? Number.NEGATIVE_INFINITY,
         latestSupplierMessage?.createdAt.getTime() ??
@@ -1142,18 +1269,24 @@ export class NotificationsService {
           .at(-1) ?? null;
 
       if (request.assignedSupplierProfileId === profile.id) {
-        const repairedSupplierReplyAt = latestSupplierMessage?.createdAt ?? null;
-        const repairedManagerMessageAt = latestManagerMessage?.createdAt ?? null;
+        const repairedSupplierReplyAt =
+          latestSupplierMessage?.createdAt ?? null;
+        const repairedManagerMessageAt =
+          latestManagerMessage?.createdAt ?? null;
         const needsSupplierReplyRepair =
           repairedSupplierReplyAt &&
           repairedSupplierReplyAt.getTime() >
-            (request.lastSupplierReplyAt?.getTime() ?? Number.NEGATIVE_INFINITY);
+            (request.lastSupplierReplyAt?.getTime() ??
+              Number.NEGATIVE_INFINITY);
         const needsManagerMessageRepair =
           repairedManagerMessageAt &&
           repairedManagerMessageAt.getTime() >
-            (request.lastManagerMessageAt?.getTime() ?? Number.NEGATIVE_INFINITY);
-        const normalizedRequestSupplierId = request.supplierId?.trim() || normalizedSupplierScopeId;
-        const normalizedTicketSupplierId = request.ticket?.supplierId?.trim() || null;
+            (request.lastManagerMessageAt?.getTime() ??
+              Number.NEGATIVE_INFINITY);
+        const normalizedRequestSupplierId =
+          request.supplierId?.trim() || normalizedSupplierScopeId;
+        const normalizedTicketSupplierId =
+          request.ticket?.supplierId?.trim() || null;
         const needsTicketScopeRepair =
           normalizedRequestSupplierId &&
           normalizedTicketSupplierId !== normalizedRequestSupplierId;

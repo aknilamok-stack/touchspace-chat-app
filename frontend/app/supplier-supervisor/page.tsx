@@ -341,13 +341,21 @@ const isSameLocalDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
+const isSpecificManagerName = (name?: string | null) => {
+  const normalizedName = name?.trim().toLowerCase();
+  return Boolean(normalizedName && normalizedName !== "менеджер" && normalizedName !== "manager");
+};
+
 const getSupplierMessageAuthorLabel = (message: TicketMessage) => {
   if (message.senderType === "supplier") {
     return "Вы";
   }
 
   if (message.senderType === "manager") {
-    return "Менеджер";
+    const managerName = message.senderName?.trim();
+    return isSpecificManagerName(managerName)
+      ? `Менеджер / ${managerName}`
+      : "Менеджер";
   }
 
   if (message.senderType === "client") {

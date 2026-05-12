@@ -393,7 +393,10 @@ const getSupplierMessageAuthorLabel = (message: TicketMessage) => {
   }
 
   if (message.senderType === "manager") {
-    return "Менеджер";
+    const managerName = message.senderName?.trim();
+    return isSpecificManagerName(managerName)
+      ? `Менеджер / ${managerName}`
+      : "Менеджер";
   }
 
   if (message.senderType === "client") {

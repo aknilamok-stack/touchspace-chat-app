@@ -2937,6 +2937,14 @@ export default function Home() {
       const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
       const originalNotificationKey = `ticket:${candidate.ticketId}:${candidate.messageId}`;
       const originalHiddenUntil = dismissedNotificationUntil[originalNotificationKey] ?? 0;
+      const isActiveChatVisible =
+        candidate.ticketId === activeChatId &&
+        document.visibilityState === "visible" &&
+        document.hasFocus();
+
+      if (!isClaimedByOther && isActiveChatVisible) {
+        return;
+      }
 
       if (
         isClaimedByOther &&
@@ -3018,6 +3026,7 @@ export default function Home() {
     notificationCandidates,
     notificationNow,
     authReady,
+    activeChatId,
     managerSupervisorPowerEnabled,
     getDirectSupplierNotificationTitle,
   ]);

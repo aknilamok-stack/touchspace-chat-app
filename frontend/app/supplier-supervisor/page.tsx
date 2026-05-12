@@ -1092,7 +1092,9 @@ export default function SupplierPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierIsNearBottomRef = useRef(true);
   const previousSelectedRequestIdRef = useRef("");
+  const previousSupplierTimelineItemCountRef = useRef(0);
   const previousVisibleMessageCountRef = useRef(0);
+  const visibleSupplierMessagesRef = useRef<TicketMessage[]>([]);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -1239,6 +1241,7 @@ export default function SupplierPage() {
   ).filter((supplier) => supplier.status === "online");
   const visibleSupplierMessages =
     selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
+  visibleSupplierMessagesRef.current = visibleSupplierMessages;
   const supplierTimelineItems = selectedRequest
     ? buildSupplierTimelineItems(
         [...selectedTicketRequests].sort(
@@ -2393,12 +2396,14 @@ export default function SupplierPage() {
 
   useEffect(() => {
     const currentRequestId = selectedRequestId;
-    const currentMessageCount = visibleSupplierMessages.length;
+    const currentMessageCount = supplierTimelineItems.length;
+    const currentVisibleMessageCount = visibleSupplierMessages.length;
     const requestChanged = previousSelectedRequestIdRef.current !== currentRequestId;
 
     if (requestChanged) {
       previousSelectedRequestIdRef.current = currentRequestId;
-      previousVisibleMessageCountRef.current = currentMessageCount;
+      previousSupplierTimelineItemCountRef.current = currentMessageCount;
+      previousVisibleMessageCountRef.current = currentVisibleMessageCount;
       supplierIsNearBottomRef.current = true;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
@@ -2414,19 +2419,22 @@ export default function SupplierPage() {
       return;
     }
 
-    const previousMessageCount = previousVisibleMessageCountRef.current;
+    const previousMessageCount = previousSupplierTimelineItemCountRef.current;
+    const previousVisibleMessageCount = previousVisibleMessageCountRef.current;
 
     if (currentMessageCount <= previousMessageCount) {
-      previousVisibleMessageCountRef.current = currentMessageCount;
+      previousSupplierTimelineItemCountRef.current = currentMessageCount;
+      previousVisibleMessageCountRef.current = currentVisibleMessageCount;
       return;
     }
 
-    const newlyArrivedMessages = visibleSupplierMessages.slice(
-      previousMessageCount,
-      currentMessageCount
+    const newlyArrivedMessages = visibleSupplierMessagesRef.current.slice(
+      previousVisibleMessageCount,
+      currentVisibleMessageCount
     );
 
-    previousVisibleMessageCountRef.current = currentMessageCount;
+    previousSupplierTimelineItemCountRef.current = currentMessageCount;
+    previousVisibleMessageCountRef.current = currentVisibleMessageCount;
 
     if (supplierIsNearBottomRef.current) {
       requestAnimationFrame(() => {
@@ -2443,7 +2451,7 @@ export default function SupplierPage() {
       setPendingClientMessageCount((current) => current + newClientMessagesCount);
       setShowScrollToLatest(true);
     }
-  }, [selectedRequestId, visibleSupplierMessages.length]);
+  }, [selectedRequestId, supplierTimelineItems.length, visibleSupplierMessages.length]);
 
   useEffect(() => {
     if (!authReady) {

@@ -1193,7 +1193,9 @@ export default function SupplierPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierIsNearBottomRef = useRef(true);
   const previousSelectedRequestIdRef = useRef("");
+  const previousSupplierTimelineItemCountRef = useRef(0);
   const previousVisibleMessageCountRef = useRef(0);
+  const visibleSupplierMessagesRef = useRef<TicketMessage[]>([]);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -1259,6 +1261,7 @@ export default function SupplierPage() {
   const selectedRequestDetails = selectedActiveRequest ?? selectedLatestRequest;
   const visibleSupplierMessages =
     selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
+  visibleSupplierMessagesRef.current = visibleSupplierMessages;
   const latestUnreadIncomingSupplierMessage =
     [...visibleSupplierMessages]
       .reverse()
@@ -3269,10 +3272,15 @@ export default function SupplierPage() {
       activeSupplierSection === "manager"
         ? directManagerMessages.length
         : visibleSupplierMessages.length;
+    const currentTimelineItemCount =
+      activeSupplierSection === "manager"
+        ? directManagerMessages.length
+        : supplierTimelineItems.length;
     const dialogChanged = previousSelectedRequestIdRef.current !== currentDialogId;
 
     if (dialogChanged) {
       previousSelectedRequestIdRef.current = currentDialogId;
+      previousSupplierTimelineItemCountRef.current = currentTimelineItemCount;
       previousVisibleMessageCountRef.current = currentMessageCount;
       supplierIsNearBottomRef.current = true;
       setShowScrollToLatest(false);
@@ -3289,9 +3297,11 @@ export default function SupplierPage() {
       return;
     }
 
+    const previousTimelineItemCount = previousSupplierTimelineItemCountRef.current;
     const previousMessageCount = previousVisibleMessageCountRef.current;
 
-    if (currentMessageCount <= previousMessageCount) {
+    if (currentTimelineItemCount <= previousTimelineItemCount) {
+      previousSupplierTimelineItemCountRef.current = currentTimelineItemCount;
       previousVisibleMessageCountRef.current = currentMessageCount;
       return;
     }
@@ -3299,8 +3309,9 @@ export default function SupplierPage() {
     const newlyArrivedMessages =
       activeSupplierSection === "manager"
         ? []
-        : visibleSupplierMessages.slice(previousMessageCount, currentMessageCount);
+        : visibleSupplierMessagesRef.current.slice(previousMessageCount, currentMessageCount);
 
+    previousSupplierTimelineItemCountRef.current = currentTimelineItemCount;
     previousVisibleMessageCountRef.current = currentMessageCount;
 
     if (supplierIsNearBottomRef.current) {
@@ -3323,6 +3334,7 @@ export default function SupplierPage() {
     directManagerMessages.length,
     selectedManagerTicketId,
     selectedRequestId,
+    supplierTimelineItems.length,
     visibleSupplierMessages.length,
   ]);
 

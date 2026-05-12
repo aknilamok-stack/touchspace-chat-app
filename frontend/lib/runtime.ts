@@ -14,6 +14,7 @@ export type DesktopShellNotificationPayload = {
   primaryLabel?: string;
   secondaryLabel?: string;
   header?: string;
+  messageId?: string;
   avatarEmoji?: string | null;
   avatarColor?: string | null;
   tone?: "green" | "amber" | "blue";

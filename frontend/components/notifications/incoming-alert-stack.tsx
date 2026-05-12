@@ -104,10 +104,11 @@ export function IncomingAlertStack({
                 onMouseUp={stopNotificationAction}
                 onPointerDown={stopNotificationAction}
                 onPointerUp={stopNotificationAction}
-                className="text-[36px] leading-none text-inherit opacity-90 transition hover:opacity-100"
+                className="relative -mr-1.5 -mt-1.5 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-white/15 text-transparent outline-none transition hover:bg-white/25 active:scale-95 focus:outline-none focus-visible:outline-none"
                 aria-label="Закрыть уведомление"
               >
-                ×
+                <span className="absolute h-[2.5px] w-4 rotate-45 rounded-full bg-white" />
+                <span className="absolute h-[2.5px] w-4 -rotate-45 rounded-full bg-white" />
               </button>
             </div>
 

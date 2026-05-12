@@ -1423,6 +1423,7 @@ export default function Home() {
     options?: {
       tag?: string;
       ticketId?: string;
+      messageId?: string;
       subtitle?: string | null;
       metaLabel?: string | null;
       primaryLabel?: string;
@@ -1444,6 +1445,7 @@ export default function Home() {
         title,
         body,
         url: targetUrl,
+        messageId: options?.messageId,
         subtitle: options?.subtitle ?? null,
         metaLabel: options?.metaLabel ?? null,
         primaryLabel: options?.primaryLabel,
@@ -2957,6 +2959,7 @@ export default function Home() {
       void showDesktopNotification(notificationTitle, notificationBody, {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
+        messageId: candidate.messageId,
         subtitle: notificationSubtitle,
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,

@@ -87,27 +87,27 @@
       }
 
       .tone-green {
-        --card-bg: #34C759;
-        --card-border: #34C759;
-        --card-shadow: 0 26px 60px rgba(52, 199, 89, 0.28);
+        --card-bg: var(--touchspace-blue);
+        --card-border: var(--touchspace-blue);
+        --card-shadow: 0 26px 60px rgba(10, 132, 255, 0.32);
         --text-primary: #ffffff;
         --text-subtle: rgba(255, 255, 255, 0.9);
         --text-meta: rgba(255, 255, 255, 0.8);
-        --footer-bg: #2EAD4F;
+        --footer-bg: var(--touchspace-blue);
         --footer-border: rgba(255, 255, 255, 0.2);
         --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .tone-amber {
-        --card-bg: #FFCC00;
-        --card-border: #FFCC00;
-        --card-shadow: 0 26px 60px rgba(255, 204, 0, 0.28);
-        --text-primary: #3A2A00;
-        --text-subtle: rgba(58, 42, 0, 0.88);
-        --text-meta: rgba(58, 42, 0, 0.72);
-        --footer-bg: #E6B800;
-        --footer-border: rgba(0, 0, 0, 0.12);
-        --action-hover: rgba(255, 255, 255, 0.22);
+        --card-bg: var(--touchspace-blue);
+        --card-border: var(--touchspace-blue);
+        --card-shadow: 0 26px 60px rgba(10, 132, 255, 0.32);
+        --text-primary: #ffffff;
+        --text-subtle: rgba(255, 255, 255, 0.9);
+        --text-meta: rgba(255, 255, 255, 0.8);
+        --footer-bg: var(--touchspace-blue);
+        --footer-border: rgba(255, 255, 255, 0.2);
+        --action-hover: rgba(255, 255, 255, 0.1);
       }
 
       .card-button {
@@ -279,9 +279,7 @@
 
       const setTone = (tone) => {
         cardElement.classList.remove("tone-blue", "tone-green", "tone-amber");
-        cardElement.classList.add(
-          tone === "green" ? "tone-green" : tone === "amber" ? "tone-amber" : "tone-blue"
-        );
+        cardElement.classList.add("tone-blue");
       };
 
       window.touchspaceDesktopNotification.onData((payload) => {

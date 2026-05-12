@@ -1998,9 +1998,10 @@ export default function SupplierPage() {
         top: viewport.scrollHeight,
         behavior,
       });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     }
 
-    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     supplierIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
     setPendingClientMessageCount(0);
@@ -3270,6 +3271,7 @@ export default function SupplierPage() {
     if (dialogChanged) {
       previousSelectedRequestIdRef.current = currentDialogId;
       previousVisibleMessageCountRef.current = currentMessageCount;
+      supplierIsNearBottomRef.current = true;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
 
@@ -3291,10 +3293,10 @@ export default function SupplierPage() {
       return;
     }
 
-    const newlyArrivedMessages = visibleSupplierMessages.slice(
-      previousMessageCount,
-      currentMessageCount
-    );
+    const newlyArrivedMessages =
+      activeSupplierSection === "manager"
+        ? []
+        : visibleSupplierMessages.slice(previousMessageCount, currentMessageCount);
 
     previousVisibleMessageCountRef.current = currentMessageCount;
 

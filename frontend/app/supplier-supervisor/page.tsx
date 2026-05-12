@@ -1632,7 +1632,17 @@ export default function SupplierPage() {
   };
 
   const scrollSupplierChatToBottom = (behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    const viewport = messagesViewportRef.current;
+
+    if (viewport) {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior,
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+
     supplierIsNearBottomRef.current = true;
     setShowScrollToLatest(false);
     setPendingClientMessageCount(0);
@@ -2381,12 +2391,15 @@ export default function SupplierPage() {
     if (requestChanged) {
       previousSelectedRequestIdRef.current = currentRequestId;
       previousVisibleMessageCountRef.current = currentMessageCount;
+      supplierIsNearBottomRef.current = true;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
 
       if (currentRequestId) {
         requestAnimationFrame(() => {
-          scrollSupplierChatToBottom("auto");
+          requestAnimationFrame(() => {
+            scrollSupplierChatToBottom("auto");
+          });
         });
       }
 

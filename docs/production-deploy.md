@@ -34,10 +34,10 @@
 
 Минимально разумная схема для pilot / internal production:
 
-1. Домен для frontend, например:
-   - `https://app.touchspace.ru`
-2. Домен для backend API, например:
-   - `https://api.touchspace.ru`
+1. Домен для frontend:
+   - `https://chat.touchspace.biz`
+2. Backend API на том же домене:
+   - `https://chat.touchspace.biz/api`
 3. Один внешний Postgres
 4. HTTPS через reverse proxy
 5. Backend и frontend в отдельных контейнерах
@@ -48,7 +48,7 @@
 
 ```env
 DATABASE_URL=postgresql://...
-CORS_ORIGIN=https://app.touchspace.ru
+CORS_ORIGIN=https://chat.touchspace.biz
 PORT=3001
 
 OPENAI_API_KEY=...
@@ -65,8 +65,8 @@ WEB_PUSH_SUBJECT=mailto:ops@touchspace.ru
 Пример:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=https://api.touchspace.ru
-NEXT_PUBLIC_APP_URL=https://app.touchspace.ru
+NEXT_PUBLIC_API_BASE_URL=https://chat.touchspace.biz/api
+NEXT_PUBLIC_APP_URL=https://chat.touchspace.biz
 ```
 
 ## Как поднять через Docker Compose
@@ -78,8 +78,8 @@ NEXT_PUBLIC_APP_URL=https://app.touchspace.ru
 3. Экспортировать переменные для frontend build:
 
 ```bash
-export NEXT_PUBLIC_API_BASE_URL=https://api.touchspace.ru
-export NEXT_PUBLIC_APP_URL=https://app.touchspace.ru
+export NEXT_PUBLIC_API_BASE_URL=https://chat.touchspace.biz/api
+export NEXT_PUBLIC_APP_URL=https://chat.touchspace.biz
 ```
 
 4. Поднять контейнеры:

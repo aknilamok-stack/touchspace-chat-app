@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "electron .",
     "dev:local": "DESKTOP_START_URL=http://localhost:3000/login electron .",
-    "dev:remote": "DESKTOP_START_URL=https://app.aknila.ru/login electron .",
+    "dev:remote": "DESKTOP_START_URL=https://chat.touchspace.biz/login electron .",
     "package:dir": "electron-builder --dir",
     "package:mac": "electron-builder --mac",
     "package:mac:zip": "electron-builder --mac zip",

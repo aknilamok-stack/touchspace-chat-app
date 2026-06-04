@@ -24,4 +24,4 @@ jobs:
       - name: Run deploy on server
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 root@155.212.165.210 "touchspace-deploy"
+          ssh -i ~/.ssh/id_ed25519 -p 7551 root@chat.touchspace.biz "touchspace-deploy"

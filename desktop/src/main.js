@@ -15,7 +15,7 @@ const path = require("node:path");
 process.env.ELECTRON_IS_PACKAGED = app.isPackaged ? "true" : "false";
 
 const isDev = !app.isPackaged;
-const defaultRemoteUrl = "https://app.aknila.ru/login";
+const defaultRemoteUrl = "https://chat.touchspace.biz/login";
 const startUrl = process.env.DESKTOP_START_URL || defaultRemoteUrl;
 const shellOrigin = new URL(startUrl).origin;
 const desktopSessionPartition = `persist:touchspace-workspace:${new URL(startUrl).host

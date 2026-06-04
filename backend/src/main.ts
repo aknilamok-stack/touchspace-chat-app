@@ -10,7 +10,7 @@ async function bootstrap() {
   const uploadsDir = join(process.cwd(), 'uploads');
   const defaultAllowedOrigins = [
     'http://localhost:3000',
-    'https://app.aknila.ru',
+    'https://chat.touchspace.biz',
     'https://b2btest.touchspace.biz',
     'https://b2b.touchspace.biz',
     'https://touchspace.biz',

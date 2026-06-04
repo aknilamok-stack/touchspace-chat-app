@@ -44,6 +44,57 @@ generate_secret() {
   fi
 }
 
+get_env_value() {
+  local file="$1"
+  local key="$2"
+
+  [[ -f "$file" ]] || return 0
+
+  grep -m 1 -E "^${key}=" "$file" \
+    | sed -E "s/^${key}=//; s/^\"//; s/\"$//"
+}
+
+env_value_or_generate() {
+  local variable_value="$1"
+  local file="$2"
+  local key="$3"
+  local existing_value
+
+  if [[ -n "$variable_value" ]]; then
+    printf '%s' "$variable_value"
+    return
+  fi
+
+  existing_value="$(get_env_value "$file" "$key")"
+  if [[ -n "$existing_value" ]]; then
+    printf '%s' "$existing_value"
+    return
+  fi
+
+  generate_secret
+}
+
+env_value_or_default() {
+  local variable_value="$1"
+  local file="$2"
+  local key="$3"
+  local default_value="$4"
+  local existing_value
+
+  if [[ -n "$variable_value" ]]; then
+    printf '%s' "$variable_value"
+    return
+  fi
+
+  existing_value="$(get_env_value "$file" "$key")"
+  if [[ -n "$existing_value" ]]; then
+    printf '%s' "$existing_value"
+    return
+  fi
+
+  printf '%s' "$default_value"
+}
+
 set_env_value() {
   local file="$1"
   local key="$2"
@@ -112,16 +163,20 @@ install_docker_if_needed() {
 prepare_env_files() {
   local app_url="$1"
   local api_url="$2"
-  local mysql_root_password="${MYSQL_ROOT_PASSWORD:-$(generate_secret)}"
-  local mysql_password="${MYSQL_PASSWORD:-$(generate_secret)}"
-  local mysql_database="${MYSQL_DATABASE:-touchspace}"
-  local mysql_user="${MYSQL_USER:-touchspace}"
+  local mysql_root_password
+  local mysql_password
+  local mysql_database
+  local mysql_user
   local database_url
-
-  database_url="mysql://${mysql_user}:${mysql_password}@mysql:3306/${mysql_database}?allowPublicKeyRetrieval=true"
 
   [[ -f ".env" ]] || cp .env.example .env
   [[ -f "backend/.env" ]] || cp backend/.env.example backend/.env
+
+  mysql_root_password="$(env_value_or_generate "${MYSQL_ROOT_PASSWORD:-}" ".env" "MYSQL_ROOT_PASSWORD")"
+  mysql_password="$(env_value_or_generate "${MYSQL_PASSWORD:-}" ".env" "MYSQL_PASSWORD")"
+  mysql_database="$(env_value_or_default "${MYSQL_DATABASE:-}" ".env" "MYSQL_DATABASE" "touchspace")"
+  mysql_user="$(env_value_or_default "${MYSQL_USER:-}" ".env" "MYSQL_USER" "touchspace")"
+  database_url="mysql://${mysql_user}:${mysql_password}@mysql:3306/${mysql_database}?allowPublicKeyRetrieval=true"
 
   set_env_value ".env" "MYSQL_ROOT_PASSWORD" "$mysql_root_password"
   set_env_value ".env" "MYSQL_DATABASE" "$mysql_database"

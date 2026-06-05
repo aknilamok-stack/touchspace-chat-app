@@ -727,7 +727,7 @@ const getDateInputValue = (value?: string | null) => {
   return `${year}-${month}-${day}`;
 };
 
-const getManagerMessageAuthorLabel = (message: ChatMessage) => {
+const getManagerMessageAuthorLabel = (message: ChatMessage, chat?: ChatItem | null) => {
   if (message.isInternal || message.from === "ai" || message.from === "supplier") {
     return "";
   }
@@ -737,7 +737,7 @@ const getManagerMessageAuthorLabel = (message: ChatMessage) => {
   }
 
   if (message.from === "client") {
-    return "Клиент";
+    return getChatClientDisplayName(chat);
   }
 
   return "";
@@ -5524,7 +5524,7 @@ export default function Home() {
                   getMessageDayKey(message.createdAt);
               const isSearchMatched = chatSearchMatchIdSet.has(message.id);
               const isCurrentSearchMatch = currentChatSearchMatchId === message.id;
-              const authorLabel = getManagerMessageAuthorLabel(message);
+              const authorLabel = getManagerMessageAuthorLabel(message, activeChat);
 
               return (
                 <div
@@ -5687,7 +5687,7 @@ export default function Home() {
                           >
                             <div className="min-w-0 max-w-full">
                             {authorLabel ? (
-                              <p className="mb-0.5 text-[11px] font-medium opacity-60">
+                              <p className="mb-0.5 max-w-full truncate text-[11px] font-medium opacity-60">
                                 {authorLabel}
                               </p>
                             ) : null}

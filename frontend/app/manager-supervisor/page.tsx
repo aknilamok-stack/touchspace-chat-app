@@ -45,7 +45,7 @@ import {
   showDesktopShellNotification,
 } from "@/lib/runtime";
 
-const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
+const REPEATED_NOTIFICATION_INTERVAL_MS = 60_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 const managerSupervisorPowerStorageKey = "touchspace_manager_supervisor_power_enabled";
@@ -3023,6 +3023,15 @@ export default function Home() {
 
       lastNotificationAtRef.current[candidate.notificationKey] = Date.now();
       lastNotificationMessageIdRef.current[candidate.notificationKey] = candidate.messageId;
+      setDismissedNotificationUntil((current) => {
+        if (!(candidate.notificationKey in current)) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[candidate.notificationKey];
+        return next;
+      });
       playNotificationSound();
 
       void showDesktopNotification(notificationTitle, notificationBody, {

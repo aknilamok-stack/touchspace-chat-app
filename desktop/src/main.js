@@ -24,6 +24,7 @@ const desktopSessionPartition = `persist:touchspace-workspace:${new URL(startUrl
 const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 const windowsAppUserModelId = "com.touchspace.workspace";
+const repeatedNotificationIntervalMs = 60_000;
 
 let mainWindow = null;
 let notificationWindow = null;
@@ -217,6 +218,29 @@ function isMainWindowInBackground() {
   return mainWindow.isMinimized() || !mainWindow.isFocused() || !mainWindow.isVisible();
 }
 
+function getLastBackgroundNotificationState(notificationKey) {
+  const value = lastBackgroundNotificationMessageByKey.get(notificationKey);
+
+  if (!value || typeof value !== "object") {
+    return {
+      messageId: typeof value === "string" ? value : "",
+      shownAt: 0,
+    };
+  }
+
+  return {
+    messageId: typeof value.messageId === "string" ? value.messageId : "",
+    shownAt: Number(value.shownAt) || 0,
+  };
+}
+
+function setLastBackgroundNotificationState(notificationKey, messageId) {
+  lastBackgroundNotificationMessageByKey.set(notificationKey, {
+    messageId,
+    shownAt: Date.now(),
+  });
+}
+
 function buildManagerNotificationPayload(candidate) {
   const isDirectSupplierDialog = candidate?.conversationMode === "direct_supplier";
   const isClaimedByOther = candidate?.scopeStatus === "claimed_by_other_recently";
@@ -328,15 +352,20 @@ async function pollDesktopManagerNotifications() {
       activeKeys.add(notificationKey);
 
       if (candidate.scopeStatus === "claimed_by_other_recently" || !shouldShowOverlay) {
-        lastBackgroundNotificationMessageByKey.set(notificationKey, messageId);
+        setLastBackgroundNotificationState(notificationKey, messageId);
         return;
       }
 
-      if (lastBackgroundNotificationMessageByKey.get(notificationKey) === messageId) {
+      const lastNotificationState = getLastBackgroundNotificationState(notificationKey);
+
+      if (
+        lastNotificationState.messageId === messageId &&
+        Date.now() - lastNotificationState.shownAt < repeatedNotificationIntervalMs
+      ) {
         return;
       }
 
-      lastBackgroundNotificationMessageByKey.set(notificationKey, messageId);
+      setLastBackgroundNotificationState(notificationKey, messageId);
       showOverlayNotificationWindow(buildManagerNotificationPayload(candidate));
     });
 
@@ -891,7 +920,7 @@ app.whenReady().then(() => {
         : "";
 
     if (tag && messageId) {
-      lastBackgroundNotificationMessageByKey.set(tag, messageId);
+      setLastBackgroundNotificationState(tag, messageId);
     }
 
     return showOverlayNotificationWindow({

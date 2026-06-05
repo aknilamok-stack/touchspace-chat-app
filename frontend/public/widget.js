@@ -8,6 +8,7 @@
   var defaultBaseUrl = scriptUrl ? scriptUrl.origin : window.location.origin;
   var config = window.TouchSpaceChatConfig || {};
   var baseUrl = (config.baseUrl || defaultBaseUrl || "").replace(/\/$/, "");
+  var configuredApiBaseUrl = cleanValue(config.apiBaseUrl).replace(/\/$/, "");
 
   function readText(selector) {
     if (!selector) {
@@ -173,11 +174,21 @@
   iframeUrl.searchParams.set("embed", "1");
 
   function deriveApiBaseUrl() {
+    if (configuredApiBaseUrl) {
+      return configuredApiBaseUrl;
+    }
+
     try {
       var parsedBaseUrl = new URL(baseUrl);
 
       if (parsedBaseUrl.hostname.indexOf("app.") === 0) {
         parsedBaseUrl.hostname = "api." + parsedBaseUrl.hostname.slice(4);
+      } else if (
+        parsedBaseUrl.hostname !== "localhost" &&
+        parsedBaseUrl.hostname !== "127.0.0.1" &&
+        !/\/api\/?$/i.test(parsedBaseUrl.pathname)
+      ) {
+        parsedBaseUrl.pathname = parsedBaseUrl.pathname.replace(/\/$/, "") + "/api";
       }
 
       if (

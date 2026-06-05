@@ -1448,12 +1448,6 @@ export default function ClientPage() {
               onScroll={updateClientScrollState}
               className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
             >
-              {!hasOnlineManagers ? (
-                <div className="rounded-[18px] border border-[#CFE3FF] bg-[#F3F8FF] px-4 py-3 text-sm leading-5 text-[#0A63CE] shadow-[0_10px_24px_rgba(10,132,255,0.08)]">
-                  Менеджеры сейчас не в сети. Как только кто-то появится, мы сразу ответим.
-                </div>
-              ) : null}
-
               {!hasMessages ? (
                 <>
                   <div className="flex justify-start">
@@ -1786,6 +1780,12 @@ export default function ClientPage() {
             ) : null}
 
             <div className="shrink-0 border-t border-[#E7E9EF] bg-white px-4 py-3">
+              {!hasOnlineManagers ? (
+                <div className="mb-3 rounded-[18px] border border-[#CFE3FF] bg-[#F3F8FF] px-4 py-3 text-sm leading-5 text-[#0A63CE] shadow-[0_10px_24px_rgba(10,132,255,0.08)]">
+                  Менеджеры сейчас не в сети. Как только кто-то появится, мы сразу ответим.
+                </div>
+              ) : null}
+
               {replyTarget ? (
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-[16px] border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-3">
                   <button

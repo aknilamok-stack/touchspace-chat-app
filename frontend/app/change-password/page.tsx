@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PasswordInput } from "@/components/auth/password-input";
 import { apiUrl } from "@/lib/api";
 import { getHomePathForRole, readAuthSession, writeAuthSession } from "@/lib/auth";
 
@@ -98,26 +99,26 @@ export default function ChangePasswordPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-          <input
-            type="password"
+          <PasswordInput
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
             placeholder="Текущий временный пароль"
+            autoComplete="current-password"
           />
-          <input
-            type="password"
+          <PasswordInput
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
             placeholder="Новый пароль"
+            autoComplete="new-password"
           />
-          <input
-            type="password"
+          <PasswordInput
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none text-[#1E1E1E]"
             placeholder="Повторите новый пароль"
+            autoComplete="new-password"
           />
 
           {error && <p className="text-sm text-red-500">{error}</p>}

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { PasswordInput } from "@/components/auth/password-input";
 import { apiUrl } from "@/lib/api";
 import { readAuthSession, type AuthSession } from "@/lib/auth";
 
@@ -693,8 +694,7 @@ export function OperatorsSettingsPage({
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
                     Пароль
                   </span>
-                  <input
-                    type="text"
+                  <PasswordInput
                     value={createOperatorForm.password}
                     onChange={(event) =>
                       setCreateOperatorForm((current) => ({
@@ -704,6 +704,7 @@ export function OperatorsSettingsPage({
                     }
                     className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
                     placeholder="Минимум 8 символов"
+                    autoComplete="new-password"
                   />
                 </label>
               </div>
@@ -713,8 +714,7 @@ export function OperatorsSettingsPage({
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
                     Повторите пароль
                   </span>
-                  <input
-                    type="text"
+                  <PasswordInput
                     value={createOperatorForm.confirmPassword}
                     onChange={(event) =>
                       setCreateOperatorForm((current) => ({
@@ -724,6 +724,7 @@ export function OperatorsSettingsPage({
                     }
                     className="w-full rounded-[16px] border border-[#D6DCE7] bg-white px-4 py-3 text-sm text-[#1E1E1E] outline-none"
                     placeholder="Повторите пароль"
+                    autoComplete="new-password"
                   />
                 </label>
 

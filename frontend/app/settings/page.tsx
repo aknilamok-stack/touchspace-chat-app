@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { PasswordInput } from "@/components/auth/password-input";
 import { apiUrl } from "@/lib/api";
 import {
   clearAuthSession,
@@ -672,34 +673,34 @@ export default function NotificationSettingsPage() {
               <div className="mt-6 grid gap-4">
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-slate-700">Текущий пароль</span>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={currentPassword}
                     onChange={(event) => setCurrentPassword(event.target.value)}
                     className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                     placeholder="Введите текущий пароль"
+                    autoComplete="current-password"
                   />
                 </label>
 
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-slate-700">Новый пароль</span>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={newPassword}
                     onChange={(event) => setNewPassword(event.target.value)}
                     className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                     placeholder="Минимум 8 символов"
+                    autoComplete="new-password"
                   />
                 </label>
 
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-slate-700">Повторите новый пароль</span>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
                     className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                     placeholder="Повторите новый пароль"
+                    autoComplete="new-password"
                   />
                 </label>
               </div>

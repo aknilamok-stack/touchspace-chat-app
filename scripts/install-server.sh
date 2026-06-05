@@ -226,6 +226,11 @@ server {
 
     client_max_body_size 20M;
 
+    location /downloads/ {
+        alias ${PWD}/deploy/downloads/;
+        add_header Content-Disposition "attachment";
+    }
+
     location = /api {
         return 301 /api/;
     }
@@ -256,6 +261,11 @@ NGINX
 server {
     listen 80;
     server_name ${app_host};
+
+    location /downloads/ {
+        alias ${PWD}/deploy/downloads/;
+        add_header Content-Disposition "attachment";
+    }
 
     location / {
         proxy_pass http://127.0.0.1:3000;

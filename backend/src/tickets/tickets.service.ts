@@ -452,84 +452,20 @@ export class TicketsService {
         avatarEmoji: true,
       },
     });
-    const usedPairKeys = new Set(
-      usedPairs.map(
-        ({ avatarColor, avatarEmoji }) => `${avatarColor}::${avatarEmoji}`,
-      ),
-    );
-    const usedColors = new Set(
-      usedPairs.map(({ avatarColor }) => avatarColor).filter(Boolean),
-    );
+    const avatarIndex = usedPairs.length;
+    const avatarColor =
+      CLIENT_AVATAR_COLORS[avatarIndex % CLIENT_AVATAR_COLORS.length];
+    const avatarEmoji =
+      CLIENT_AVATAR_EMOJIS[avatarIndex % CLIENT_AVATAR_EMOJIS.length];
 
-    let avatarColor = '';
-    let avatarEmoji = '';
-
-    for (const color of CLIENT_AVATAR_COLORS) {
-      if (usedColors.has(color)) {
-        continue;
-      }
-
-      for (const emoji of CLIENT_AVATAR_EMOJIS) {
-        const pairKey = `${color}::${emoji}`;
-
-        if (!usedPairKeys.has(pairKey)) {
-          avatarColor = color;
-          avatarEmoji = emoji;
-          break;
-        }
-      }
-
-      if (avatarColor && avatarEmoji) {
-        break;
-      }
-    }
-
-    if (!avatarColor || !avatarEmoji) {
-      let fallbackIndex = usedPairs.length;
-      avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
-
-      while (usedColors.has(avatarColor)) {
-        fallbackIndex += 1;
-        avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
-      }
-
-      avatarEmoji =
-        CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
-    }
-
-    try {
-      await tx.clientVisualIdentity.create({
-        data: {
-          key: clientKey,
-          displayName,
-          avatarColor,
-          avatarEmoji,
-        },
-      });
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'P2002'
-      ) {
-        const fallbackIndex = usedPairs.length + 1;
-        avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
-        avatarEmoji =
-          CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
-
-        await tx.clientVisualIdentity.create({
-          data: {
-            key: clientKey,
-            displayName,
-            avatarColor,
-            avatarEmoji,
-          },
-        });
-      } else {
-        throw error;
-      }
-    }
+    await tx.clientVisualIdentity.create({
+      data: {
+        key: clientKey,
+        displayName,
+        avatarColor,
+        avatarEmoji,
+      },
+    });
 
     return {
       avatarColor,

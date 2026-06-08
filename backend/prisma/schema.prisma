@@ -169,8 +169,6 @@ model ClientVisualIdentity {
   avatarEmoji String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  @@unique([avatarColor, avatarEmoji])
 }
 
 model TicketContact {

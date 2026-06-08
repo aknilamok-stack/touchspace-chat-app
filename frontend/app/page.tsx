@@ -2991,12 +2991,16 @@ export default function Home() {
   }, [messageText, activeChatId]);
 
   useEffect(() => {
+    if (notificationCandidates.length === 0) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       setNotificationNow(Date.now());
-    }, 1000);
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [notificationCandidates.length]);
 
   const visibleFloatingNotifications = notificationCandidates
     .filter((candidate) => {

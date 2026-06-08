@@ -82,5 +82,5 @@ export const shouldShowDesktopBackgroundNotification = () => {
     return false;
   }
 
-  return document.visibilityState !== "visible" || !document.hasFocus();
+  return document.visibilityState !== "visible";
 };

@@ -2830,12 +2830,16 @@ export default function Home() {
   }, [activeChatId]);
 
   useEffect(() => {
+    if (notificationCandidates.length === 0) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       setNotificationNow(Date.now());
-    }, 1000);
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [notificationCandidates.length]);
 
   useEffect(() => {
     if (!activeChatId || !messageText.trim()) {

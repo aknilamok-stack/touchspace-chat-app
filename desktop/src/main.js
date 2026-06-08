@@ -684,6 +684,10 @@ function createNotificationWindow() {
 }
 
 function showOverlayNotificationWindow(payload) {
+  if (!isMainWindowInBackground()) {
+    return false;
+  }
+
   pendingNotificationPayload = payload;
   notificationWindowPendingShow = true;
   keepDesktopAppVisible();
@@ -710,8 +714,6 @@ function requestDesktopAttention(unreadCount) {
     return;
   }
 
-  keepDesktopAppVisible();
-
   if (typeof app.setBadgeCount === "function") {
     app.setBadgeCount(unreadCount);
   }
@@ -720,6 +722,8 @@ function requestDesktopAttention(unreadCount) {
     lastUnreadAttentionCount = unreadCount;
     return;
   }
+
+  keepDesktopAppVisible();
 
   const now = Date.now();
   if (now - lastDesktopAttentionAt < desktopAttentionCooldownMs) {
@@ -1044,6 +1048,12 @@ app.whenReady().then(() => {
       !notificationWindow ||
       notificationWindow.isDestroyed()
     ) {
+      return;
+    }
+
+    if (!isMainWindowInBackground()) {
+      notificationWindowPendingShow = false;
+      notificationWindow.hide();
       return;
     }
 

@@ -457,11 +457,18 @@ export class TicketsService {
         ({ avatarColor, avatarEmoji }) => `${avatarColor}::${avatarEmoji}`,
       ),
     );
+    const usedColors = new Set(
+      usedPairs.map(({ avatarColor }) => avatarColor).filter(Boolean),
+    );
 
     let avatarColor = '';
     let avatarEmoji = '';
 
     for (const color of CLIENT_AVATAR_COLORS) {
+      if (usedColors.has(color)) {
+        continue;
+      }
+
       for (const emoji of CLIENT_AVATAR_EMOJIS) {
         const pairKey = `${color}::${emoji}`;
 
@@ -478,20 +485,51 @@ export class TicketsService {
     }
 
     if (!avatarColor || !avatarEmoji) {
-      const fallbackIndex = usedPairs.length;
+      let fallbackIndex = usedPairs.length;
       avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
+
+      while (usedColors.has(avatarColor)) {
+        fallbackIndex += 1;
+        avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
+      }
+
       avatarEmoji =
         CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
     }
 
-    await tx.clientVisualIdentity.create({
-      data: {
-        key: clientKey,
-        displayName,
-        avatarColor,
-        avatarEmoji,
-      },
-    });
+    try {
+      await tx.clientVisualIdentity.create({
+        data: {
+          key: clientKey,
+          displayName,
+          avatarColor,
+          avatarEmoji,
+        },
+      });
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        const fallbackIndex = usedPairs.length + 1;
+        avatarColor = `hsl(${(fallbackIndex * 47) % 360} 72% 56%)`;
+        avatarEmoji =
+          CLIENT_AVATAR_EMOJIS[fallbackIndex % CLIENT_AVATAR_EMOJIS.length];
+
+        await tx.clientVisualIdentity.create({
+          data: {
+            key: clientKey,
+            displayName,
+            avatarColor,
+            avatarEmoji,
+          },
+        });
+      } else {
+        throw error;
+      }
+    }
 
     return {
       avatarColor,

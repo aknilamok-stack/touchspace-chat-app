@@ -1923,7 +1923,7 @@ export class TicketsService {
       throw new BadRequestException('supplierId is required');
     }
 
-    const supplierProfiles = await this.prisma.profile.findMany({
+    const initialSupplierProfiles = await this.prisma.profile.findMany({
       where: {
         role: {
           in: ['supplier', 'supplier_supervisor'],
@@ -1939,18 +1939,285 @@ export class TicketsService {
       },
       select: {
         id: true,
+        fullName: true,
+        companyName: true,
+        supplierId: true,
       },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
     });
-    const supplierProfileIds = [
+    const relatedSupplierProfileScopeIds = [
+      ...new Set(
+        initialSupplierProfiles
+          .map((profile) => profile.supplierId?.trim())
+          .filter((profileSupplierId): profileSupplierId is string =>
+            Boolean(profileSupplierId),
+          ),
+      ),
+    ];
+    const supplierProfiles =
+      relatedSupplierProfileScopeIds.length > 0
+        ? await this.prisma.profile.findMany({
+            where: {
+              role: {
+                in: ['supplier', 'supplier_supervisor'],
+              },
+              isActive: true,
+              approvalStatus: {
+                not: 'rejected',
+              },
+              OR: [
+                { id: normalizedSupplierId },
+                { supplierId: normalizedSupplierId },
+                { supplierId: { in: relatedSupplierProfileScopeIds } },
+              ],
+            },
+            select: {
+              id: true,
+              fullName: true,
+              companyName: true,
+              supplierId: true,
+            },
+            orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+          })
+        : initialSupplierProfiles;
+    const supplierScopeIds = [
       ...new Set([
         normalizedSupplierId,
         ...supplierProfiles.map((profile) => profile.id),
+        ...supplierProfiles
+          .map((profile) => profile.supplierId?.trim())
+          .filter((profileSupplierId): profileSupplierId is string =>
+            Boolean(profileSupplierId),
+          ),
       ]),
     ];
+    const primarySupplierProfile =
+      supplierProfiles.find((profile) => profile.id === normalizedSupplierId) ??
+      supplierProfiles[0] ??
+      null;
+    const primarySupplierId =
+      primarySupplierProfile?.id?.trim() || normalizedSupplierId;
+    const primarySupplierName =
+      primarySupplierProfile?.companyName?.trim() ||
+      primarySupplierProfile?.fullName?.trim() ||
+      'Поставщик';
+
+    const managers = await this.prisma.profile.findMany({
+      where: {
+        role: 'manager',
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+      },
+      orderBy: {
+        fullName: 'asc',
+      },
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const manager of managers) {
+        const existingDialog = await tx.ticket.findFirst({
+          where: {
+            conversationMode: 'direct_supplier',
+            assignedManagerId: manager.id,
+            supplierId: {
+              in: supplierScopeIds,
+            },
+          },
+          select: {
+            id: true,
+          },
+          orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+        });
+
+        if (existingDialog) {
+          continue;
+        }
+
+        await tx.ticket.create({
+          data: {
+            title: this.buildDirectSupplierDialogTitle(primarySupplierName),
+            status: 'in_progress',
+            conversationMode: 'direct_supplier',
+            currentHandlerType: 'manager',
+            aiEnabled: false,
+            aiResolved: false,
+            invitedManagerIds: [],
+            invitedManagerNames: [],
+            assignedManagerId: manager.id,
+            assignedManagerName: manager.fullName,
+            supplierId: primarySupplierId,
+            supplierName: primarySupplierName,
+            clientId: null,
+            clientName: primarySupplierName,
+            tradePointName: primarySupplierName,
+            claimRequiredAt: null,
+            claimedAt: new Date(),
+            firstResponseStartedAt: null,
+            firstResponseAt: null,
+            firstResponseTime: null,
+            firstResponseBreached: false,
+            lastMessageAt: null,
+          },
+        });
+      }
+
+      await this.mergeDuplicateSupplierManagerDialogs(tx, supplierScopeIds);
+    });
 
     return this.findDirectSupplierDialogs({
-      supplierIds: supplierProfileIds,
+      supplierIds: supplierScopeIds,
     });
+  }
+
+  private async mergeDuplicateSupplierManagerDialogs(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    supplierIds: string[],
+  ) {
+    if (supplierIds.length === 0) {
+      return;
+    }
+
+    const dialogs = await tx.ticket.findMany({
+      where: {
+        conversationMode: 'direct_supplier',
+        assignedManagerId: {
+          not: null,
+        },
+        supplierId: {
+          in: supplierIds,
+        },
+      },
+      select: {
+        id: true,
+        assignedManagerId: true,
+        assignedManagerName: true,
+        supplierId: true,
+        supplierName: true,
+        lastMessageAt: true,
+        updatedAt: true,
+        createdAt: true,
+        _count: {
+          select: {
+            messages: true,
+          },
+        },
+      },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    const dialogsByManager = new Map<string, typeof dialogs>();
+
+    for (const dialog of dialogs) {
+      const managerId = dialog.assignedManagerId?.trim();
+
+      if (!managerId) {
+        continue;
+      }
+
+      dialogsByManager.set(managerId, [
+        ...(dialogsByManager.get(managerId) ?? []),
+        dialog,
+      ]);
+    }
+
+    for (const managerDialogs of dialogsByManager.values()) {
+      if (managerDialogs.length < 2) {
+        continue;
+      }
+
+      const sortedDialogs = [...managerDialogs].sort((left, right) => {
+        const leftHasMessages = left._count.messages > 0 ? 1 : 0;
+        const rightHasMessages = right._count.messages > 0 ? 1 : 0;
+
+        if (leftHasMessages !== rightHasMessages) {
+          return rightHasMessages - leftHasMessages;
+        }
+
+        const leftTime = (
+          left.lastMessageAt ??
+          left.updatedAt ??
+          left.createdAt
+        ).getTime();
+        const rightTime = (
+          right.lastMessageAt ??
+          right.updatedAt ??
+          right.createdAt
+        ).getTime();
+
+        return rightTime - leftTime;
+      });
+      const primaryDialog = sortedDialogs[0];
+      const duplicateDialogs = sortedDialogs.slice(1);
+      const duplicateDialogIds = duplicateDialogs.map((dialog) => dialog.id);
+
+      await tx.message.updateMany({
+        where: {
+          ticketId: {
+            in: duplicateDialogIds,
+          },
+        },
+        data: {
+          ticketId: primaryDialog.id,
+        },
+      });
+
+      await tx.supplierRequest.updateMany({
+        where: {
+          ticketId: {
+            in: duplicateDialogIds,
+          },
+        },
+        data: {
+          ticketId: primaryDialog.id,
+        },
+      });
+
+      const latestMessage = await tx.message.findFirst({
+        where: {
+          ticketId: primaryDialog.id,
+        },
+        select: {
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      await tx.ticket.update({
+        where: {
+          id: primaryDialog.id,
+        },
+        data: {
+          status: 'in_progress',
+          assignedManagerName:
+            primaryDialog.assignedManagerName ??
+            duplicateDialogs.find((dialog) => dialog.assignedManagerName)
+              ?.assignedManagerName ??
+            null,
+          supplierName:
+            primaryDialog.supplierName ??
+            duplicateDialogs.find((dialog) => dialog.supplierName)
+              ?.supplierName ??
+            null,
+          lastMessageAt: latestMessage?.createdAt ?? primaryDialog.lastMessageAt,
+        },
+      });
+
+      await tx.ticket.deleteMany({
+        where: {
+          id: {
+            in: duplicateDialogIds,
+          },
+        },
+      });
+    }
   }
 
   private async findDirectSupplierDialogs(where: {

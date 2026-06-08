@@ -2201,16 +2201,23 @@ export default function Home() {
     ) => {
       const supplierScopeId = chat?.supplierId?.trim();
       const supplierCompanyName = getDirectSupplierCompanyName(chat).trim().toLowerCase();
-      const matchingSuppliers = supplierPresenceRecords.filter((record) => {
-        const recordSupplierId = record.supplierId?.trim();
-        const recordCompanyName = record.companyName?.trim().toLowerCase();
+      const exactProfileMatch = supplierScopeId
+        ? supplierPresenceRecords.find((record) => record.id.trim() === supplierScopeId)
+        : null;
+      const exactScopeMatch =
+        supplierScopeId && !exactProfileMatch
+          ? supplierPresenceRecords.find((record) => record.supplierId?.trim() === supplierScopeId)
+          : null;
+      const matchingSuppliers =
+        exactProfileMatch || exactScopeMatch
+          ? [exactProfileMatch || exactScopeMatch].filter(
+              (record): record is SupplierPresenceRecord => Boolean(record)
+            )
+          : supplierPresenceRecords.filter((record) => {
+              const recordCompanyName = record.companyName?.trim().toLowerCase();
 
-        return (
-          (supplierScopeId &&
-            (recordSupplierId === supplierScopeId || record.id.trim() === supplierScopeId)) ||
-          (recordCompanyName && recordCompanyName === supplierCompanyName)
-        );
-      });
+              return recordCompanyName && recordCompanyName === supplierCompanyName;
+            });
       const supplier =
         matchingSuppliers.find(
           (record) => record.fullName.trim().toLowerCase() !== supplierCompanyName

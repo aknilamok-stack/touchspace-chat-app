@@ -24,7 +24,25 @@
   }
 
   function cleanValue(value) {
-    return typeof value === "string" ? value.trim() : "";
+    if (typeof value === "string") {
+      return value.trim();
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value).trim();
+    }
+
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i += 1) {
+        var itemValue = cleanValue(value[i]);
+
+        if (itemValue) {
+          return itemValue;
+        }
+      }
+    }
+
+    return "";
   }
 
   function normalizeValue(value) {
@@ -42,9 +60,11 @@
     return "";
   }
 
-  function getTradePointNameFromDom() {
+  function getPaneValueFromDom(labels) {
     try {
-      var items = document.querySelectorAll(".pane__list_desktop .pane__list-item");
+      var items = document.querySelectorAll(
+        ".pane__list_desktop .pane__list-item, .pane__list .pane__list-item"
+      );
 
       for (var i = 0; i < items.length; i += 1) {
         var item = items[i];
@@ -58,7 +78,7 @@
         var label = normalizeValue(labelEl ? labelEl.textContent : "");
         var value = normalizeValue(valueEl ? valueEl.textContent : "");
 
-        if ((label === "Торговая точка" || label === "Торговая точка:") && value) {
+        if (labels.indexOf(label.replace(/:$/, "")) !== -1 && value) {
           return value;
         }
       }
@@ -69,35 +89,28 @@
     return "";
   }
 
+  function getTradePointNameFromDom() {
+    return getPaneValueFromDom(["Торговая точка"]);
+  }
+
   function getLegalEntityNameFromDom() {
-    try {
-      var items = document.querySelectorAll(".pane__list_desktop .pane__list-item");
+    return getPaneValueFromDom(["Юр.лицо"]);
+  }
 
-      for (var i = 0; i < items.length; i += 1) {
-        var item = items[i];
-        var labelEl = item.querySelector(".pane__list-label");
-        var valueEl = item.querySelector(".pane__list-value span");
-
-        if (!valueEl) {
-          valueEl = item.querySelector(".pane__list-value");
-        }
-
-        var label = normalizeValue(labelEl ? labelEl.textContent : "");
-        var value = normalizeValue(valueEl ? valueEl.textContent : "");
-
-        if ((label === "Юр.лицо" || label === "Юр.лицо:") && value) {
-          return value;
-        }
-      }
-    } catch (_) {
-      return "";
-    }
-
-    return "";
+  function getPhoneFromDom() {
+    return getPaneValueFromDom([
+      "Телефон",
+      "Телефон пользователя",
+      "Телефон клиента",
+      "Мобильный телефон",
+      "Рабочий телефон",
+      "Контактный телефон"
+    ]);
   }
 
   var domTradePointName = getTradePointNameFromDom();
   var domLegalEntityName = getLegalEntityNameFromDom();
+  var domPhone = getPhoneFromDom();
   var configuredTradePointId = cleanValue(config.tradePointId);
   var configuredTradePointExternalId = cleanValue(config.tradePointExternalId);
   var configuredTradePointName = cleanValue(config.tradePointName);
@@ -113,7 +126,19 @@
   );
   var configuredCurrentUserPhone = pickFirst(
     cleanValue(config.currentUserPhone),
-    cleanValue(config.phone)
+    cleanValue(config.currentPhone),
+    cleanValue(config.userPhone),
+    cleanValue(config.clientPhone),
+    cleanValue(config.personalPhone),
+    cleanValue(config.mobilePhone),
+    cleanValue(config.workPhone),
+    cleanValue(config.PHONE),
+    cleanValue(config.PERSONAL_PHONE),
+    cleanValue(config.PERSONAL_MOBILE),
+    cleanValue(config.WORK_PHONE),
+    cleanValue(config.UF_PHONE),
+    cleanValue(config.phone),
+    domPhone
   );
   var configuredCurrentUserXmlId = cleanValue(config.currentUserXmlId);
   var configuredIsSuperuser =

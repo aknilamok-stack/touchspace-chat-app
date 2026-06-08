@@ -1851,7 +1851,12 @@ export class TicketsService {
           supplierProfile.companyName?.trim() ||
           supplierProfile.fullName?.trim();
 
-        if (!supplierName) {
+        if (
+          !supplierName ||
+          (!supplierProfile.companyName?.trim() &&
+            !supplierProfile.supplierId?.trim() &&
+            !isSpecificSupplierContactName(supplierProfile.fullName))
+        ) {
           return null;
         }
 

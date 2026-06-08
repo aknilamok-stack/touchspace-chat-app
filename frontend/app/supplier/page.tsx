@@ -2169,6 +2169,7 @@ export default function SupplierPage() {
       tag?: string;
       ticketId?: string;
       requestId?: string | null;
+      messageId?: string;
       metaLabel?: string | null;
       primaryLabel?: string;
       secondaryLabel?: string;
@@ -2192,12 +2193,16 @@ export default function SupplierPage() {
         title,
         body,
         url: targetUrl,
+        tag: options?.tag,
+        ticketId: options?.ticketId,
+        scopeStatus: options?.requestId ? "supplier_request" : undefined,
         metaLabel: options?.metaLabel ?? null,
         primaryLabel: options?.primaryLabel,
         secondaryLabel: options?.secondaryLabel,
+        messageId: options?.messageId,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
-        tone: "blue",
+        tone: options?.tone ?? "blue",
       });
       return;
     }
@@ -2304,6 +2309,7 @@ export default function SupplierPage() {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
         requestId: candidate.requestId,
+        messageId: candidate.messageId,
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,
         secondaryLabel: "Позже",
@@ -3481,12 +3487,16 @@ export default function SupplierPage() {
   }, [authReady]);
 
   useEffect(() => {
+    if (effectiveNotificationCandidates.length === 0) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       setNotificationNow(Date.now());
-    }, 1000);
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [effectiveNotificationCandidates.length]);
 
   const visibleFloatingNotifications = effectiveNotificationCandidates
     .filter((candidate) => {
@@ -3641,6 +3651,7 @@ export default function SupplierPage() {
         tag: candidate.notificationKey,
         ticketId: candidate.ticketId,
         requestId: candidate.requestId,
+        messageId: candidate.messageId,
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,
         secondaryLabel: "Позже",

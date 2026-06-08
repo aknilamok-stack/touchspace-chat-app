@@ -57,6 +57,10 @@ export class SupervisorsService {
     return normalizedValue;
   }
 
+  private normalizeCompanyKey(value?: string | null) {
+    return value?.trim().replace(/\s+/g, ' ').toLowerCase() || '';
+  }
+
   private buildProfileId(prefix: string) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -98,44 +102,56 @@ export class SupervisorsService {
   }
 
   async listSupplierCompanies() {
-    const supervisors = await this.prisma.profile.findMany({
+    const supplierProfiles = await this.prisma.profile.findMany({
       where: {
-        role: 'supplier_supervisor',
+        role: {
+          in: ['supplier', 'supplier_supervisor'],
+        },
         isActive: true,
         approvalStatus: {
           not: 'rejected',
         },
-        companyName: {
-          not: null,
-        },
+        OR: [{ companyName: { not: null } }, { fullName: { not: '' } }],
       },
       orderBy: [{ companyName: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
+        role: true,
         companyName: true,
         supplierId: true,
         fullName: true,
       },
     });
 
-    const seenCompanies = new Set<string>();
+    const seenCompanyKeys = new Set<string>();
 
     return {
-      items: supervisors
-        .map((supervisor) => {
-          const companyName = supervisor.companyName?.trim();
+      items: [...supplierProfiles]
+        .sort((leftProfile, rightProfile) => {
+          const leftPriority =
+            leftProfile.role === 'supplier_supervisor' ? 0 : 1;
+          const rightPriority =
+            rightProfile.role === 'supplier_supervisor' ? 0 : 1;
 
-          if (!companyName || seenCompanies.has(companyName)) {
+          return leftPriority - rightPriority;
+        })
+        .map((supplierProfile) => {
+          const companyName =
+            supplierProfile.companyName?.trim() ||
+            supplierProfile.fullName?.trim();
+          const companyKey = this.normalizeCompanyKey(companyName);
+
+          if (!companyName || seenCompanyKeys.has(companyKey)) {
             return null;
           }
 
-          seenCompanies.add(companyName);
+          seenCompanyKeys.add(companyKey);
 
           return {
-            supervisorProfileId: supervisor.id,
+            supervisorProfileId: supplierProfile.id,
             companyName,
-            supplierId: supervisor.supplierId?.trim() || null,
-            supervisorName: supervisor.fullName?.trim() || null,
+            supplierId: supplierProfile.supplierId?.trim() || supplierProfile.id,
+            supervisorName: supplierProfile.fullName?.trim() || null,
           };
         })
         .filter(Boolean),

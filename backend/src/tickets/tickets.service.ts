@@ -316,6 +316,10 @@ export class TicketsService {
     return `Поставщик: ${supplierName}`;
   }
 
+  private normalizeSupplierScopeName(value?: string | null) {
+    return value?.trim().replace(/\s+/g, ' ').toLowerCase() || '';
+  }
+
   private async findExistingTicketByTradePointAndEmail(
     tradePointName?: string | null,
     email?: string | null,
@@ -1803,20 +1807,21 @@ export class TicketsService {
       role: 'manager',
     });
 
-    const suppliers = await this.prisma.profile.findMany({
+    const supplierProfiles = await this.prisma.profile.findMany({
       where: {
-        role: 'supplier_supervisor',
+        role: {
+          in: ['supplier', 'supplier_supervisor'],
+        },
         isActive: true,
         approvalStatus: {
           not: 'rejected',
         },
-        companyName: {
-          not: null,
-        },
+        OR: [{ companyName: { not: null } }, { fullName: { not: '' } }],
       },
       orderBy: [{ companyName: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
+        role: true,
         companyName: true,
         supplierId: true,
         fullName: true,
@@ -1824,16 +1829,38 @@ export class TicketsService {
     });
 
     const seenSupplierScopes = new Set<string>();
-    const supplierScopes = suppliers
-      .map((supplier) => {
-        const supplierName = supplier.companyName?.trim();
-        const supplierScopeId = supplier.supplierId?.trim() || supplier.id;
+    const seenSupplierNames = new Set<string>();
+    const supplierScopes = [...supplierProfiles]
+      .sort((leftProfile, rightProfile) => {
+        const leftPriority =
+          leftProfile.role === 'supplier_supervisor' ? 0 : 1;
+        const rightPriority =
+          rightProfile.role === 'supplier_supervisor' ? 0 : 1;
+
+        return leftPriority - rightPriority;
+      })
+      .map((supplierProfile) => {
+        const supplierName =
+          supplierProfile.companyName?.trim() ||
+          supplierProfile.fullName?.trim();
+        const supplierScopeId =
+          supplierProfile.supplierId?.trim() || supplierProfile.id;
+        const normalizedSupplierName =
+          this.normalizeSupplierScopeName(supplierName);
 
         if (!supplierName || seenSupplierScopes.has(supplierScopeId)) {
           return null;
         }
 
+        if (
+          normalizedSupplierName &&
+          seenSupplierNames.has(normalizedSupplierName)
+        ) {
+          return null;
+        }
+
         seenSupplierScopes.add(supplierScopeId);
+        seenSupplierNames.add(normalizedSupplierName);
 
         return {
           supplierId: supplierScopeId,

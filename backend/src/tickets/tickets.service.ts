@@ -1863,7 +1863,7 @@ export class TicketsService {
         seenSupplierNames.add(normalizedSupplierName);
 
         return {
-          supplierId: supplierScopeId,
+          supplierId: supplierProfile.id,
           supplierName,
         };
       })
@@ -1930,19 +1930,47 @@ export class TicketsService {
       throw new BadRequestException('supplierId is required');
     }
 
+    const supplierProfiles = await this.prisma.profile.findMany({
+      where: {
+        role: {
+          in: ['supplier', 'supplier_supervisor'],
+        },
+        isActive: true,
+        approvalStatus: {
+          not: 'rejected',
+        },
+        OR: [
+          { id: normalizedSupplierId },
+          { supplierId: normalizedSupplierId },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+    const supplierProfileIds = [
+      ...new Set([
+        normalizedSupplierId,
+        ...supplierProfiles.map((profile) => profile.id),
+      ]),
+    ];
+
     return this.findDirectSupplierDialogs({
-      supplierId: normalizedSupplierId,
+      supplierIds: supplierProfileIds,
     });
   }
 
   private async findDirectSupplierDialogs(where: {
     assignedManagerId?: string;
     supplierId?: string;
+    supplierIds?: string[];
   }) {
+    const { supplierIds, ...baseWhere } = where;
     const dialogs = await this.prisma.ticket.findMany({
       where: {
         conversationMode: 'direct_supplier',
-        ...where,
+        ...baseWhere,
+        ...(supplierIds?.length ? { supplierId: { in: supplierIds } } : {}),
       },
       include: {
         messages: {
@@ -1968,7 +1996,7 @@ export class TicketsService {
       orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
     });
 
-    const supplierIds = [
+    const dialogSupplierIds = [
       ...new Set(
         dialogs
           .map((dialog) => dialog.supplierId?.trim())
@@ -1993,7 +2021,7 @@ export class TicketsService {
     ];
 
     const supplierProfiles =
-      supplierIds.length > 0 || supplierNames.length > 0
+      dialogSupplierIds.length > 0 || supplierNames.length > 0
         ? await this.prisma.profile.findMany({
             where: {
               isActive: true,
@@ -2004,10 +2032,10 @@ export class TicketsService {
                 in: ['supplier', 'supplier_supervisor'],
               },
               OR: [
-                ...(supplierIds.length > 0
+                ...(dialogSupplierIds.length > 0
                   ? [
-                      { id: { in: supplierIds } },
-                      { supplierId: { in: supplierIds } },
+                      { id: { in: dialogSupplierIds } },
+                      { supplierId: { in: dialogSupplierIds } },
                     ]
                   : []),
                 ...(supplierNames.length > 0

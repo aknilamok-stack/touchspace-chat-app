@@ -2135,6 +2135,18 @@ export class TicketsService {
       },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
     });
+    const requestedSupplierProfile =
+      initialSupplierProfiles.find(
+        (profile) => profile.id === normalizedSupplierId,
+      ) ?? null;
+    const isSpecificRequestedSupplierProfile = Boolean(
+      requestedSupplierProfile &&
+        !this.isSyntheticSupplierScope(requestedSupplierProfile) &&
+        isSpecificSupplierContactName(
+          requestedSupplierProfile.fullName,
+          requestedSupplierProfile.companyName,
+        ),
+    );
     const relatedSupplierProfileScopeIds = [
       ...new Set(
         initialSupplierProfiles
@@ -2145,7 +2157,9 @@ export class TicketsService {
       ),
     ];
     const supplierProfiles =
-      relatedSupplierProfileScopeIds.length > 0
+      isSpecificRequestedSupplierProfile && requestedSupplierProfile
+        ? [requestedSupplierProfile]
+        : relatedSupplierProfileScopeIds.length > 0
         ? await this.prisma.profile.findMany({
             where: {
               role: {
@@ -2170,15 +2184,28 @@ export class TicketsService {
             orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
           })
         : initialSupplierProfiles;
+    const legacySupplierScopeIds =
+      isSpecificRequestedSupplierProfile && requestedSupplierProfile
+        ? [
+            requestedSupplierProfile.supplierId?.trim(),
+            requestedSupplierProfile.companyName?.trim()
+              ? `supplier_scope_${requestedSupplierProfile.companyName
+                  .trim()
+                  .toLowerCase()}`
+              : null,
+          ].filter((scopeId): scopeId is string => Boolean(scopeId))
+        : [];
     const supplierScopeIds = [
       ...new Set([
         normalizedSupplierId,
         ...supplierProfiles.map((profile) => profile.id),
-        ...supplierProfiles
-          .map((profile) => profile.supplierId?.trim())
-          .filter((profileSupplierId): profileSupplierId is string =>
-            Boolean(profileSupplierId),
-          ),
+        ...(isSpecificRequestedSupplierProfile
+          ? []
+          : supplierProfiles
+              .map((profile) => profile.supplierId?.trim())
+              .filter((profileSupplierId): profileSupplierId is string =>
+                Boolean(profileSupplierId),
+              )),
       ]),
     ];
     const primarySupplierProfile =
@@ -2215,17 +2242,67 @@ export class TicketsService {
           where: {
             conversationMode: 'direct_supplier',
             assignedManagerId: manager.id,
-            supplierId: {
-              in: supplierScopeIds,
-            },
+            OR:
+              isSpecificRequestedSupplierProfile && legacySupplierScopeIds.length
+                ? [
+                    { supplierId: primarySupplierId },
+                    {
+                      supplierId: {
+                        in: legacySupplierScopeIds,
+                      },
+                      OR: [
+                        {
+                          messages: {
+                            none: {
+                              senderType: 'supplier',
+                            },
+                          },
+                        },
+                        {
+                          messages: {
+                            some: {
+                              senderType: 'supplier',
+                              senderProfileId: primarySupplierId,
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ]
+                : [
+                    {
+                      supplierId: {
+                        in: supplierScopeIds,
+                      },
+                    },
+                  ],
           },
           select: {
             id: true,
+            supplierId: true,
           },
           orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
         });
 
         if (existingDialog) {
+          if (
+            isSpecificRequestedSupplierProfile &&
+            existingDialog.supplierId !== primarySupplierId
+          ) {
+            await tx.ticket.update({
+              where: {
+                id: existingDialog.id,
+              },
+              data: {
+                supplierId: primarySupplierId,
+                supplierName: primarySupplierName,
+                clientName: primarySupplierName,
+                tradePointName: primarySupplierName,
+                title: this.buildDirectSupplierDialogTitle(primarySupplierName),
+              },
+            });
+          }
+
           continue;
         }
 

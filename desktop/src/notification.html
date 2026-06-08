@@ -140,12 +140,13 @@
       .close {
         position: relative;
         flex: 0 0 auto;
-        width: 34px;
-        height: 34px;
-        margin: -6px -6px 0 0;
+        z-index: 2;
+        width: 48px;
+        height: 48px;
+        margin: -12px -12px -6px 0;
         padding: 0;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.14);
+        background: transparent;
         font-size: 0;
         line-height: 0;
         opacity: 0.96;
@@ -161,7 +162,7 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 16px;
+        width: 18px;
         height: 2.5px;
         border-radius: 999px;
         background: #ffffff;
@@ -177,7 +178,7 @@
       }
 
       .close:hover {
-        background: rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.18);
         opacity: 1;
       }
 
@@ -371,6 +372,21 @@
         event.stopPropagation();
       };
 
+      const closeNotification = (event) => {
+        stopNotificationAction(event);
+        void window.touchspaceDesktopNotification.act("close", currentUrl);
+      };
+
+      document.addEventListener(
+        "click",
+        (event) => {
+          if (event.target?.closest?.("#close")) {
+            closeNotification(event);
+          }
+        },
+        true,
+      );
+
       primaryButton.addEventListener("click", (event) => {
         stopNotificationAction(event);
         void window.touchspaceDesktopNotification.act("primary", currentUrl);
@@ -385,10 +401,7 @@
         closeButton.addEventListener(eventName, stopNotificationAction);
       });
 
-      closeButton.addEventListener("click", (event) => {
-        stopNotificationAction(event);
-        void window.touchspaceDesktopNotification.act("close", currentUrl);
-      });
+      closeButton.addEventListener("click", closeNotification);
     </script>
   </body>
 </html>

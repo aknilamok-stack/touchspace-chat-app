@@ -316,8 +316,13 @@ export class TicketsService {
     return `Поставщик: ${supplierName}`;
   }
 
-  private normalizeSupplierScopeName(value?: string | null) {
-    return value?.trim().replace(/\s+/g, ' ').toLowerCase() || '';
+  private isSyntheticSupplierScope(profile: {
+    id: string;
+    companyName?: string | null;
+  }) {
+    return (
+      profile.id.startsWith('supplier_scope_') && !profile.companyName?.trim()
+    );
   }
 
   private async findExistingTicketByTradePointAndEmail(
@@ -1828,8 +1833,6 @@ export class TicketsService {
       },
     });
 
-    const seenSupplierScopes = new Set<string>();
-    const seenSupplierNames = new Set<string>();
     const supplierScopes = [...supplierProfiles]
       .sort((leftProfile, rightProfile) => {
         const leftPriority =
@@ -1840,27 +1843,17 @@ export class TicketsService {
         return leftPriority - rightPriority;
       })
       .map((supplierProfile) => {
+        if (this.isSyntheticSupplierScope(supplierProfile)) {
+          return null;
+        }
+
         const supplierName =
           supplierProfile.companyName?.trim() ||
           supplierProfile.fullName?.trim();
-        const supplierScopeId =
-          supplierProfile.supplierId?.trim() || supplierProfile.id;
-        const normalizedSupplierName =
-          this.normalizeSupplierScopeName(supplierName);
 
-        if (!supplierName || seenSupplierScopes.has(supplierScopeId)) {
+        if (!supplierName) {
           return null;
         }
-
-        if (
-          normalizedSupplierName &&
-          seenSupplierNames.has(normalizedSupplierName)
-        ) {
-          return null;
-        }
-
-        seenSupplierScopes.add(supplierScopeId);
-        seenSupplierNames.add(normalizedSupplierName);
 
         return {
           supplierId: supplierProfile.id,

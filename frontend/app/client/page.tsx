@@ -97,13 +97,24 @@ const extractApiErrorMessage = async (
   fallback: string
 ): Promise<string> => {
   const responseText = await response.text();
+  const trimmedResponseText = responseText.trim();
 
-  if (!responseText) {
+  if (!trimmedResponseText) {
     return fallback;
   }
 
+  if (
+    response.status === 502 ||
+    response.status === 503 ||
+    response.status === 504 ||
+    /^<!doctype html/i.test(trimmedResponseText) ||
+    /^<html[\s>]/i.test(trimmedResponseText)
+  ) {
+    return "Сервер перезапускается. Попробуйте отправить сообщение ещё раз через несколько секунд.";
+  }
+
   try {
-    const parsed = JSON.parse(responseText) as { message?: string | string[] };
+    const parsed = JSON.parse(trimmedResponseText) as { message?: string | string[] };
 
     if (Array.isArray(parsed.message)) {
       return parsed.message.join(", ");
@@ -113,10 +124,10 @@ const extractApiErrorMessage = async (
       return parsed.message;
     }
   } catch {
-    return responseText;
+    return fallback;
   }
 
-  return responseText;
+  return fallback;
 };
 
 export default function ClientPage() {

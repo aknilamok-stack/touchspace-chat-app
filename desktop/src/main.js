@@ -25,6 +25,7 @@ const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 const windowsAppUserModelId = "com.touchspace.workspace";
 const repeatedNotificationIntervalMs = 60_000;
+const desktopAttentionCooldownMs = 15_000;
 
 let mainWindow = null;
 let notificationWindow = null;
@@ -33,6 +34,7 @@ let notificationWindowPendingShow = false;
 let pendingNotificationPayload = null;
 let lastUnreadAttentionCount = 0;
 let lastDockBounceId = -1;
+let lastDesktopAttentionAt = 0;
 let isAppQuitting = false;
 let desktopNotificationPollInterval = null;
 let isDesktopNotificationPollInFlight = false;
@@ -518,6 +520,7 @@ function clearDesktopAttention() {
   }
 
   lastUnreadAttentionCount = 0;
+  lastDesktopAttentionAt = 0;
 }
 
 function ensureDockIconVisible() {
@@ -717,6 +720,14 @@ function requestDesktopAttention(unreadCount) {
     lastUnreadAttentionCount = unreadCount;
     return;
   }
+
+  const now = Date.now();
+  if (now - lastDesktopAttentionAt < desktopAttentionCooldownMs) {
+    lastUnreadAttentionCount = unreadCount;
+    return;
+  }
+
+  lastDesktopAttentionAt = now;
 
   if (process.platform === "darwin" && app.dock) {
     if (lastDockBounceId !== -1) {

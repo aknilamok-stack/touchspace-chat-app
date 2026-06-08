@@ -3085,6 +3085,12 @@ export default function Home() {
     const alertTitle = `(${actionableNotifications.length}) Новый чат • TouchSpace`;
     document.title = alertTitle;
 
+    if (isDesktopShell()) {
+      return () => {
+        document.title = defaultDocumentTitleRef.current;
+      };
+    }
+
     titleFlashIntervalRef.current = window.setInterval(() => {
       document.title = showAlertTitle ? alertTitle : defaultDocumentTitleRef.current;
       showAlertTitle = !showAlertTitle;

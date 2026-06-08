@@ -2670,6 +2670,12 @@ export default function SupplierPage() {
     const alertTitle = `(${actionableNotifications.length}) Новый запрос • TouchSpace`;
     document.title = alertTitle;
 
+    if (isDesktopShell()) {
+      return () => {
+        document.title = defaultDocumentTitleRef.current;
+      };
+    }
+
     titleFlashIntervalRef.current = window.setInterval(() => {
       document.title = showAlertTitle ? alertTitle : defaultDocumentTitleRef.current;
       showAlertTitle = !showAlertTitle;

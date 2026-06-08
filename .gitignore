@@ -14,6 +14,7 @@ frontend/build/
 frontend/coverage/
 frontend/next-env.d.ts
 frontend/public/downloads/*.zip
+frontend/public/downloads/*.exe
 
 # Backend build output
 backend/dist/

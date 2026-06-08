@@ -1909,11 +1909,196 @@ export class TicketsService {
           },
         });
       }
+
+      await this.mergeDuplicateManagerSupplierContactDialogs(
+        tx,
+        normalizedManagerId,
+        supplierScopes,
+      );
     });
 
     return this.findDirectSupplierDialogs({
       assignedManagerId: normalizedManagerId,
+      supplierIds: supplierScopes.map((supplier) => supplier.supplierId),
     });
+  }
+
+  private async mergeDuplicateManagerSupplierContactDialogs(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    managerId: string,
+    supplierScopes: { supplierId: string; supplierName: string }[],
+  ) {
+    if (supplierScopes.length === 0) {
+      return;
+    }
+
+    const supplierById = new Map(
+      supplierScopes.map((supplier) => [supplier.supplierId, supplier]),
+    );
+    const dialogs = await tx.ticket.findMany({
+      where: {
+        conversationMode: 'direct_supplier',
+        assignedManagerId: managerId,
+      },
+      select: {
+        id: true,
+        supplierId: true,
+        supplierName: true,
+        lastMessageAt: true,
+        updatedAt: true,
+        createdAt: true,
+        messages: {
+          where: {
+            senderType: 'supplier',
+            senderProfileId: {
+              not: null,
+            },
+          },
+          select: {
+            senderProfileId: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 1,
+        },
+        _count: {
+          select: {
+            messages: true,
+          },
+        },
+      },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    });
+    const dialogsBySupplier = new Map<
+      string,
+      { dialog: (typeof dialogs)[number]; supplier: { supplierId: string; supplierName: string } }[]
+    >();
+
+    for (const dialog of dialogs) {
+      const directSupplierId = dialog.supplierId?.trim();
+      const messageSupplierId = dialog.messages[0]?.senderProfileId?.trim();
+      const canonicalSupplierId =
+        (directSupplierId && supplierById.has(directSupplierId)
+          ? directSupplierId
+          : null) ||
+        (messageSupplierId && supplierById.has(messageSupplierId)
+          ? messageSupplierId
+          : null);
+
+      if (!canonicalSupplierId) {
+        continue;
+      }
+
+      dialogsBySupplier.set(canonicalSupplierId, [
+        ...(dialogsBySupplier.get(canonicalSupplierId) ?? []),
+        {
+          dialog,
+          supplier: supplierById.get(canonicalSupplierId)!,
+        },
+      ]);
+    }
+
+    for (const supplierDialogs of dialogsBySupplier.values()) {
+      if (supplierDialogs.length < 2) {
+        continue;
+      }
+
+      const sortedDialogs = [...supplierDialogs].sort((left, right) => {
+        const leftIsCanonical =
+          left.dialog.supplierId === left.supplier.supplierId ? 1 : 0;
+        const rightIsCanonical =
+          right.dialog.supplierId === right.supplier.supplierId ? 1 : 0;
+
+        if (leftIsCanonical !== rightIsCanonical) {
+          return rightIsCanonical - leftIsCanonical;
+        }
+
+        const leftHasMessages = left.dialog._count.messages > 0 ? 1 : 0;
+        const rightHasMessages = right.dialog._count.messages > 0 ? 1 : 0;
+
+        if (leftHasMessages !== rightHasMessages) {
+          return rightHasMessages - leftHasMessages;
+        }
+
+        const leftTime = (
+          left.dialog.lastMessageAt ??
+          left.dialog.updatedAt ??
+          left.dialog.createdAt
+        ).getTime();
+        const rightTime = (
+          right.dialog.lastMessageAt ??
+          right.dialog.updatedAt ??
+          right.dialog.createdAt
+        ).getTime();
+
+        return rightTime - leftTime;
+      });
+      const primaryDialog = sortedDialogs[0];
+      const duplicateDialogs = sortedDialogs.slice(1);
+      const duplicateDialogIds = duplicateDialogs.map(({ dialog }) => dialog.id);
+
+      await tx.message.updateMany({
+        where: {
+          ticketId: {
+            in: duplicateDialogIds,
+          },
+        },
+        data: {
+          ticketId: primaryDialog.dialog.id,
+        },
+      });
+
+      await tx.supplierRequest.updateMany({
+        where: {
+          ticketId: {
+            in: duplicateDialogIds,
+          },
+        },
+        data: {
+          ticketId: primaryDialog.dialog.id,
+        },
+      });
+
+      const latestMessage = await tx.message.findFirst({
+        where: {
+          ticketId: primaryDialog.dialog.id,
+        },
+        select: {
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      await tx.ticket.update({
+        where: {
+          id: primaryDialog.dialog.id,
+        },
+        data: {
+          status: 'in_progress',
+          supplierId: primaryDialog.supplier.supplierId,
+          supplierName: primaryDialog.supplier.supplierName,
+          clientName: primaryDialog.supplier.supplierName,
+          tradePointName: primaryDialog.supplier.supplierName,
+          title: this.buildDirectSupplierDialogTitle(
+            primaryDialog.supplier.supplierName,
+          ),
+          lastMessageAt:
+            latestMessage?.createdAt ?? primaryDialog.dialog.lastMessageAt,
+        },
+      });
+
+      await tx.ticket.deleteMany({
+        where: {
+          id: {
+            in: duplicateDialogIds,
+          },
+        },
+      });
+    }
   }
 
   async findSupplierManagerDialogs(supplierId?: string) {

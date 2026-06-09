@@ -1924,10 +1924,9 @@ export default function Home() {
       }
 
       if (
-        resolvedCurrentManagerName &&
         chat.assignedManagerName &&
-        chat.assignedManagerName === resolvedCurrentManagerName &&
-        !chat.assignedManagerId
+        isSpecificManagerName(resolveManagerName(chat.assignedManagerId, chat.assignedManagerName)) &&
+        resolveManagerName(chat.assignedManagerId, chat.assignedManagerName) === resolvedCurrentManagerName
       ) {
         return true;
       }
@@ -2136,11 +2135,22 @@ export default function Home() {
   });
 
   const incomingUnreadCount = chatData
-    .filter((chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled)
+    .filter(
+      (chat) =>
+        chat.conversationMode !== "direct_supplier" &&
+        chat.rawStatus === "new" &&
+        !chat.assignedManagerId &&
+        !chat.aiEnabled
+    )
     .reduce((total, chat) => total + getUnreadCount(chat), 0);
 
   const myUnreadCount = chatData
-    .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
+    .filter(
+      (chat) =>
+        chat.conversationMode !== "direct_supplier" &&
+        isChatMine(chat) &&
+        !chat.aiEnabled
+    )
     .reduce((total, chat) => total + getUnreadCount(chat), 0);
   const actionableNotificationCandidates = notificationCandidates.filter(
     (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"

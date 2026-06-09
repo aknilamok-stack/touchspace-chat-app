@@ -3078,6 +3078,11 @@ export default function Home() {
       titleFlashIntervalRef.current = null;
     }
 
+    if (isDesktopShell()) {
+      document.title = defaultDocumentTitleRef.current;
+      return;
+    }
+
     const actionableNotifications = notificationCandidates.filter(
       (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
     );
@@ -3090,12 +3095,6 @@ export default function Home() {
     let showAlertTitle = true;
     const alertTitle = `(${actionableNotifications.length}) Новый чат • TouchSpace`;
     document.title = alertTitle;
-
-    if (isDesktopShell()) {
-      return () => {
-        document.title = defaultDocumentTitleRef.current;
-      };
-    }
 
     titleFlashIntervalRef.current = window.setInterval(() => {
       document.title = showAlertTitle ? alertTitle : defaultDocumentTitleRef.current;

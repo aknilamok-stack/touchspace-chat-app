@@ -361,8 +361,12 @@ async function pollDesktopManagerNotifications() {
 
       activeKeys.add(notificationKey);
 
-      if (candidate.scopeStatus === "claimed_by_other_recently" || !shouldShowOverlay) {
+      if (candidate.scopeStatus === "claimed_by_other_recently") {
         setLastBackgroundNotificationState(notificationKey, messageId);
+        return;
+      }
+
+      if (!shouldShowOverlay) {
         return;
       }
 

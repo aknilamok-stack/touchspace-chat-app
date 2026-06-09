@@ -3041,14 +3041,9 @@ export default function Home() {
   }, [visibleFloatingNotifications]);
 
   const dismissFloatingNotification = (notificationKey: string) => {
-    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
-
     setDismissedNotificationUntil((current) => ({
       ...current,
-      [notificationKey]:
-        candidate?.conversationMode === "direct_supplier"
-          ? Number.POSITIVE_INFINITY
-          : Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
     }));
   };
 

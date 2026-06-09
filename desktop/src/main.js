@@ -220,6 +220,14 @@ function isMainWindowInBackground() {
   return mainWindow.isMinimized() || !mainWindow.isFocused() || !mainWindow.isVisible();
 }
 
+function isMainWindowActivelyUsable() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return false;
+  }
+
+  return mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused();
+}
+
 function getLastBackgroundNotificationState(notificationKey) {
   const value = lastBackgroundNotificationMessageByKey.get(notificationKey);
 
@@ -714,13 +722,14 @@ function requestDesktopAttention(unreadCount) {
     return;
   }
 
-  if (typeof app.setBadgeCount === "function") {
-    app.setBadgeCount(unreadCount);
-  }
-
-  if (mainWindow.isFocused()) {
+  if (isMainWindowActivelyUsable()) {
+    clearDesktopAttention();
     lastUnreadAttentionCount = unreadCount;
     return;
+  }
+
+  if (typeof app.setBadgeCount === "function") {
+    app.setBadgeCount(unreadCount);
   }
 
   keepDesktopAppVisible();
@@ -748,8 +757,9 @@ function requestDesktopAttention(unreadCount) {
 function syncDesktopAttentionFromTitle(title) {
   const unreadCount = parseUnreadCountFromTitle(title);
 
-  if (unreadCount <= 0) {
+  if (unreadCount <= 0 || isMainWindowActivelyUsable()) {
     clearDesktopAttention();
+    lastUnreadAttentionCount = unreadCount;
     return;
   }
 

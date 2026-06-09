@@ -350,6 +350,11 @@ async function pollDesktopManagerNotifications() {
     const candidates = Array.isArray(payload?.items) ? payload.items : [];
     const activeKeys = new Set();
 
+    const actionableCandidates = candidates.filter(
+      (candidate) => candidate?.scopeStatus !== "claimed_by_other_recently",
+    );
+    const unreadCount = Math.max(actionableCandidates.length, 1);
+
     candidates.forEach((candidate) => {
       const notificationKey =
         typeof candidate?.notificationKey === "string" ? candidate.notificationKey : "";
@@ -380,7 +385,7 @@ async function pollDesktopManagerNotifications() {
       }
 
       setLastBackgroundNotificationState(notificationKey, messageId);
-      showOverlayNotificationWindow(buildManagerNotificationPayload(candidate));
+      showOverlayNotificationWindow(buildManagerNotificationPayload(candidate), unreadCount);
     });
 
     Array.from(lastBackgroundNotificationMessageByKey.keys()).forEach((key) => {
@@ -695,7 +700,7 @@ function createNotificationWindow() {
   return notificationWindow;
 }
 
-function showOverlayNotificationWindow(payload) {
+function showOverlayNotificationWindow(payload, unreadCount = 1) {
   if (!isMainWindowInBackground()) {
     return false;
   }
@@ -716,9 +721,36 @@ function showOverlayNotificationWindow(payload) {
     visibleOnFullScreen: true,
   });
   sendOverlayNotificationPayload();
+  showPendingOverlayNotificationWindow();
   keepDesktopAppVisible();
-  requestDesktopAttention(Math.max(lastUnreadAttentionCount + 1, 1));
+  requestDesktopAttention(Math.max(Number(unreadCount) || 1, 1));
   return true;
+}
+
+function showPendingOverlayNotificationWindow() {
+  if (
+    !notificationWindowPendingShow ||
+    !notificationWindow ||
+    notificationWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  if (!isMainWindowInBackground()) {
+    notificationWindowPendingShow = false;
+    notificationWindow.hide();
+    return;
+  }
+
+  notificationWindowPendingShow = false;
+  notificationWindow.setAlwaysOnTop(true, "screen-saver");
+  notificationWindow.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
+  notificationWindow.showInactive();
+  notificationWindow.moveTop();
+  keepDesktopAppVisible();
+  setTimeout(keepDesktopAppVisible, 250);
 }
 
 function requestDesktopAttention(unreadCount) {
@@ -952,55 +984,58 @@ app.whenReady().then(() => {
       setLastBackgroundNotificationState(tag, messageId);
     }
 
-    return showOverlayNotificationWindow({
-      title: String(payload.title),
-      body: typeof payload.body === "string" ? payload.body : "",
-      url:
-        typeof payload.url === "string" && payload.url.trim()
-          ? payload.url.trim()
-          : startUrl,
-      subtitle:
-        typeof payload.subtitle === "string" && payload.subtitle.trim()
-          ? payload.subtitle.trim()
-          : "",
-      metaLabel:
-        typeof payload.metaLabel === "string" && payload.metaLabel.trim()
-          ? payload.metaLabel.trim()
-          : "",
-      primaryLabel:
-        typeof payload.primaryLabel === "string" && payload.primaryLabel.trim()
-          ? payload.primaryLabel.trim()
-          : "Открыть",
-      secondaryLabel:
-        typeof payload.secondaryLabel === "string" && payload.secondaryLabel.trim()
-          ? payload.secondaryLabel.trim()
-          : "Позже",
-      header:
-        typeof payload.header === "string" && payload.header.trim()
-          ? payload.header.trim()
-          : "Входящее сообщение",
-      avatarEmoji:
-        typeof payload.avatarEmoji === "string" && payload.avatarEmoji.trim()
-          ? payload.avatarEmoji.trim()
-          : "",
-      avatarColor:
-        typeof payload.avatarColor === "string" && payload.avatarColor.trim()
-          ? payload.avatarColor.trim()
-          : "",
-      tone:
-        payload.tone === "green" || payload.tone === "amber"
-          ? payload.tone
-          : "blue",
-      tag,
-      ticketId:
-        typeof payload.ticketId === "string" && payload.ticketId.trim()
-          ? payload.ticketId.trim()
-          : "",
-      scopeStatus:
-        typeof payload.scopeStatus === "string" && payload.scopeStatus.trim()
-          ? payload.scopeStatus.trim()
-          : "",
-    });
+    return showOverlayNotificationWindow(
+      {
+        title: String(payload.title),
+        body: typeof payload.body === "string" ? payload.body : "",
+        url:
+          typeof payload.url === "string" && payload.url.trim()
+            ? payload.url.trim()
+            : startUrl,
+        subtitle:
+          typeof payload.subtitle === "string" && payload.subtitle.trim()
+            ? payload.subtitle.trim()
+            : "",
+        metaLabel:
+          typeof payload.metaLabel === "string" && payload.metaLabel.trim()
+            ? payload.metaLabel.trim()
+            : "",
+        primaryLabel:
+          typeof payload.primaryLabel === "string" && payload.primaryLabel.trim()
+            ? payload.primaryLabel.trim()
+            : "Открыть",
+        secondaryLabel:
+          typeof payload.secondaryLabel === "string" && payload.secondaryLabel.trim()
+            ? payload.secondaryLabel.trim()
+            : "Позже",
+        header:
+          typeof payload.header === "string" && payload.header.trim()
+            ? payload.header.trim()
+            : "Входящее сообщение",
+        avatarEmoji:
+          typeof payload.avatarEmoji === "string" && payload.avatarEmoji.trim()
+            ? payload.avatarEmoji.trim()
+            : "",
+        avatarColor:
+          typeof payload.avatarColor === "string" && payload.avatarColor.trim()
+            ? payload.avatarColor.trim()
+            : "",
+        tone:
+          payload.tone === "green" || payload.tone === "amber"
+            ? payload.tone
+            : "blue",
+        tag,
+        ticketId:
+          typeof payload.ticketId === "string" && payload.ticketId.trim()
+            ? payload.ticketId.trim()
+            : "",
+        scopeStatus:
+          typeof payload.scopeStatus === "string" && payload.scopeStatus.trim()
+            ? payload.scopeStatus.trim()
+            : "",
+      },
+      Number(payload.unreadCount) || 1,
+    );
   });
 
   ipcMain.handle("desktop:overlay-notification-action", async (_, payload) => {
@@ -1057,29 +1092,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on("desktop:overlay-notification-rendered", () => {
-    if (
-      !notificationWindowPendingShow ||
-      !notificationWindow ||
-      notificationWindow.isDestroyed()
-    ) {
-      return;
-    }
-
-    if (!isMainWindowInBackground()) {
-      notificationWindowPendingShow = false;
-      notificationWindow.hide();
-      return;
-    }
-
-    notificationWindowPendingShow = false;
-    notificationWindow.setAlwaysOnTop(true, "screen-saver");
-    notificationWindow.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true,
-    });
-    notificationWindow.showInactive();
-    notificationWindow.moveTop();
-    keepDesktopAppVisible();
-    setTimeout(keepDesktopAppVisible, 250);
+    showPendingOverlayNotificationWindow();
   });
 
   ipcMain.on("desktop:auth-storage:get", (event) => {

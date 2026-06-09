@@ -698,6 +698,8 @@ export class NotificationsService {
             select: {
               id: true,
               status: true,
+              supplierName: true,
+              requestText: true,
               createdAt: true,
               assignedSupplierProfileId: true,
               claimedAt: true,
@@ -887,6 +889,92 @@ export class NotificationsService {
         Boolean(candidate),
       );
 
+    const supplierResumeRequests = tickets
+      .map((ticket) => {
+        if (
+          !activeManagerIdsSet.has(profile.id) ||
+          ticket.assignedManagerId !== profile.id ||
+          ticket.status === 'waiting_supplier'
+        ) {
+          return null;
+        }
+
+        const activeSupplierRequest = [...ticket.supplierRequests]
+          .reverse()
+          .find(
+            (request) =>
+              request.assignedSupplierProfileId &&
+              !request.closedAt &&
+              request.status !== 'closed' &&
+              request.status !== 'cancelled' &&
+              request.status !== 'resolved',
+          );
+
+        if (!activeSupplierRequest) {
+          return null;
+        }
+
+        const syncState = getSupplierRequestSyncState(
+          ticket.supplierRequests,
+          controlMessagesByTicketId[ticket.id] ?? [],
+          activeSupplierRequest.id,
+        );
+        const managerPromptAvailableAt = syncState.managerPromptAvailableAt
+          ? new Date(syncState.managerPromptAvailableAt)
+          : null;
+
+        if (
+          !syncState.isAwaitingManager ||
+          (managerPromptAvailableAt &&
+            managerPromptAvailableAt.getTime() > Date.now())
+        ) {
+          return null;
+        }
+
+        const createdAt =
+          managerPromptAvailableAt ??
+          (syncState.lastResumeRequestedAt
+            ? new Date(syncState.lastResumeRequestedAt)
+            : new Date());
+        const supplierName =
+          activeSupplierRequest.supplierName?.trim() ||
+          ticket.supplierName?.trim() ||
+          'Поставщик';
+        const clientTitle =
+          ticket.tradePointName?.trim() ||
+          ticket.title?.trim() ||
+          ticket.clientName?.trim() ||
+          'диалог';
+
+        const candidate: ManagerNotificationCandidate = {
+          notificationKey: `supplier-resume:${activeSupplierRequest.id}:${
+            syncState.lastResumeRequestedAt ?? createdAt.toISOString()
+          }`,
+          ticketId: ticket.id,
+          title: supplierName,
+          clientName: ticket.clientName?.trim() || null,
+          tradePointName: ticket.tradePointName?.trim() || null,
+          messageId: `supplier-resume:${activeSupplierRequest.id}`,
+          messageText: `${supplierName} хочет вернуться в чат ${clientTitle}`,
+          createdAt,
+          avatarColor: ticket.avatarColor,
+          avatarEmoji: ticket.avatarEmoji,
+          conversationMode: ticket.conversationMode,
+          scopeStatus: 'owned_active' as const,
+          waitSeconds: Math.max(
+            Math.floor((Date.now() - createdAt.getTime()) / 1000),
+            0,
+          ),
+          assignedManagerId: ticket.assignedManagerId,
+          assignedManagerName: ticket.assignedManagerName,
+        };
+
+        return candidate;
+      })
+      .filter((candidate): candidate is ManagerNotificationCandidate =>
+        Boolean(candidate),
+      );
+
     const recentlyClaimedByOther = tickets
       .filter(
         (ticket) =>
@@ -929,7 +1017,7 @@ export class NotificationsService {
       });
 
     return {
-      items: [...items, ...recentlyClaimedByOther].sort(
+      items: [...items, ...supplierResumeRequests, ...recentlyClaimedByOther].sort(
         (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
       ),
     };

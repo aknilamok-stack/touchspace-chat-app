@@ -89,6 +89,73 @@
     return "";
   }
 
+  function getLabeledValueFromDom(labels) {
+    var groups = [
+      {
+        item: ".account__specs-item",
+        label: ".account__specs-label",
+        value: ".account__specs-value"
+      },
+      {
+        item: ".form__row, .form__item, .form__group",
+        label: "label, .form__label",
+        value: "input, textarea, .form__value"
+      },
+      {
+        item: ".profile__item, .user-profile__item, .lk__item",
+        label: ".profile__label, .user-profile__label, .lk__label, label",
+        value: ".profile__value, .user-profile__value, .lk__value, input"
+      }
+    ];
+
+    try {
+      for (var groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+        var group = groups[groupIndex];
+        var items = document.querySelectorAll(group.item);
+
+        for (var itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+          var item = items[itemIndex];
+          var labelEl = item.querySelector(group.label);
+          var valueEl = item.querySelector(group.value);
+          var label = normalizeValue(labelEl ? labelEl.textContent : "").replace(/:$/, "");
+          var value = "";
+
+          if (valueEl) {
+            value = normalizeValue(valueEl.value || valueEl.textContent || "");
+          }
+
+          if (labels.indexOf(label) !== -1 && value && value !== "—" && value !== "-") {
+            return value;
+          }
+        }
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  }
+
+  function getInputValueFromDom(names) {
+    try {
+      for (var i = 0; i < names.length; i += 1) {
+        var name = names[i];
+        var selector =
+          'input[name="' + name + '"], input[id="' + name + '"], input[data-code="' + name + '"]';
+        var input = document.querySelector(selector);
+        var value = normalizeValue(input ? input.value : "");
+
+        if (value && value !== "—" && value !== "-") {
+          return value;
+        }
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  }
+
   function getTradePointNameFromDom() {
     return getPaneValueFromDom(["Торговая точка"]);
   }
@@ -98,14 +165,33 @@
   }
 
   function getPhoneFromDom() {
-    return getPaneValueFromDom([
+    var labels = [
       "Телефон",
       "Телефон пользователя",
       "Телефон клиента",
       "Мобильный телефон",
       "Рабочий телефон",
-      "Контактный телефон"
-    ]);
+      "Контактный телефон",
+      "Контактный телефон покупателя",
+      "Телефон контактного лица"
+    ];
+
+    return pickFirst(
+      getPaneValueFromDom(labels),
+      getLabeledValueFromDom(labels),
+      getInputValueFromDom([
+        "PERSONAL_PHONE",
+        "PERSONAL_MOBILE",
+        "WORK_PHONE",
+        "UF_PHONE",
+        "PHONE",
+        "CONTACT_PHONE",
+        "ORDER_PROP_PHONE",
+        "phone",
+        "clientPhone",
+        "currentUserPhone"
+      ])
+    );
   }
 
   var domTradePointName = getTradePointNameFromDom();

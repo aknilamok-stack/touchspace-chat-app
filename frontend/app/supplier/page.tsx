@@ -2326,8 +2326,13 @@ export default function SupplierPage() {
   };
 
   const fetchDirectManagerTickets = async (): Promise<Ticket[]> => {
+    const directDialogSupplierId = supplierProfileId || supplierId;
     const response = await fetch(
-      apiUrl(`/tickets/supplier-manager-dialogs?supplierId=${encodeURIComponent(supplierId)}`),
+      apiUrl(
+        `/tickets/supplier-manager-dialogs?supplierId=${encodeURIComponent(
+          directDialogSupplierId
+        )}`
+      ),
       { cache: "no-store" }
     );
 
@@ -2516,7 +2521,7 @@ export default function SupplierPage() {
   }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
-    if (!authReady || !supplierId) {
+    if (!authReady || !supplierId || !supplierProfileId) {
       return;
     }
 
@@ -2548,7 +2553,7 @@ export default function SupplierPage() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [authReady, supplierId]);
+  }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady || !supplierId || !supplierProfileId) {

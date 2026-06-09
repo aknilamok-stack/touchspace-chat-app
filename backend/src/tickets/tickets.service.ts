@@ -2352,22 +2352,24 @@ export class TicketsService {
       orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
     });
 
-    const dialogsByManager = new Map<string, typeof dialogs>();
+    const dialogsByPair = new Map<string, typeof dialogs>();
 
     for (const dialog of dialogs) {
       const managerId = dialog.assignedManagerId?.trim();
+      const supplierId = dialog.supplierId?.trim();
 
-      if (!managerId) {
+      if (!managerId || !supplierId) {
         continue;
       }
 
-      dialogsByManager.set(managerId, [
-        ...(dialogsByManager.get(managerId) ?? []),
+      const dialogPairKey = `${managerId}:${supplierId}`;
+      dialogsByPair.set(dialogPairKey, [
+        ...(dialogsByPair.get(dialogPairKey) ?? []),
         dialog,
       ]);
     }
 
-    for (const managerDialogs of dialogsByManager.values()) {
+    for (const managerDialogs of dialogsByPair.values()) {
       if (managerDialogs.length < 2) {
         continue;
       }

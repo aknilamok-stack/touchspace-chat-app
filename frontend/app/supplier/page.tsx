@@ -65,7 +65,7 @@ const QUICK_REPLIES = [
   "Благодарю, информацию передал",
 ];
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
-const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
+const REPEATED_NOTIFICATION_INTERVAL_MS = 60_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const COMPLETED_SUPPLIER_REQUEST_STATUSES = new Set(["closed", "cancelled", "resolved"]);
 
@@ -3605,6 +3605,20 @@ export default function SupplierPage() {
     effectiveNotificationCandidates.forEach((candidate) => {
       const isDirectManagerDialog = candidate.kind === "direct";
       const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
+      const isActiveCandidateVisible =
+        document.visibilityState === "visible" &&
+        document.hasFocus() &&
+        ((isDirectManagerDialog &&
+          candidate.ticketId &&
+          candidate.ticketId === selectedManagerTicketId) ||
+          (!isDirectManagerDialog &&
+            candidate.requestId &&
+            candidate.requestId === selectedRequestId));
+
+      if (!isClaimedByOther && isActiveCandidateVisible) {
+        return;
+      }
+
       const notificationTitle =
         isClaimedByOther
           ? "Запрос уже взят в работу"
@@ -3665,7 +3679,13 @@ export default function SupplierPage() {
         tone: isClaimedByOther ? "amber" : isDirectManagerDialog ? "green" : "blue",
       });
     });
-  }, [effectiveNotificationCandidates, authReady]);
+  }, [
+    effectiveNotificationCandidates,
+    authReady,
+    notificationNow,
+    selectedManagerTicketId,
+    selectedRequestId,
+  ]);
 
   useEffect(() => {
     if (typeof document === "undefined") {

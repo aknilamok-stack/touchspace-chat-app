@@ -60,6 +60,15 @@
     return "";
   }
 
+  function isEmptyPlaceholder(value) {
+    var normalized = normalizeValue(value);
+    return !normalized || normalized === "—" || normalized === "-";
+  }
+
+  function hasPhoneDigits(value) {
+    return cleanValue(value).replace(/\D/g, "").length >= 5;
+  }
+
   function getPaneValueFromDom(labels) {
     try {
       var items = document.querySelectorAll(
@@ -124,7 +133,7 @@
             value = normalizeValue(valueEl.value || valueEl.textContent || "");
           }
 
-          if (labels.indexOf(label) !== -1 && value && value !== "—" && value !== "-") {
+          if (labels.indexOf(label) !== -1 && !isEmptyPlaceholder(value) && hasPhoneDigits(value)) {
             return value;
           }
         }
@@ -145,7 +154,28 @@
         var input = document.querySelector(selector);
         var value = normalizeValue(input ? input.value : "");
 
-        if (value && value !== "—" && value !== "-") {
+        if (!isEmptyPlaceholder(value) && hasPhoneDigits(value)) {
+          return value;
+        }
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  }
+
+  function getLikelyPhoneInputFromDom() {
+    try {
+      var inputs = document.querySelectorAll(
+        'input[type="tel"], input[name*="PHONE"], input[name*="phone"], input[name*="TEL"], input[name*="tel"], input[id*="PHONE"], input[id*="phone"], input[id*="TEL"], input[id*="tel"]'
+      );
+
+      for (var i = 0; i < inputs.length; i += 1) {
+        var input = inputs[i];
+        var value = normalizeValue(input ? input.value : "");
+
+        if (!isEmptyPlaceholder(value) && hasPhoneDigits(value)) {
           return value;
         }
       }
@@ -190,7 +220,8 @@
         "phone",
         "clientPhone",
         "currentUserPhone"
-      ])
+      ]),
+      getLikelyPhoneInputFromDom()
     );
   }
 
@@ -521,6 +552,36 @@
   }
   if (config.platform) iframeUrl.searchParams.set("platform", String(config.platform));
 
+  function resolveCurrentUserPhone() {
+    return pickFirst(
+      cleanValue(config.currentUserPhone),
+      cleanValue(config.currentPhone),
+      cleanValue(config.userPhone),
+      cleanValue(config.clientPhone),
+      cleanValue(config.personalPhone),
+      cleanValue(config.mobilePhone),
+      cleanValue(config.workPhone),
+      cleanValue(config.PHONE),
+      cleanValue(config.PERSONAL_PHONE),
+      cleanValue(config.PERSONAL_MOBILE),
+      cleanValue(config.WORK_PHONE),
+      cleanValue(config.UF_PHONE),
+      cleanValue(config.phone),
+      getPhoneFromDom()
+    );
+  }
+
+  function updateIframePhoneParams(nextPhone) {
+    if (!nextPhone) {
+      return false;
+    }
+
+    configuredCurrentUserPhone = nextPhone;
+    iframeUrl.searchParams.set("currentUserPhone", String(nextPhone));
+    iframeUrl.searchParams.set("phone", String(configuredSuperuserPhone || nextPhone));
+    return true;
+  }
+
   installPageTracking();
 
   var style = document.createElement("style");
@@ -554,6 +615,22 @@
   iframe.src = iframeUrl.toString();
   iframe.title = "TouchSpace Chat Widget";
   iframe.allow = "clipboard-read; clipboard-write";
+
+  function refreshPhoneFromDom(options) {
+    var nextPhone = resolveCurrentUserPhone();
+
+    if (!nextPhone || nextPhone === configuredCurrentUserPhone) {
+      return;
+    }
+
+    if (!updateIframePhoneParams(nextPhone)) {
+      return;
+    }
+
+    if (options && options.reloadIframe) {
+      iframe.src = iframeUrl.toString();
+    }
+  }
 
   var panelClose = document.createElement("button");
   panelClose.type = "button";
@@ -726,6 +803,7 @@
   }
 
   function openWidget() {
+    refreshPhoneFromDom({ reloadIframe: true });
     applyLayout(safeParseLayout());
     panel.classList.add("is-open");
     launcher.style.display = "none";
@@ -887,6 +965,34 @@
   window.addEventListener("resize", function () {
     applyLayout(safeParseLayout());
   });
+
+  window.addEventListener("load", function () {
+    refreshPhoneFromDom({ reloadIframe: true });
+  });
+
+  window.addEventListener("pageshow", function () {
+    refreshPhoneFromDom({ reloadIframe: true });
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      refreshPhoneFromDom({ reloadIframe: true });
+    });
+  } else {
+    window.setTimeout(function () {
+      refreshPhoneFromDom({ reloadIframe: true });
+    }, 0);
+  }
+
+  var phoneRefreshAttempts = 0;
+  var phoneRefreshInterval = window.setInterval(function () {
+    phoneRefreshAttempts += 1;
+    refreshPhoneFromDom({ reloadIframe: true });
+
+    if (configuredCurrentUserPhone || phoneRefreshAttempts >= 20) {
+      window.clearInterval(phoneRefreshInterval);
+    }
+  }, 500);
 
   panel.appendChild(dragHandle);
   panel.appendChild(panelClose);

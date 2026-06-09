@@ -1981,25 +1981,15 @@ export default function Home() {
     return searchHaystack.includes(normalizedQuery);
   });
 
-  const incomingUnreadCount = chatData
-    .filter((chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled)
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const actionableNotificationCandidates = notificationCandidates.filter(
-    (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+  const incomingTabChats = chatData.filter(
+    (chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled
   );
-  const incomingNotificationCount = actionableNotificationCandidates.filter(
-    (candidate) => candidate.scopeStatus !== "owned_active"
-  ).length;
-  const myUnreadCount = chatData
-    .filter((chat) => isChatMine(chat) && !chat.aiEnabled)
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const myNotificationCount = actionableNotificationCandidates.filter(
-    (candidate) => candidate.scopeStatus === "owned_active"
-  ).length;
-  const allUnreadCount = chatData.reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const incomingTabBadgeCount = Math.max(incomingUnreadCount, incomingNotificationCount);
-  const myTabBadgeCount = Math.max(myUnreadCount, myNotificationCount);
-  const allTabBadgeCount = Math.max(allUnreadCount, actionableNotificationCandidates.length);
+  const myTabChats = chatData.filter((chat) => isChatMine(chat) && !chat.aiEnabled);
+  const countUnreadOrVisibleChats = (chats: ChatItem[]) =>
+    chats.reduce((total, chat) => total + Math.max(getUnreadCount(chat), 1), 0);
+  const incomingTabBadgeCount = countUnreadOrVisibleChats(incomingTabChats);
+  const myTabBadgeCount = countUnreadOrVisibleChats(myTabChats);
+  const allTabBadgeCount = countUnreadOrVisibleChats(chatData);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>

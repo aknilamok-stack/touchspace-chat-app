@@ -2136,53 +2136,31 @@ export default function Home() {
     return searchHaystack.includes(normalizedQuery);
   });
 
-  const incomingUnreadCount = chatData
-    .filter(
-      (chat) =>
-        chat.conversationMode !== "direct_supplier" &&
-        chat.rawStatus === "new" &&
-        !chat.assignedManagerId &&
-        !chat.aiEnabled
-    )
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-
-  const myUnreadCount = chatData
-    .filter(
-      (chat) =>
-        chat.conversationMode !== "direct_supplier" &&
-        isChatMine(chat) &&
-        !chat.aiEnabled
-    )
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const actionableNotificationCandidates = notificationCandidates.filter(
-    (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+  const incomingTabChats = chatData.filter(
+    (chat) =>
+      chat.conversationMode !== "direct_supplier" &&
+      chat.rawStatus === "new" &&
+      !chat.assignedManagerId &&
+      !chat.aiEnabled
   );
-  const incomingNotificationCount = actionableNotificationCandidates.filter(
-    (candidate) =>
-      candidate.conversationMode !== "direct_supplier" &&
-      candidate.scopeStatus !== "owned_active"
-  ).length;
-  const myNotificationCount = actionableNotificationCandidates.filter(
-    (candidate) =>
-      candidate.conversationMode !== "direct_supplier" &&
-      candidate.scopeStatus === "owned_active"
-  ).length;
-  const supplierNotificationCount = actionableNotificationCandidates.filter(
-    (candidate) => candidate.conversationMode === "direct_supplier"
-  ).length;
-  const supplierUnreadCount = chatData
-    .filter((chat) => chat.conversationMode === "direct_supplier")
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const allUnreadCount = chatData
-    .filter((chat) => chat.conversationMode !== "direct_supplier")
-    .reduce((total, chat) => total + getUnreadCount(chat), 0);
-  const incomingTabBadgeCount = Math.max(incomingUnreadCount, incomingNotificationCount);
-  const myTabBadgeCount = Math.max(myUnreadCount, myNotificationCount);
-  const supplierTabBadgeCount = Math.max(supplierUnreadCount, supplierNotificationCount);
-  const allTabBadgeCount = Math.max(
-    allUnreadCount,
-    incomingNotificationCount + myNotificationCount
+  const myTabChats = chatData.filter(
+    (chat) =>
+      chat.conversationMode !== "direct_supplier" &&
+      isChatMine(chat) &&
+      !chat.aiEnabled
   );
+  const supplierTabChats = chatData.filter(
+    (chat) => chat.conversationMode === "direct_supplier"
+  );
+  const allTabChats = chatData.filter(
+    (chat) => chat.conversationMode !== "direct_supplier"
+  );
+  const countUnreadOrVisibleChats = (chats: ChatItem[]) =>
+    chats.reduce((total, chat) => total + Math.max(getUnreadCount(chat), 1), 0);
+  const incomingTabBadgeCount = countUnreadOrVisibleChats(incomingTabChats);
+  const myTabBadgeCount = countUnreadOrVisibleChats(myTabChats);
+  const supplierTabBadgeCount = countUnreadOrVisibleChats(supplierTabChats);
+  const allTabBadgeCount = countUnreadOrVisibleChats(allTabChats);
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>

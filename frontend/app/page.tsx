@@ -1647,7 +1647,9 @@ export default function Home() {
       throw new Error("Не удалось загрузить тикеты");
     }
 
-    const tickets = (await ticketsResponse.json()) as ApiTicket[];
+    const tickets = ((await ticketsResponse.json()) as ApiTicket[]).filter(
+      (ticket) => ticket.conversationMode !== "direct_supplier"
+    );
     const directDialogs = directDialogsResponse.ok
       ? ((await directDialogsResponse.json()) as ApiTicket[])
       : [];

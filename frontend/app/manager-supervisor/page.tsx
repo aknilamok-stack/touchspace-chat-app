@@ -1623,7 +1623,8 @@ export default function Home() {
     if (!response.ok) {
       throw new Error("Не удалось загрузить тикеты");
     }
-    return response.json();
+    const tickets = (await response.json()) as ApiTicket[];
+    return tickets.filter((ticket) => ticket.conversationMode !== "direct_supplier");
   };
 
   const fetchManagerNotificationCandidates = async (

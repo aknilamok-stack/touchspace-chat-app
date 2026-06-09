@@ -22,7 +22,6 @@ type DialogListCardProps = {
 
 export function DialogListCard({
   active = false,
-  emphasized = false,
   onClick,
   title,
   identityKey,
@@ -53,18 +52,10 @@ export function DialogListCard({
       }}
       className={`relative w-full rounded-[24px] border px-3.5 py-3 text-left transition ${
         active
-          ? "border-[#0A84FF] bg-[#EAF4FF] shadow-[0_12px_32px_rgba(10,132,255,0.16)] ring-1 ring-[#0A84FF]"
-          : emphasized
-            ? "border-[#D6E7FF] bg-white shadow-[0_8px_22px_rgba(10,132,255,0.06)]"
-            : "border-[#E6E6EB] bg-white hover:bg-[#FAFAFC]"
+          ? "border-[#B9D6FF] bg-[#F3F8FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+          : "border-[#ECEEF3] bg-white shadow-[0_8px_20px_rgba(15,23,42,0.04)] hover:border-[#DDE7F5] hover:bg-[#FBFCFF]"
       }`}
       >
-      {emphasized && !active ? (
-        <span
-          className="absolute bottom-4 left-0 top-4 w-1 rounded-r-full bg-[#0A84FF]"
-          aria-hidden="true"
-        />
-      ) : null}
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
           <div

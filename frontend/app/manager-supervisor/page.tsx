@@ -4732,11 +4732,6 @@ export default function Home() {
                     <DialogListCard
                       key={chat.id}
                       active={isActive}
-                      emphasized={
-                        unreadCount > 0 ||
-                        (!chat.assignedManagerId &&
-                          Boolean(chat.claimMissedAt || chat.rescueQueuedAt))
-                      }
                       onClick={() => {
                         setIsChatPaneDismissed(false);
                         setActiveChatId(chat.id);

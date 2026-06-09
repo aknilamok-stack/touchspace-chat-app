@@ -1985,11 +1985,11 @@ export default function Home() {
     (chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled
   );
   const myTabChats = chatData.filter((chat) => isChatMine(chat) && !chat.aiEnabled);
-  const countUnreadOrVisibleChats = (chats: ChatItem[]) =>
-    chats.reduce((total, chat) => total + Math.max(getUnreadCount(chat), 1), 0);
-  const incomingTabBadgeCount = countUnreadOrVisibleChats(incomingTabChats);
-  const myTabBadgeCount = countUnreadOrVisibleChats(myTabChats);
-  const allTabBadgeCount = countUnreadOrVisibleChats(chatData);
+  const countChatsWithUnread = (chats: ChatItem[]) =>
+    chats.filter((chat) => getUnreadCount(chat) > 0).length;
+  const incomingTabBadgeCount = incomingTabChats.length;
+  const myTabBadgeCount = countChatsWithUnread(myTabChats);
+  const allTabBadgeCount = 0;
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>

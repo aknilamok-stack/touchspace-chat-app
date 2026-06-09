@@ -2152,15 +2152,12 @@ export default function Home() {
   const supplierTabChats = chatData.filter(
     (chat) => chat.conversationMode === "direct_supplier"
   );
-  const allTabChats = chatData.filter(
-    (chat) => chat.conversationMode !== "direct_supplier"
-  );
-  const countUnreadOrVisibleChats = (chats: ChatItem[]) =>
-    chats.reduce((total, chat) => total + Math.max(getUnreadCount(chat), 1), 0);
-  const incomingTabBadgeCount = countUnreadOrVisibleChats(incomingTabChats);
-  const myTabBadgeCount = countUnreadOrVisibleChats(myTabChats);
-  const supplierTabBadgeCount = countUnreadOrVisibleChats(supplierTabChats);
-  const allTabBadgeCount = countUnreadOrVisibleChats(allTabChats);
+  const countChatsWithUnread = (chats: ChatItem[]) =>
+    chats.filter((chat) => getUnreadCount(chat) > 0).length;
+  const incomingTabBadgeCount = incomingTabChats.length;
+  const myTabBadgeCount = countChatsWithUnread(myTabChats);
+  const supplierTabBadgeCount = countChatsWithUnread(supplierTabChats);
+  const allTabBadgeCount = 0;
 
   const getManagerDisplayName = useCallback(
     (chat: ChatItem) =>

@@ -51,14 +51,20 @@ export function DialogListCard({
           onClick?.();
         }
       }}
-      className={`w-full rounded-[24px] border px-3.5 py-3 text-left transition ${
+      className={`relative w-full rounded-[24px] border px-3.5 py-3 text-left transition ${
         active
-          ? "border-[#CFE1FF] bg-[#F3F8FF] shadow-[0_12px_32px_rgba(10,132,255,0.09)]"
+          ? "border-[#0A84FF] bg-[#EAF4FF] shadow-[0_12px_32px_rgba(10,132,255,0.16)] ring-1 ring-[#0A84FF]"
           : emphasized
-            ? "border-[#D6E7FF] bg-[#EEF6FF]"
+            ? "border-[#D6E7FF] bg-white shadow-[0_8px_22px_rgba(10,132,255,0.06)]"
             : "border-[#E6E6EB] bg-white hover:bg-[#FAFAFC]"
       }`}
       >
+      {emphasized && !active ? (
+        <span
+          className="absolute bottom-4 left-0 top-4 w-1 rounded-r-full bg-[#0A84FF]"
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
           <div

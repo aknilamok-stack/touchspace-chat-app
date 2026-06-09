@@ -92,6 +92,42 @@ const CLIENT_AVATAR_EMOJIS = [
   '🥝',
 ];
 
+const chooseClientAvatar = (
+  usedPairs: Array<{ avatarColor: string; avatarEmoji: string }>,
+) => {
+  const usedColors = new Set(usedPairs.map((pair) => pair.avatarColor));
+  const usedEmojis = new Set(usedPairs.map((pair) => pair.avatarEmoji));
+  const usedAvatarPairs = new Set(
+    usedPairs.map((pair) => `${pair.avatarColor}::${pair.avatarEmoji}`),
+  );
+  const color =
+    CLIENT_AVATAR_COLORS.find((candidate) => !usedColors.has(candidate)) ??
+    CLIENT_AVATAR_COLORS[usedPairs.length % CLIENT_AVATAR_COLORS.length];
+  const emoji =
+    CLIENT_AVATAR_EMOJIS.find((candidate) => !usedEmojis.has(candidate)) ??
+    CLIENT_AVATAR_EMOJIS[usedPairs.length % CLIENT_AVATAR_EMOJIS.length];
+
+  if (!usedAvatarPairs.has(`${color}::${emoji}`)) {
+    return { avatarColor: color, avatarEmoji: emoji };
+  }
+
+  for (const candidateEmoji of CLIENT_AVATAR_EMOJIS) {
+    for (const candidateColor of CLIENT_AVATAR_COLORS) {
+      if (!usedAvatarPairs.has(`${candidateColor}::${candidateEmoji}`)) {
+        return {
+          avatarColor: candidateColor,
+          avatarEmoji: candidateEmoji,
+        };
+      }
+    }
+  }
+
+  return {
+    avatarColor: color,
+    avatarEmoji: emoji,
+  };
+};
+
 const GENERIC_MANAGER_NAMES = new Set(['менеджер', 'manager']);
 
 const isSpecificManagerName = (name?: string | null) => {
@@ -452,11 +488,7 @@ export class TicketsService {
         avatarEmoji: true,
       },
     });
-    const avatarIndex = usedPairs.length;
-    const avatarColor =
-      CLIENT_AVATAR_COLORS[avatarIndex % CLIENT_AVATAR_COLORS.length];
-    const avatarEmoji =
-      CLIENT_AVATAR_EMOJIS[avatarIndex % CLIENT_AVATAR_EMOJIS.length];
+    const { avatarColor, avatarEmoji } = chooseClientAvatar(usedPairs);
 
     await tx.clientVisualIdentity.create({
       data: {

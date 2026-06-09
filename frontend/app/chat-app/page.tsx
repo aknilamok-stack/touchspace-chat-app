@@ -354,7 +354,7 @@ export default function ChatAppLandingPage() {
           </p>
 
           <div class="ts-install-actions">
-            <a href="/downloads/touchspace-macos.zip" download class="ts-btn ts-btn-white">Скачать для macOS</a>
+            <a href="/downloads/TouchSpace-Workspace-mac.dmg" download class="ts-btn ts-btn-white">Скачать для macOS</a>
             <a href="/downloads/touchspace-windows.exe" download class="ts-btn ts-btn-white">Скачать для Windows</a>
             <a href="#about-app" class="ts-btn ts-btn-secondary" style="background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.18); color: #fff;">Сначала посмотреть возможности</a>
           </div>

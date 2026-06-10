@@ -1,6 +1,6 @@
 export const SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE = "supplier_control";
 export const SUPPLIER_RESUME_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
-export const SUPPLIER_RESUME_REMINDER_MS = 2 * 60 * 1000;
+export const SUPPLIER_RESUME_REMINDER_MS = 90 * 1000;
 
 export type SupplierRequestSyncPayload = {
   kind: "supplier_request_sync";

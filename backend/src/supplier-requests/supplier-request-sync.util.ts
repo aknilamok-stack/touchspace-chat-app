@@ -1,6 +1,6 @@
 export const SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE = 'supplier_control';
 export const SUPPLIER_RESUME_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
-export const SUPPLIER_RESUME_REMINDER_MS = 2 * 60 * 1000;
+export const SUPPLIER_RESUME_REMINDER_MS = 90 * 1000;
 
 export type SupplierRequestSyncAction =
   | 'pause'
@@ -84,7 +84,9 @@ export const getSupplierRequestSyncState = (
     (left, right) =>
       new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
   );
-  const requestIndex = sortedRequests.findIndex((request) => request.id === requestId);
+  const requestIndex = sortedRequests.findIndex(
+    (request) => request.id === requestId,
+  );
 
   if (requestIndex < 0) {
     return {
@@ -119,7 +121,13 @@ export const getSupplierRequestSyncState = (
       payload: parseSupplierRequestSyncPayload(message.content),
     }))
     .filter(
-      (event): event is { createdAt: string; timestamp: number; payload: SupplierRequestSyncPayload } => {
+      (
+        event,
+      ): event is {
+        createdAt: string;
+        timestamp: number;
+        payload: SupplierRequestSyncPayload;
+      } => {
         if (!event.payload) {
           return false;
         }
@@ -186,11 +194,7 @@ export const getSupplierRequestSyncState = (
 
   let effectiveResumeAt: string | null = null;
 
-  if (
-    isPaused &&
-    isAwaitingManager &&
-    autoResumeAt
-  ) {
+  if (isPaused && isAwaitingManager && autoResumeAt) {
     const autoResumeAtMs = new Date(autoResumeAt).getTime();
 
     if (Number.isFinite(autoResumeAtMs) && nowMs >= autoResumeAtMs) {
@@ -202,7 +206,11 @@ export const getSupplierRequestSyncState = (
   }
 
   return {
-    mode: isPaused ? (isAwaitingManager ? 'awaiting_manager' : 'paused') : 'live',
+    mode: isPaused
+      ? isAwaitingManager
+        ? 'awaiting_manager'
+        : 'paused'
+      : 'live',
     isPaused,
     isAwaitingManager,
     lastPausedAt,

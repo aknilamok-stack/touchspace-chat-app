@@ -175,7 +175,7 @@ type SupplierNotificationCandidate = {
   waitSeconds: number;
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
-  kind: "message" | "request";
+  kind: "message" | "request" | "resume";
 };
 
 type Ticket = {
@@ -2576,12 +2576,14 @@ export default function SupplierPage() {
         return;
       }
 
-      const notificationTitle =
-        isClaimedByOther
-          ? "Запрос уже взят в работу"
-          : candidate.kind === "request"
-          ? `Новый запрос: ${candidate.title || "поставщик"}`
-          : `Менеджер: ${candidate.title || "диалог"}`;
+      let notificationTitle = `Менеджер: ${candidate.title || "диалог"}`;
+      if (isClaimedByOther) {
+        notificationTitle = "Запрос уже взят в работу";
+      } else if (candidate.kind === "resume") {
+        notificationTitle = "Вы снова в чате";
+      } else if (candidate.kind === "request") {
+        notificationTitle = `Новый запрос: ${candidate.title || "поставщик"}`;
+      }
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`

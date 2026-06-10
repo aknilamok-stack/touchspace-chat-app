@@ -63,7 +63,7 @@ type SupplierNotificationCandidate = {
   waitSeconds: number;
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
-  kind: 'message' | 'request';
+  kind: 'message' | 'request' | 'resume';
 };
 
 type SupplierNotificationRequestRecord = {
@@ -1441,6 +1441,45 @@ export class NotificationsService {
         ticket.clientName?.trim() ||
         request.supplierName?.trim() ||
         'Диалог с клиентом';
+      const lastResumedAt = syncState.lastResumedAt
+        ? new Date(syncState.lastResumedAt)
+        : null;
+      const lastPausedAt = syncState.lastPausedAt
+        ? new Date(syncState.lastPausedAt)
+        : null;
+      const wasRecentlyResumed = Boolean(
+        lastResumedAt &&
+        Number.isFinite(lastResumedAt.getTime()) &&
+        (!lastPausedAt || lastResumedAt.getTime() > lastPausedAt.getTime()) &&
+        Date.now() - lastResumedAt.getTime() >= 0 &&
+        Date.now() - lastResumedAt.getTime() <= 30_000,
+      );
+      const lastResumedAtIso = lastResumedAt?.toISOString() ?? null;
+
+      if (
+        wasRecentlyResumed &&
+        request.assignedSupplierProfileId === profile.id &&
+        profile.notifySupplierChats
+      ) {
+        items.push({
+          notificationKey: `supplier-resumed:${request.id}:${lastResumedAtIso}`,
+          ticketId: request.ticketId,
+          requestId: request.id,
+          title,
+          messageId: `supplier-resumed:${request.id}:${lastResumedAtIso}`,
+          messageText: 'Вы снова в чате',
+          createdAt: lastResumedAt ?? new Date(),
+          senderType: null,
+          tradePointName: ticket.tradePointName?.trim() || null,
+          avatarColor: ticket.avatarColor,
+          avatarEmoji: ticket.avatarEmoji,
+          scopeStatus: 'owned_active',
+          waitSeconds: 0,
+          assignedSupplierProfileId: request.assignedSupplierProfileId,
+          assignedSupplierProfileName: request.assignedSupplierProfileName,
+          kind: 'resume',
+        });
+      }
 
       if (!request.assignedSupplierProfileId) {
         if (!profile.notifySupplierRequests) {

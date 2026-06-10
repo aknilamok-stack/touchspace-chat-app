@@ -4235,7 +4235,7 @@ export default function Home() {
         message:
           action === "resume"
             ? "Поставщик снова может писать в чат"
-            : "Вход поставщика отложен на 2 минуты",
+            : "Вход поставщика отложен на 90 секунд",
         tone: "info",
       });
     } catch (error) {

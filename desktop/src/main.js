@@ -357,9 +357,12 @@ function buildManagerNotificationPayload(candidate) {
 function buildSupplierNotificationPayload(candidate) {
   const isClaimedByOther = candidate?.scopeStatus === "claimed_by_other_recently";
   const isRequest = candidate?.kind === "request";
+  const isResume = candidate?.kind === "resume";
   const isClientMessage = candidate?.senderType === "client";
   const title = isClaimedByOther
     ? "Запрос уже взят в работу"
+    : isResume
+      ? "Вы снова в чате"
     : isRequest
       ? `Новый запрос: ${candidate?.title || "поставщик"}`
       : isClientMessage
@@ -373,7 +376,9 @@ function buildSupplierNotificationPayload(candidate) {
     candidate?.scopeStatus === "missed_unclaimed"
       ? "Пропущенный запрос более 10 минут"
       : candidate?.scopeStatus === "owned_active"
-        ? isRequest
+        ? isResume
+          ? "Live-диалог снова доступен"
+          : isRequest
           ? "Новый supplier request"
           : "Новое сообщение в вашем диалоге"
         : Number(candidate?.waitSeconds) > 0

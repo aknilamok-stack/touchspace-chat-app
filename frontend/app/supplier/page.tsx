@@ -179,7 +179,7 @@ type SupplierNotificationCandidate = {
   waitSeconds: number;
   assignedSupplierProfileId?: string | null;
   assignedSupplierProfileName?: string | null;
-  kind: "message" | "request" | "direct";
+  kind: "message" | "request" | "direct" | "resume";
 };
 
 const mergeSupplierNotificationCandidates = (
@@ -2267,14 +2267,16 @@ export default function SupplierPage() {
     (candidate: SupplierNotificationCandidate) => {
       const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
       const isDirectManagerDialog = candidate.kind === "direct";
-      const notificationTitle =
-        isClaimedByOther
-          ? "Запрос уже взят в работу"
-          : candidate.kind === "request"
-          ? `Новый запрос: ${candidate.title || "поставщик"}`
-          : candidate.senderType === "client"
-            ? `Клиент: ${candidate.title || "диалог"}`
-            : `Менеджер: ${candidate.title || "диалог"}`;
+      let notificationTitle = `Менеджер: ${candidate.title || "диалог"}`;
+      if (isClaimedByOther) {
+        notificationTitle = "Запрос уже взят в работу";
+      } else if (candidate.kind === "resume") {
+        notificationTitle = "Вы снова в чате";
+      } else if (candidate.kind === "request") {
+        notificationTitle = `Новый запрос: ${candidate.title || "поставщик"}`;
+      } else if (candidate.senderType === "client") {
+        notificationTitle = `Клиент: ${candidate.title || "диалог"}`;
+      }
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`
@@ -3614,16 +3616,18 @@ export default function SupplierPage() {
         return;
       }
 
-      const notificationTitle =
-        isClaimedByOther
-          ? "Запрос уже взят в работу"
-          : isDirectManagerDialog
-            ? `Менеджер: ${candidate.title || "диалог"}`
-          : candidate.kind === "request"
-          ? `Новый запрос: ${candidate.title || "поставщик"}`
-          : candidate.senderType === "client"
-            ? `Клиент: ${candidate.title || "диалог"}`
-            : `Менеджер: ${candidate.title || "диалог"}`;
+      let notificationTitle = `Менеджер: ${candidate.title || "диалог"}`;
+      if (isClaimedByOther) {
+        notificationTitle = "Запрос уже взят в работу";
+      } else if (isDirectManagerDialog) {
+        notificationTitle = `Менеджер: ${candidate.title || "диалог"}`;
+      } else if (candidate.kind === "resume") {
+        notificationTitle = "Вы снова в чате";
+      } else if (candidate.kind === "request") {
+        notificationTitle = `Новый запрос: ${candidate.title || "поставщик"}`;
+      } else if (candidate.senderType === "client") {
+        notificationTitle = `Клиент: ${candidate.title || "диалог"}`;
+      }
       const notificationBody =
         candidate.messageText.length > 80
           ? `${candidate.messageText.slice(0, 80)}...`

@@ -124,6 +124,11 @@ function readDesktopAuthSessionJson() {
   }
 }
 
+function getDesktopSessionRole() {
+  const session = readDesktopAuthSessionJson();
+  return typeof session?.role === "string" ? session.role : "";
+}
+
 function getDesktopManagerProfileId() {
   const session = readDesktopAuthSessionJson();
   const role = typeof session?.role === "string" ? session.role : "";
@@ -146,6 +151,36 @@ function getDesktopManagerName() {
     (typeof session?.managerName === "string" && session.managerName.trim()) ||
     (typeof session?.fullName === "string" && session.fullName.trim()) ||
     "Менеджер"
+  );
+}
+
+function getDesktopSupplierProfileId() {
+  const session = readDesktopAuthSessionJson();
+  const role = typeof session?.role === "string" ? session.role : "";
+
+  if (role !== "supplier" && role !== "supplier_supervisor") {
+    return "";
+  }
+
+  return (
+    (typeof session.userId === "string" && session.userId.trim()) ||
+    (typeof session.supplierId === "string" && session.supplierId.trim()) ||
+    ""
+  );
+}
+
+function getDesktopSupplierScopeId() {
+  const session = readDesktopAuthSessionJson();
+  const role = typeof session?.role === "string" ? session.role : "";
+
+  if (role !== "supplier" && role !== "supplier_supervisor") {
+    return "";
+  }
+
+  return (
+    (typeof session.supplierId === "string" && session.supplierId.trim()) ||
+    (typeof session.userId === "string" && session.userId.trim()) ||
+    ""
   );
 }
 
@@ -319,6 +354,64 @@ function buildManagerNotificationPayload(candidate) {
   };
 }
 
+function buildSupplierNotificationPayload(candidate) {
+  const isClaimedByOther = candidate?.scopeStatus === "claimed_by_other_recently";
+  const isRequest = candidate?.kind === "request";
+  const isClientMessage = candidate?.senderType === "client";
+  const title = isClaimedByOther
+    ? "Запрос уже взят в работу"
+    : isRequest
+      ? `Новый запрос: ${candidate?.title || "поставщик"}`
+      : isClientMessage
+        ? `Клиент: ${candidate?.title || "диалог"}`
+        : `Менеджер: ${candidate?.title || "диалог"}`;
+  const body =
+    typeof candidate?.messageText === "string" && candidate.messageText.length > 80
+      ? `${candidate.messageText.slice(0, 80)}...`
+      : String(candidate?.messageText || "");
+  const metaLabel =
+    candidate?.scopeStatus === "missed_unclaimed"
+      ? "Пропущенный запрос более 10 минут"
+      : candidate?.scopeStatus === "owned_active"
+        ? isRequest
+          ? "Новый supplier request"
+          : "Новое сообщение в вашем диалоге"
+        : Number(candidate?.waitSeconds) > 0
+          ? `Ожидание ${Math.floor(Number(candidate.waitSeconds) / 60)} мин ${
+              Number(candidate.waitSeconds) % 60
+            } сек`
+          : "";
+  const primaryLabel = isClaimedByOther
+    ? "Открыть"
+    : candidate?.scopeStatus === "new_unclaimed" ||
+        candidate?.scopeStatus === "missed_unclaimed"
+      ? "Взять в работу"
+      : "Ответить";
+
+  return {
+    title,
+    body,
+    url: candidate?.requestId
+      ? `/supplier?request=${candidate.requestId}`
+      : candidate?.ticketId
+        ? `/supplier?ticket=${candidate.ticketId}`
+        : "/supplier",
+    subtitle: "",
+    metaLabel,
+    primaryLabel,
+    secondaryLabel: "Позже",
+    header: "Входящее сообщение",
+    ticketId: candidate?.ticketId,
+    requestId: candidate?.requestId,
+    scopeStatus: candidate?.requestId ? "supplier_request" : candidate?.scopeStatus,
+    avatarEmoji: candidate?.avatarEmoji || "",
+    avatarColor: candidate?.avatarColor || "",
+    tone: isClaimedByOther ? "amber" : "blue",
+    tag: candidate?.notificationKey,
+    messageId: candidate?.messageId,
+  };
+}
+
 async function pollDesktopManagerNotifications() {
   if (
     isDesktopNotificationPollInFlight ||
@@ -408,12 +501,104 @@ async function pollDesktopManagerNotifications() {
   }
 }
 
+async function pollDesktopSupplierNotifications() {
+  if (
+    isDesktopNotificationPollInFlight ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    typeof fetch !== "function"
+  ) {
+    return;
+  }
+
+  const profileId = getDesktopSupplierProfileId();
+  const supplierId = getDesktopSupplierScopeId();
+
+  if (!profileId || !supplierId) {
+    return;
+  }
+
+  isDesktopNotificationPollInFlight = true;
+
+  try {
+    const shouldShowOverlay = isMainWindowInBackground();
+    const response = await fetch(
+      `${getDesktopApiBaseUrl()}/notifications/supplier-candidates?profileId=${encodeURIComponent(
+        profileId,
+      )}&supplierId=${encodeURIComponent(supplierId)}`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    const candidates = Array.isArray(payload?.items) ? payload.items : [];
+    const activeKeys = new Set();
+    const actionableCandidates = candidates.filter(
+      (candidate) => candidate?.scopeStatus !== "claimed_by_other_recently",
+    );
+    const unreadCount = Math.max(actionableCandidates.length, 1);
+
+    candidates.forEach((candidate) => {
+      const notificationKey =
+        typeof candidate?.notificationKey === "string" ? candidate.notificationKey : "";
+      const messageId = typeof candidate?.messageId === "string" ? candidate.messageId : "";
+
+      if (!notificationKey || !messageId) {
+        return;
+      }
+
+      activeKeys.add(notificationKey);
+
+      if (candidate.scopeStatus === "claimed_by_other_recently") {
+        setLastBackgroundNotificationState(notificationKey, messageId);
+        return;
+      }
+
+      if (!shouldShowOverlay) {
+        return;
+      }
+
+      const lastNotificationState = getLastBackgroundNotificationState(notificationKey);
+
+      if (
+        lastNotificationState.messageId === messageId &&
+        Date.now() - lastNotificationState.shownAt < repeatedNotificationIntervalMs
+      ) {
+        return;
+      }
+
+      setLastBackgroundNotificationState(notificationKey, messageId);
+      showOverlayNotificationWindow(buildSupplierNotificationPayload(candidate), unreadCount);
+    });
+
+    Array.from(lastBackgroundNotificationMessageByKey.keys()).forEach((key) => {
+      if (!activeKeys.has(key)) {
+        lastBackgroundNotificationMessageByKey.delete(key);
+      }
+    });
+  } catch {
+    return;
+  } finally {
+    isDesktopNotificationPollInFlight = false;
+  }
+}
+
 function startDesktopNotificationPolling() {
   if (desktopNotificationPollInterval) {
     return;
   }
 
   desktopNotificationPollInterval = setInterval(() => {
+    const role = getDesktopSessionRole();
+
+    if (role === "supplier" || role === "supplier_supervisor") {
+      void pollDesktopSupplierNotifications();
+      return;
+    }
+
     void pollDesktopManagerNotifications();
   }, 1000);
 }

@@ -5373,6 +5373,7 @@ export default function SupplierPage() {
                           setHoveredHeaderAction(null);
                           setIsChatPaneDismissed(true);
                           setSelectedRequestId("");
+                          setSelectedManagerTicketId("");
                           setReplyTarget(null);
                           setShowQuickReplies(false);
                           setShowEmojiPicker(false);

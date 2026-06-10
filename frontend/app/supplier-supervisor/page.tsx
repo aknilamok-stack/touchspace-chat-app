@@ -38,7 +38,6 @@ import {
 import { playNotificationSound } from "@/lib/notification-sound";
 import {
   isDesktopShell,
-  shouldShowDesktopBackgroundNotification,
   showDesktopShellNotification,
 } from "@/lib/runtime";
 
@@ -1849,10 +1848,6 @@ export default function SupplierPage() {
         : "/supplier";
 
     if (isDesktopShell()) {
-      if (!shouldShowDesktopBackgroundNotification()) {
-        return;
-      }
-
       await showDesktopShellNotification({
         title,
         body,

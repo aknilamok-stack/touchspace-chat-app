@@ -41,7 +41,6 @@ import {
 import { playNotificationSound } from "@/lib/notification-sound";
 import {
   isDesktopShell,
-  shouldShowDesktopBackgroundNotification,
   showDesktopShellNotification,
 } from "@/lib/runtime";
 
@@ -286,6 +285,8 @@ type NotificationCandidate = {
   title: string;
   clientName: string | null;
   tradePointName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   messageId: string;
   messageText: string;
   createdAt: string;
@@ -1440,10 +1441,6 @@ export default function Home() {
       options?.ticketId ? `/?ticket=${options.ticketId}` : activeChatId ? `/?ticket=${activeChatId}` : "/";
 
     if (isDesktopShell()) {
-      if (!shouldShowDesktopBackgroundNotification()) {
-        return;
-      }
-
       await showDesktopShellNotification({
         title,
         body,
@@ -2090,13 +2087,20 @@ export default function Home() {
     [getSupplierPresenceContactName]
   );
   const getDirectSupplierNotificationTitle = useCallback(
-    (candidate: Pick<NotificationCandidate, "title" | "tradePointName" | "clientName">) => {
+    (
+      candidate: Pick<
+        NotificationCandidate,
+        "title" | "tradePointName" | "clientName" | "supplierCompanyName" | "supplierContactName"
+      >
+    ) => {
       const companyName =
+        candidate.supplierCompanyName?.trim() ||
         candidate.tradePointName?.trim() ||
         candidate.title?.trim() ||
         candidate.clientName?.trim() ||
         "Поставщик";
-      const contactName = getSupplierPresenceContactName({
+      const candidateContactName = candidate.supplierContactName?.trim();
+      const contactName = candidateContactName || getSupplierPresenceContactName({
         supplierId: null,
         supplierCompanyName: companyName,
         supplierName: companyName,

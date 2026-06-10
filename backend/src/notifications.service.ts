@@ -24,6 +24,8 @@ type ManagerNotificationCandidate = {
   title: string;
   clientName: string | null;
   tradePointName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   messageId: string;
   messageText: string;
   createdAt: Date;
@@ -91,6 +93,22 @@ type SupplierNotificationRequestRecord = {
     supplierId?: string | null;
     supplierName?: string | null;
   } | null;
+};
+
+const GENERIC_SUPPLIER_CONTACT_NAMES = new Set(['поставщик', 'supplier']);
+
+const isSpecificSupplierContactName = (
+  name?: string | null,
+  companyName?: string | null,
+) => {
+  const normalizedName = name?.trim().toLowerCase();
+  const normalizedCompanyName = companyName?.trim().toLowerCase();
+
+  return Boolean(
+    normalizedName &&
+    !GENERIC_SUPPLIER_CONTACT_NAMES.has(normalizedName) &&
+    normalizedName !== normalizedCompanyName,
+  );
 };
 
 @Injectable()
@@ -656,6 +674,7 @@ export class NotificationsService {
           status: true,
           clientName: true,
           tradePointName: true,
+          supplierId: true,
           supplierName: true,
           conversationMode: true,
           assignedManagerId: true,
@@ -682,6 +701,14 @@ export class NotificationsService {
               id: true,
               content: true,
               senderType: true,
+              senderProfile: {
+                select: {
+                  id: true,
+                  supplierId: true,
+                  companyName: true,
+                  fullName: true,
+                },
+              },
               status: true,
               createdAt: true,
             },
@@ -751,6 +778,103 @@ export class NotificationsService {
       return accumulator;
     }, {});
 
+    const directSupplierIds = [
+      ...new Set(
+        tickets
+          .filter((ticket) => ticket.conversationMode === 'direct_supplier')
+          .map((ticket) => ticket.supplierId?.trim())
+          .filter((supplierId): supplierId is string => Boolean(supplierId)),
+      ),
+    ];
+    const directSupplierNames = [
+      ...new Set(
+        tickets
+          .filter((ticket) => ticket.conversationMode === 'direct_supplier')
+          .map((ticket) => ticket.supplierName?.trim())
+          .filter((supplierName): supplierName is string =>
+            Boolean(supplierName),
+          ),
+      ),
+    ];
+    const directSupplierProfiles =
+      directSupplierIds.length > 0 || directSupplierNames.length > 0
+        ? await this.prisma.profile.findMany({
+            where: {
+              isActive: true,
+              approvalStatus: {
+                not: 'rejected',
+              },
+              role: {
+                in: ['supplier', 'supplier_supervisor'],
+              },
+              OR: [
+                ...(directSupplierIds.length > 0
+                  ? [
+                      { id: { in: directSupplierIds } },
+                      { supplierId: { in: directSupplierIds } },
+                    ]
+                  : []),
+                ...(directSupplierNames.length > 0
+                  ? [{ companyName: { in: directSupplierNames } }]
+                  : []),
+              ],
+            },
+            select: {
+              id: true,
+              supplierId: true,
+              companyName: true,
+              fullName: true,
+              role: true,
+              createdAt: true,
+            },
+            orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+          })
+        : [];
+    const directSupplierProfilesByScope = new Map<
+      string,
+      (typeof directSupplierProfiles)[number]
+    >();
+    const directSupplierProfilesByCompany = new Map<
+      string,
+      (typeof directSupplierProfiles)[number]
+    >();
+
+    for (const supplierProfile of directSupplierProfiles) {
+      for (const scopeKey of [supplierProfile.id, supplierProfile.supplierId]) {
+        const normalizedScopeKey = scopeKey?.trim();
+
+        if (
+          normalizedScopeKey &&
+          !directSupplierProfilesByScope.has(normalizedScopeKey)
+        ) {
+          directSupplierProfilesByScope.set(
+            normalizedScopeKey,
+            supplierProfile,
+          );
+        }
+      }
+
+      const companyName = supplierProfile.companyName?.trim();
+      const existingCompanyProfile = companyName
+        ? directSupplierProfilesByCompany.get(companyName)
+        : null;
+
+      if (
+        companyName &&
+        (!existingCompanyProfile ||
+          (!isSpecificSupplierContactName(
+            existingCompanyProfile.fullName,
+            companyName,
+          ) &&
+            isSpecificSupplierContactName(
+              supplierProfile.fullName,
+              companyName,
+            )))
+      ) {
+        directSupplierProfilesByCompany.set(companyName, supplierProfile);
+      }
+    }
+
     const items = tickets
       .map((ticket) => {
         const latestUnreadMessage = ticket.messages[0];
@@ -815,19 +939,59 @@ export class NotificationsService {
           }
         }
 
+        const directSupplierProfile =
+          isDirectSupplierDialog && ticket.supplierId
+            ? directSupplierProfilesByScope.get(ticket.supplierId)
+            : null;
+        const directSupplierCompanyName = isDirectSupplierDialog
+          ? ticket.supplierName?.trim() ||
+            latestUnreadMessage.senderProfile?.companyName?.trim() ||
+            directSupplierProfile?.companyName?.trim() ||
+            (ticket.supplierName
+              ? directSupplierProfilesByCompany
+                  .get(ticket.supplierName)
+                  ?.companyName?.trim()
+              : null) ||
+            'Поставщик'
+          : null;
+        const directSupplierContactName =
+          isDirectSupplierDialog &&
+          isSpecificSupplierContactName(
+            latestUnreadMessage.senderProfile?.fullName,
+            directSupplierCompanyName,
+          )
+            ? latestUnreadMessage.senderProfile?.fullName?.trim()
+            : isDirectSupplierDialog &&
+                isSpecificSupplierContactName(
+                  directSupplierProfile?.fullName,
+                  directSupplierCompanyName,
+                )
+              ? directSupplierProfile?.fullName?.trim()
+              : null;
+        const directSupplierTitle =
+          isDirectSupplierDialog && directSupplierContactName
+            ? `${directSupplierContactName}/${directSupplierCompanyName}`
+            : directSupplierCompanyName;
+
         const candidate: ManagerNotificationCandidate = {
           notificationKey: `ticket:${ticket.id}:${latestUnreadMessage.id}`,
           ticketId: ticket.id,
           title:
             (isDirectSupplierDialog
-              ? ticket.supplierName?.trim()
+              ? directSupplierTitle
               : ticket.title?.trim() || ticket.clientName?.trim()) || 'Клиент',
           clientName: isDirectSupplierDialog
-            ? ticket.supplierName?.trim() || null
+            ? directSupplierTitle || null
             : ticket.clientName?.trim() || null,
           tradePointName: isDirectSupplierDialog
-            ? ticket.supplierName?.trim() || null
+            ? directSupplierTitle
             : ticket.tradePointName?.trim() || null,
+          supplierCompanyName: isDirectSupplierDialog
+            ? directSupplierCompanyName
+            : null,
+          supplierContactName: isDirectSupplierDialog
+            ? directSupplierContactName
+            : null,
           messageId: latestUnreadMessage.id,
           messageText: latestUnreadMessage.content,
           createdAt: latestUnreadMessage.createdAt,
@@ -1017,7 +1181,11 @@ export class NotificationsService {
       });
 
     return {
-      items: [...items, ...supplierResumeRequests, ...recentlyClaimedByOther].sort(
+      items: [
+        ...items,
+        ...supplierResumeRequests,
+        ...recentlyClaimedByOther,
+      ].sort(
         (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
       ),
     };

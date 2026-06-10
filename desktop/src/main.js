@@ -254,9 +254,17 @@ function setLastBackgroundNotificationState(notificationKey, messageId) {
 function buildManagerNotificationPayload(candidate) {
   const isDirectSupplierDialog = candidate?.conversationMode === "direct_supplier";
   const isClaimedByOther = candidate?.scopeStatus === "claimed_by_other_recently";
+  const directSupplierTitle =
+    isDirectSupplierDialog && candidate?.supplierContactName && candidate?.supplierCompanyName
+      ? `${candidate.supplierContactName}/${candidate.supplierCompanyName}`
+      : isDirectSupplierDialog
+        ? candidate?.title || candidate?.tradePointName || candidate?.clientName
+        : "";
   const title =
     isClaimedByOther
       ? "Чат уже взят в работу"
+      : directSupplierTitle
+        ? directSupplierTitle
       : candidate?.tradePointName?.trim() ||
         candidate?.title ||
         candidate?.clientName ||

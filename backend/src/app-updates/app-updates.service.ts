@@ -166,6 +166,7 @@ export class AppUpdatesService {
 
     return {
       updateAvailable,
+      shouldNotify: updateAvailable && Boolean(update.notifiedAt),
       required: update.required && updateAvailable,
       currentVersion,
       latestVersion: update.latestVersion,

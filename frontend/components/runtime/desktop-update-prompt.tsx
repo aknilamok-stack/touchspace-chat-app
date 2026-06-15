@@ -6,6 +6,7 @@ import { readDesktopRuntimeMeta } from "@/lib/runtime";
 
 type DesktopUpdatePayload = {
   updateAvailable: boolean;
+  shouldNotify?: boolean;
   required: boolean;
   currentVersion: string;
   latestVersion: string;
@@ -69,6 +70,7 @@ export function DesktopUpdatePrompt() {
 
       if (
         payload.updateAvailable &&
+        (force || payload.shouldNotify || payload.required) &&
         (force || payload.required || dismissedToken !== payload.notificationToken)
       ) {
         setUpdate(payload);

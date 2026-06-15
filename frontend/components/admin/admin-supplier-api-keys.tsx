@@ -43,12 +43,17 @@ https://chat.touchspace.biz/api/external/supplier
 Заголовок для всех запросов:
 Authorization: Bearer ${apiKey}
 
-Примеры:
-GET /employees
-GET /analytics?dateFrom=2026-06-01&dateTo=2026-06-15
-GET /analytics/employees?dateFrom=2026-06-01&dateTo=2026-06-15
-GET /dialogs?dateFrom=2026-06-01&dateTo=2026-06-15
-GET /dialogs/{dialogId}/messages`;
+Доступные запросы:
+GET /api/external/supplier/employees
+GET /api/external/supplier/analytics
+GET /api/external/supplier/analytics/employees
+GET /api/external/supplier/dialogs
+GET /api/external/supplier/dialogs/{dialogId}/messages
+
+Примеры с периодом:
+GET /api/external/supplier/analytics?dateFrom=2026-06-01&dateTo=2026-06-15
+GET /api/external/supplier/analytics/employees?dateFrom=2026-06-01&dateTo=2026-06-15
+GET /api/external/supplier/dialogs?dateFrom=2026-06-01&dateTo=2026-06-15`;
 
 export function AdminSupplierApiKeys() {
   const [payload, setPayload] = useState<{
@@ -66,6 +71,7 @@ export function AdminSupplierApiKeys() {
     apiKey: string;
     supplierCompanyName: string;
   }>(null);
+  const [instructionOpen, setInstructionOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
@@ -127,6 +133,7 @@ export function AdminSupplierApiKeys() {
         apiKey: result.apiKey,
         supplierCompanyName: result.item.supplierCompanyName,
       });
+      setInstructionOpen(false);
       setMessage("API-ключ создан. Скопируй его сейчас, потом он целиком не показывается.");
       setForm((current) => ({ ...current, name: "" }));
       await loadKeys();
@@ -193,14 +200,9 @@ export function AdminSupplierApiKeys() {
             <AdminButton
               type="button"
               tone="secondary"
-              onClick={() =>
-                void copyText(
-                  buildInstruction(createdKey.apiKey),
-                  "Инструкция для Битрикса скопирована",
-                )
-              }
+              onClick={() => setInstructionOpen(true)}
             >
-              Скопировать инструкцию
+              Открыть инструкцию
             </AdminButton>
           </div>
         </section>
@@ -334,6 +336,56 @@ export function AdminSupplierApiKeys() {
           }}
         />
       </section>
+      {instructionOpen && createdKey ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Инструкция для Битрикса
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-slate-950">
+                  API поставщика {createdKey.supplierCompanyName}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Передайте поставщику этот текст. Ключ дает доступ только к данным его компании.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInstructionOpen(false)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-2xl leading-none text-slate-500 transition hover:bg-slate-100"
+                aria-label="Закрыть инструкцию"
+              >
+                ×
+              </button>
+            </div>
+            <pre className="mt-5 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-950 p-4 font-mono text-sm leading-6 text-slate-50">
+              {buildInstruction(createdKey.apiKey)}
+            </pre>
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <AdminButton
+                type="button"
+                tone="secondary"
+                onClick={() => setInstructionOpen(false)}
+              >
+                Закрыть
+              </AdminButton>
+              <AdminButton
+                type="button"
+                onClick={() =>
+                  void copyText(
+                    buildInstruction(createdKey.apiKey),
+                    "Инструкция для Битрикса скопирована",
+                  )
+                }
+              >
+                Скопировать
+              </AdminButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AdminPage>
   );
 }

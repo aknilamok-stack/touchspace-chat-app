@@ -116,6 +116,17 @@ export const adminApi = {
     adminRequest<any>(`/admin/users/${id}`, {
       method: "DELETE",
     }),
+  getSupplierApiKeys: () =>
+    adminRequest<any>("/admin/supplier-api/keys"),
+  createSupplierApiKey: (payload: Record<string, unknown>) =>
+    adminRequest<any>("/admin/supplier-api/keys", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  revokeSupplierApiKey: (id: string) =>
+    adminRequest<any>(`/admin/supplier-api/keys/${id}/revoke`, {
+      method: "PATCH",
+    }),
   getDialogs: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/dialogs", undefined, query),
   getDialog: (id: string, query?: Record<string, QueryValue>) =>

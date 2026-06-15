@@ -13,6 +13,7 @@ import {
 const navigation = [
   { href: "/admin", label: "Главная" },
   { href: "/admin/users", label: "Пользователи и доступы" },
+  { href: "/admin/supplier-api", label: "API поставщиков" },
   { href: "/admin/dialogs", label: "Диалоги" },
   { href: "/admin/analytics", label: "Общая аналитика" },
   { href: "/admin/analytics/insights", label: "Инсайты" },

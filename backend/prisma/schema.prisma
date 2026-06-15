@@ -81,6 +81,25 @@ model AdminEvent {
   @@index([targetProfileId, createdAt])
 }
 
+model SupplierApiKey {
+  id                  String    @id @default(cuid())
+  name                String
+  supplierScopeId     String
+  supplierCompanyName String
+  keyHash             String    @unique
+  keyPreview          String
+  permissions         Json
+  isActive            Boolean   @default(true)
+  lastUsedAt          DateTime?
+  revokedAt           DateTime?
+  createdByAdminId    String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([supplierScopeId, isActive])
+  @@index([createdAt])
+}
+
 model Ticket {
   id                       String    @id @default(cuid())
   title                    String

@@ -18,6 +18,8 @@ import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
 import { PushController } from './push.controller';
 import { PushService } from './push.service';
+import { SupplierApiController } from './supplier-api/supplier-api.controller';
+import { SupplierApiService } from './supplier-api/supplier-api.service';
 import { SupplierRequestsModule } from './supplier-requests/supplier-requests.module';
 import { SupervisorsController } from './supervisors.controller';
 import { SupervisorsService } from './supervisors.service';
@@ -42,6 +44,7 @@ import { TypingService } from './typing.service';
     SupervisorsController,
     TicketsController,
     MessagesController,
+    SupplierApiController,
   ],
   providers: [
     AppService,
@@ -57,6 +60,7 @@ import { TypingService } from './typing.service';
     TicketsService,
     MessagesService,
     TypingService,
+    SupplierApiService,
   ],
 })
 export class AppModule {}

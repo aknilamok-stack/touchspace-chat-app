@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { AdminGuard } from './admin.guard';
 import { AdminAiService } from './admin-ai.service';
 import { AdminService } from './admin.service';
+import { SupplierApiService } from '../supplier-api/supplier-api.service';
 
 type AdminRequest = Request & {
   adminContext?: {
@@ -28,6 +29,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly adminAiService: AdminAiService,
+    private readonly supplierApiService: SupplierApiService,
   ) {}
 
   @Get('overview')
@@ -158,6 +160,31 @@ export class AdminController {
   @Delete('users/:id')
   deleteUser(@Req() request: AdminRequest, @Param('id') id: string) {
     return this.adminService.deleteUser(id, request.adminContext);
+  }
+
+  @Get('supplier-api/keys')
+  getSupplierApiKeys() {
+    return this.supplierApiService.listKeys();
+  }
+
+  @Post('supplier-api/keys')
+  createSupplierApiKey(
+    @Req() request: AdminRequest,
+    @Body()
+    body: {
+      name?: string;
+      supplierScopeId?: string;
+    },
+  ) {
+    return this.supplierApiService.createKey({
+      ...body,
+      createdByAdminId: request.adminContext?.adminId,
+    });
+  }
+
+  @Patch('supplier-api/keys/:id/revoke')
+  revokeSupplierApiKey(@Param('id') id: string) {
+    return this.supplierApiService.revokeKey(id);
   }
 
   @Get('dialogs')

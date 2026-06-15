@@ -73,11 +73,7 @@ export class AppUpdatesService {
   ) {
     const normalizedPlatform = platform?.trim().toLowerCase() || '';
 
-    if (
-      normalizedPlatform.includes('win') ||
-      normalizedPlatform === 'windows' ||
-      normalizedPlatform === 'win32'
-    ) {
+    if (normalizedPlatform === 'win32' || normalizedPlatform === 'windows') {
       return update.windowsUrl;
     }
 

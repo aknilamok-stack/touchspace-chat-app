@@ -11,10 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { AppUpdatesService } from '../app-updates/app-updates.service';
+import { SupplierApiService } from '../supplier-api/supplier-api.service';
 import { AdminGuard } from './admin.guard';
 import { AdminAiService } from './admin-ai.service';
 import { AdminService } from './admin.service';
-import { SupplierApiService } from '../supplier-api/supplier-api.service';
 
 type AdminRequest = Request & {
   adminContext?: {
@@ -30,6 +31,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly adminAiService: AdminAiService,
     private readonly supplierApiService: SupplierApiService,
+    private readonly appUpdatesService: AppUpdatesService,
   ) {}
 
   @Get('overview')
@@ -185,6 +187,32 @@ export class AdminController {
   @Patch('supplier-api/keys/:id/revoke')
   revokeSupplierApiKey(@Param('id') id: string) {
     return this.supplierApiService.revokeKey(id);
+  }
+
+  @Get('app-updates/desktop')
+  getDesktopAppUpdate() {
+    return this.appUpdatesService.getDesktopUpdateForAdmin();
+  }
+
+  @Patch('app-updates/desktop')
+  updateDesktopAppUpdate(
+    @Req() request: AdminRequest,
+    @Body()
+    body: {
+      latestVersion?: string;
+      macUrl?: string;
+      windowsUrl?: string;
+      title?: string;
+      message?: string;
+      releaseNotes?: string | null;
+      required?: boolean;
+      notifyNow?: boolean;
+    },
+  ) {
+    return this.appUpdatesService.updateDesktopUpdate({
+      ...body,
+      createdByAdminId: request.adminContext?.adminId,
+    });
   }
 
   @Get('dialogs')

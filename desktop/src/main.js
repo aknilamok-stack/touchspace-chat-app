@@ -11,6 +11,7 @@ const {
 } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const packageInfo = require("../package.json");
 
 process.env.ELECTRON_IS_PACKAGED = app.isPackaged ? "true" : "false";
 
@@ -674,6 +675,12 @@ function createMenu() {
           label: "Открыть TouchSpace в браузере",
           click: () => void shell.openExternal(startUrl),
         },
+        {
+          label: "Проверить обновление",
+          click: () => {
+            mainWindow?.webContents.send("desktop:check-update");
+          },
+        },
       ],
     },
   ];
@@ -1165,6 +1172,7 @@ app.whenReady().then(() => {
     isPackaged: app.isPackaged,
     platform: process.platform,
     startUrl,
+    version: app.getVersion() || packageInfo.version || "0.1.0",
   }));
 
   ipcMain.handle("desktop:show-notification", async (_, payload) => {

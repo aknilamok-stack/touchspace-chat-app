@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AdminModule } from './admin/admin.module';
+import { AppUpdatesController } from './app-updates/app-updates.controller';
+import { AppUpdatesService } from './app-updates/app-updates.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthController } from './auth.controller';
@@ -45,6 +47,7 @@ import { TypingService } from './typing.service';
     TicketsController,
     MessagesController,
     SupplierApiController,
+    AppUpdatesController,
   ],
   providers: [
     AppService,
@@ -61,6 +64,7 @@ import { TypingService } from './typing.service';
     MessagesService,
     TypingService,
     SupplierApiService,
+    AppUpdatesService,
   ],
 })
 export class AppModule {}

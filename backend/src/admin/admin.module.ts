@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AppUpdatesService } from '../app-updates/app-updates.service';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../prisma.service';
 import { ProfilesService } from '../profiles.service';
@@ -15,6 +16,7 @@ import { AdminService } from './admin.service';
     AdminAiService,
     AdminGuard,
     AuthService,
+    AppUpdatesService,
     PrismaService,
     ProfilesService,
     SupplierApiService,

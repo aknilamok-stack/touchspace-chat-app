@@ -127,6 +127,13 @@ export const adminApi = {
     adminRequest<any>(`/admin/supplier-api/keys/${id}/revoke`, {
       method: "PATCH",
     }),
+  getDesktopAppUpdate: () =>
+    adminRequest<any>("/admin/app-updates/desktop"),
+  updateDesktopAppUpdate: (payload: Record<string, unknown>) =>
+    adminRequest<any>("/admin/app-updates/desktop", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   getDialogs: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/dialogs", undefined, query),
   getDialog: (id: string, query?: Record<string, QueryValue>) =>

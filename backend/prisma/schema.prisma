@@ -100,6 +100,22 @@ model SupplierApiKey {
   @@index([createdAt])
 }
 
+model DesktopAppUpdate {
+  id              String   @id @default("desktop")
+  latestVersion   String
+  macUrl          String
+  windowsUrl      String
+  title           String
+  message         String   @db.LongText
+  releaseNotes    String?  @db.LongText
+  required        Boolean  @default(false)
+  notificationToken String
+  createdByAdminId String?
+  notifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 model Ticket {
   id                       String    @id @default(cuid())
   title                    String

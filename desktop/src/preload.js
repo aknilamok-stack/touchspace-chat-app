@@ -172,6 +172,9 @@ contextBridge.exposeInMainWorld("touchspaceDesktop", {
   openExternal: async (url) => ipcRenderer.invoke("desktop:open-external", url),
   showNotification: async (payload) =>
     ipcRenderer.invoke("desktop:show-notification", payload),
+  onCheckForUpdate: (callback) => {
+    ipcRenderer.on("desktop:check-update", () => callback());
+  },
   clipboard: {
     readText: () => ipcRenderer.sendSync("desktop:clipboard:read-text"),
     writeText: (value) => ipcRenderer.sendSync("desktop:clipboard:write-text", value),

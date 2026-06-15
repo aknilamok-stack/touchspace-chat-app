@@ -3,6 +3,7 @@ export type DesktopRuntimeMeta = {
   isPackaged: boolean;
   platform: string;
   startUrl?: string;
+  version?: string;
 };
 
 export type DesktopShellNotificationPayload = {
@@ -32,6 +33,7 @@ declare global {
       getMeta: () => Promise<DesktopRuntimeMeta>;
       openExternal: (url: string) => Promise<boolean>;
       showNotification?: (payload: DesktopShellNotificationPayload) => Promise<boolean>;
+      onCheckForUpdate?: (callback: () => void) => void;
       clipboard?: {
         readText: () => string;
         writeText: (value: string) => boolean;

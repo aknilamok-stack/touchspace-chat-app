@@ -504,6 +504,21 @@
   var MAX_PANEL_HEIGHT = 820;
   var DESKTOP_GAP = 24;
   var MOBILE_GAP = 12;
+  var HELP_PROMPT_INITIAL_DELAY_MS =
+    Number(config.helpPromptInitialDelayMs) >= 0 ? Number(config.helpPromptInitialDelayMs) : 2500;
+  var HELP_PROMPT_AUTO_HIDE_MS =
+    Number(config.helpPromptAutoHideMs) > 0 ? Number(config.helpPromptAutoHideMs) : 30000;
+  var HELP_PROMPT_REPEAT_INTERVAL_MS =
+    Number(config.helpPromptRepeatIntervalMs) > 0
+      ? Number(config.helpPromptRepeatIntervalMs)
+      : 30 * 60 * 1000;
+  var helpPromptEnabled = config.helpPromptEnabled !== false;
+  var helpPromptText =
+    cleanValue(config.helpPromptText) ||
+    "👋 Нужна помощь? Я рядом. Напишите мне, если появятся вопросы!";
+  var helpPromptInitialTimer = null;
+  var helpPromptAutoHideTimer = null;
+  var helpPromptRepeatTimer = null;
 
   if (fallbackTradePointId) iframeUrl.searchParams.set("tradePointId", String(fallbackTradePointId));
   if (configuredTradePointExternalId) {
@@ -592,6 +607,11 @@
     ".touchspace-widget-launcher.is-pulsing img{animation:touchspace-widget-pulse 1.8s ease-in-out infinite;}",
     ".touchspace-widget-badge{position:absolute;right:6px;top:2px;display:none;min-width:24px;height:24px;padding:0 7px;border-radius:9999px;background:#ff453a;color:#fff;font:600 12px/24px Montserrat,ui-sans-serif,system-ui,sans-serif;box-shadow:0 10px 20px rgba(255,69,58,.35);}",
     ".touchspace-widget-badge.is-visible{display:inline-block;}",
+    ".touchspace-widget-help-prompt{position:absolute;right:16px;bottom:98px;display:none;width:320px;max-width:calc(100vw - 48px);padding:22px 58px 22px 26px;border:0;border-radius:22px;background:#2c2c2f;color:#fff;text-align:left;font:700 24px/1.35 Montserrat,ui-sans-serif,system-ui,sans-serif;letter-spacing:0;box-shadow:0 20px 48px rgba(0,0,0,.22);cursor:pointer;}",
+    ".touchspace-widget-help-prompt:after{content:\"\";position:absolute;right:52px;bottom:-17px;width:34px;height:34px;background:#2c2c2f;transform:rotate(45deg);border-radius:0 0 6px 0;}",
+    ".touchspace-widget-help-prompt.is-visible{display:block;}",
+    ".touchspace-widget-help-prompt-close{position:absolute;right:16px;top:16px;z-index:2;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:9999px;background:rgba(255,255,255,.12);color:#fff;font:700 24px/1 Arial,sans-serif;cursor:pointer;}",
+    ".touchspace-widget-help-prompt-close:hover{background:rgba(255,255,255,.2);}",
     ".touchspace-widget-panel{display:none;position:fixed;right:24px;bottom:24px;width:336px;height:496px;min-width:336px;min-height:496px;max-width:min(92vw,640px);max-height:min(88vh,820px);border:1px solid #dce3f0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.18);}",
     ".touchspace-widget-panel.is-open{display:block;}",
     ".touchspace-widget-panel iframe{width:100%;height:100%;border:0;background:#fff;}",
@@ -601,7 +621,7 @@
     ".touchspace-widget-dragger.is-dragging{cursor:grabbing;}",
     ".touchspace-widget-resize{position:absolute;left:8px;bottom:8px;z-index:4;width:20px;height:20px;cursor:nesw-resize;opacity:.82;background:linear-gradient(225deg,transparent 0 42%,#c6d4ee 42% 52%,transparent 52% 64%,#c6d4ee 64% 74%,transparent 74% 86%,#c6d4ee 86% 96%,transparent 96% 100%);}",
     "@keyframes touchspace-widget-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}",
-    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}}"
+    "@media (max-width: 640px){.touchspace-widget-root{right:12px;bottom:12px;left:12px}.touchspace-widget-panel{right:12px;bottom:12px;width:min(336px,calc(100vw - 24px));height:min(496px,78vh);min-width:0;min-height:0;max-width:none;max-height:none}.touchspace-widget-dragger,.touchspace-widget-resize{display:none}.touchspace-widget-launcher{margin-left:auto;display:flex;align-items:center;justify-content:center;}.touchspace-widget-help-prompt{right:0;bottom:96px;width:min(320px,calc(100vw - 24px));padding:18px 52px 18px 20px;border-radius:20px;font-size:20px}.touchspace-widget-help-prompt:after{right:42px}}"
   ].join("");
   document.head.appendChild(style);
 
@@ -660,6 +680,19 @@
 
   launcher.appendChild(launcherImage);
   launcher.appendChild(badge);
+
+  var helpPrompt = document.createElement("button");
+  helpPrompt.type = "button";
+  helpPrompt.className = "touchspace-widget-help-prompt";
+  helpPrompt.setAttribute("aria-label", "Открыть чат с поддержкой");
+  helpPrompt.textContent = helpPromptText;
+
+  var helpPromptClose = document.createElement("button");
+  helpPromptClose.type = "button";
+  helpPromptClose.className = "touchspace-widget-help-prompt-close";
+  helpPromptClose.setAttribute("aria-label", "Закрыть подсказку");
+  helpPromptClose.textContent = "×";
+  helpPrompt.appendChild(helpPromptClose);
 
   function isDesktopLayout() {
     return window.innerWidth > 640;
@@ -788,6 +821,64 @@
     launcher.classList.remove("is-pulsing");
   }
 
+  function clearHelpPromptAutoHideTimer() {
+    if (helpPromptAutoHideTimer) {
+      window.clearTimeout(helpPromptAutoHideTimer);
+      helpPromptAutoHideTimer = null;
+    }
+  }
+
+  function clearHelpPromptRepeatTimer() {
+    if (helpPromptRepeatTimer) {
+      window.clearTimeout(helpPromptRepeatTimer);
+      helpPromptRepeatTimer = null;
+    }
+  }
+
+  function scheduleHelpPromptRepeat() {
+    if (!helpPromptEnabled || HELP_PROMPT_REPEAT_INTERVAL_MS <= 0) {
+      return;
+    }
+
+    clearHelpPromptRepeatTimer();
+    helpPromptRepeatTimer = window.setTimeout(function () {
+      showHelpPrompt();
+    }, HELP_PROMPT_REPEAT_INTERVAL_MS);
+  }
+
+  function hideHelpPrompt(options) {
+    helpPrompt.classList.remove("is-visible");
+    clearHelpPromptAutoHideTimer();
+
+    if (!options || options.repeat !== false) {
+      scheduleHelpPromptRepeat();
+    }
+  }
+
+  function showHelpPrompt() {
+    if (!helpPromptEnabled || panel.classList.contains("is-open")) {
+      scheduleHelpPromptRepeat();
+      return;
+    }
+
+    clearHelpPromptRepeatTimer();
+    clearHelpPromptAutoHideTimer();
+    helpPrompt.classList.add("is-visible");
+    helpPromptAutoHideTimer = window.setTimeout(function () {
+      hideHelpPrompt();
+    }, HELP_PROMPT_AUTO_HIDE_MS);
+  }
+
+  function scheduleInitialHelpPrompt() {
+    if (!helpPromptEnabled) {
+      return;
+    }
+
+    helpPromptInitialTimer = window.setTimeout(function () {
+      showHelpPrompt();
+    }, HELP_PROMPT_INITIAL_DELAY_MS);
+  }
+
   function postVisibilityState() {
     if (!iframe.contentWindow) {
       return;
@@ -805,6 +896,7 @@
   function openWidget() {
     refreshPhoneFromDom({ reloadIframe: true });
     applyLayout(safeParseLayout());
+    hideHelpPrompt({ repeat: false });
     panel.classList.add("is-open");
     launcher.style.display = "none";
     setUnreadCount(0);
@@ -818,6 +910,12 @@
   }
 
   launcher.addEventListener("click", openWidget);
+  helpPrompt.addEventListener("click", openWidget);
+  helpPromptClose.addEventListener("click", function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    hideHelpPrompt();
+  });
   iframe.addEventListener("load", postVisibilityState);
   panelClose.addEventListener("click", function (event) {
     event.preventDefault();
@@ -999,8 +1097,10 @@
   panel.appendChild(resizeHandle);
   panel.appendChild(iframe);
   root.appendChild(panel);
+  root.appendChild(helpPrompt);
   root.appendChild(launcher);
   document.body.appendChild(root);
+  scheduleInitialHelpPrompt();
 
   window.addEventListener("message", function (event) {
     if (
@@ -1047,6 +1147,11 @@
       }
     },
     destroy: function () {
+      if (helpPromptInitialTimer) {
+        window.clearTimeout(helpPromptInitialTimer);
+      }
+      clearHelpPromptAutoHideTimer();
+      clearHelpPromptRepeatTimer();
       root.remove();
       style.remove();
       delete window.TouchSpaceChatWidget;

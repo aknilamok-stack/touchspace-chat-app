@@ -1886,7 +1886,7 @@ export class AdminService {
         ...(body.companyName !== undefined
           ? { companyName: nextCompanyName }
           : {}),
-        ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
+        ...(body.fullName !== undefined ? { fullName: body.fullName.trim() } : {}),
         ...(body.email !== undefined ? { email: nextEmail } : {}),
         ...(body.authLogin !== undefined ? { authLogin: nextAuthLogin } : {}),
         ...(nextRole === 'supplier' || nextRole === 'supplier_supervisor'
@@ -1901,6 +1901,18 @@ export class AdminService {
           : {}),
       },
     });
+
+    if (body.fullName !== undefined) {
+      const normalizedFullName = body.fullName.trim();
+
+      if (normalizedFullName) {
+        await this.profilesService.syncProfileDisplayNameReferences(
+          id,
+          normalizedFullName,
+          updatedProfile.role,
+        );
+      }
+    }
 
     if (nextRole === 'supplier_supervisor' && nextCompanyName && supplierScopeId) {
       await this.backfillSuppliersForSupervisor(id, nextCompanyName, supplierScopeId);

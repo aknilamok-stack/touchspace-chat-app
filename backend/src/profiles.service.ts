@@ -45,6 +45,10 @@ type EnsureProfileInput = {
 export class ProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private buildDirectSupplierDialogTitle(supplierName: string) {
+    return `Поставщик: ${supplierName}`;
+  }
+
   private async resolveCompatibleRole(id: string, fallbackRole: string) {
     const existingProfile = await this.prisma.profile.findUnique({
       where: { id },
@@ -99,18 +103,87 @@ export class ProfilesService {
       throw new NotFoundException(`Profile with id "${normalizedId}" not found`);
     }
 
-    return this.prisma.profile.update({
-      where: { id: normalizedId },
-      data: {
-        fullName: normalizedFullName,
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const updatedProfile = await tx.profile.update({
+        where: { id: normalizedId },
+        data: {
+          fullName: normalizedFullName,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+        },
+      });
+
+      await this.syncProfileDisplayNameReferences(
+        normalizedId,
+        normalizedFullName,
+        updatedProfile.role,
+        tx,
+      );
+
+      return updatedProfile;
     });
+  }
+
+  async syncProfileDisplayNameReferences(
+    profileId: string,
+    fullName: string,
+    role?: string | null,
+    client: Pick<PrismaService, 'ticket' | 'supplierRequest'> | any = this.prisma,
+  ) {
+    const normalizedProfileId = profileId?.trim();
+    const normalizedFullName = fullName?.trim();
+
+    if (!normalizedProfileId || !normalizedFullName) {
+      return;
+    }
+
+    if (!role || isManagerRole(role)) {
+      await client.ticket.updateMany({
+        where: {
+          assignedManagerId: normalizedProfileId,
+        },
+        data: {
+          assignedManagerName: normalizedFullName,
+        },
+      });
+
+      await client.ticket.updateMany({
+        where: {
+          lastResolvedByManagerId: normalizedProfileId,
+        },
+        data: {
+          lastResolvedByManagerName: normalizedFullName,
+        },
+      });
+    }
+
+    if (!role || isSupplierRole(role)) {
+      await client.supplierRequest.updateMany({
+        where: {
+          assignedSupplierProfileId: normalizedProfileId,
+        },
+        data: {
+          assignedSupplierProfileName: normalizedFullName,
+        },
+      });
+
+      await client.ticket.updateMany({
+        where: {
+          conversationMode: 'direct_supplier',
+          supplierId: normalizedProfileId,
+        },
+        data: {
+          title: this.buildDirectSupplierDialogTitle(normalizedFullName),
+          supplierName: normalizedFullName,
+          clientName: normalizedFullName,
+          tradePointName: normalizedFullName,
+        },
+      });
+    }
   }
 
   async getManagerStatuses() {
@@ -335,7 +408,8 @@ export class ProfilesService {
     const fullNameForCreate =
       input.fullName?.trim() ||
       (role === 'client' ? 'Клиент' : getDefaultFullNameForRole(role));
-    const fullNameForUpdate = input.fullName?.trim() || undefined;
+    const fullNameForUpdate =
+      role === 'client' ? input.fullName?.trim() || undefined : undefined;
 
     return this.prisma.profile.upsert({
       where: { id },

@@ -2710,10 +2710,10 @@ export class TicketsService {
         ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()
         : null;
       const assignedManagerName =
+        managerProfileName ||
         (isSpecificManagerName(dialog.assignedManagerName)
           ? dialog.assignedManagerName?.trim()
           : null) ||
-        managerProfileName ||
         dialog.assignedManagerName?.trim() ||
         null;
 

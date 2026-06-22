@@ -347,6 +347,7 @@ function buildManagerNotificationPayload(candidate) {
     header: "Входящее сообщение",
     ticketId: candidate?.ticketId,
     scopeStatus: candidate?.scopeStatus,
+    conversationMode: candidate?.conversationMode,
     avatarEmoji: candidate?.avatarEmoji || "",
     avatarColor: candidate?.avatarColor || "",
     tone: isDirectSupplierDialog ? "green" : "blue",
@@ -1239,6 +1240,10 @@ app.whenReady().then(() => {
           typeof payload.scopeStatus === "string" && payload.scopeStatus.trim()
             ? payload.scopeStatus.trim()
             : "",
+        conversationMode:
+          typeof payload.conversationMode === "string" && payload.conversationMode.trim()
+            ? payload.conversationMode.trim()
+            : "",
       },
       Number(payload.unreadCount) || 1,
     );
@@ -1256,7 +1261,21 @@ app.whenReady().then(() => {
         typeof pendingNotificationPayload?.primaryLabel === "string"
           ? pendingNotificationPayload.primaryLabel.trim()
           : "";
-      const shouldClaimTicket = ticketId && primaryLabel === "Взять в работу";
+      const scopeStatus =
+        typeof pendingNotificationPayload?.scopeStatus === "string"
+          ? pendingNotificationPayload.scopeStatus.trim()
+          : "";
+      const conversationMode =
+        typeof pendingNotificationPayload?.conversationMode === "string"
+          ? pendingNotificationPayload.conversationMode.trim()
+          : "";
+      const shouldClaimTicket =
+        ticketId &&
+        primaryLabel !== "Открыть" &&
+        conversationMode !== "direct_supplier" &&
+        (scopeStatus === "new_unclaimed" ||
+          scopeStatus === "missed_unclaimed" ||
+          scopeStatus === "rescue_queue");
 
       if (shouldClaimTicket) {
         const managerName = getDesktopManagerName();

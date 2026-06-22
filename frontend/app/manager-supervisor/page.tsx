@@ -1428,6 +1428,7 @@ export default function Home() {
       ticketId?: string;
       messageId?: string;
       scopeStatus?: string;
+      conversationMode?: string;
       subtitle?: string | null;
       metaLabel?: string | null;
       primaryLabel?: string;
@@ -1447,6 +1448,7 @@ export default function Home() {
         url: targetUrl,
         ticketId: options?.ticketId,
         scopeStatus: options?.scopeStatus,
+        conversationMode: options?.conversationMode,
         messageId: options?.messageId,
         subtitle: options?.subtitle ?? null,
         metaLabel: options?.metaLabel ?? null,
@@ -3038,6 +3040,7 @@ export default function Home() {
         ticketId: candidate.ticketId,
         messageId: candidate.messageId,
         scopeStatus: candidate.scopeStatus,
+        conversationMode: candidate.conversationMode ?? undefined,
         subtitle: notificationSubtitle,
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,

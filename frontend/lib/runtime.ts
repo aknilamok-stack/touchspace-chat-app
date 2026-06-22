@@ -13,6 +13,7 @@ export type DesktopShellNotificationPayload = {
   tag?: string;
   ticketId?: string;
   scopeStatus?: string;
+  conversationMode?: string;
   subtitle?: string | null;
   metaLabel?: string | null;
   primaryLabel?: string;

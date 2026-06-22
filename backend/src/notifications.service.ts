@@ -1148,9 +1148,8 @@ export class NotificationsService {
           Date.now() - ticket.claimedAt.getTime() <= 45_000,
       )
       .map((ticket) => {
-        const latestUnreadMessage = ticket.messages[0];
         const createdAt =
-          ticket.claimedAt ?? latestUnreadMessage?.createdAt ?? new Date();
+          ticket.claimedAt ?? ticket.messages[0]?.createdAt ?? new Date();
         const isDirectSupplierDialog =
           ticket.conversationMode === 'direct_supplier';
 
@@ -1167,8 +1166,10 @@ export class NotificationsService {
           tradePointName: isDirectSupplierDialog
             ? ticket.supplierName?.trim() || null
             : ticket.tradePointName?.trim() || null,
-          messageId: latestUnreadMessage?.id ?? `claimed:${ticket.id}`,
-          messageText: latestUnreadMessage?.content ?? 'Чат уже взят в работу',
+          messageId: `claimed:${ticket.id}:${createdAt.toISOString()}`,
+          messageText: ticket.assignedManagerName?.trim()
+            ? `Чат уже взят в работу менеджером ${ticket.assignedManagerName}`
+            : 'Чат уже взят в работу другим менеджером',
           createdAt,
           avatarColor: ticket.avatarColor,
           avatarEmoji: ticket.avatarEmoji,

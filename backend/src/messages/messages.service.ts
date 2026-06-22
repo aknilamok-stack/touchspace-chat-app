@@ -93,6 +93,47 @@ export class MessagesService {
     return value.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
+  private buildClientVisibleMessagesWhere() {
+    return {
+      isInternal: false,
+      OR: [
+        {
+          senderType: {
+            not: 'system',
+          },
+        },
+        {
+          senderType: 'system',
+          OR: [
+            {
+              content: MessagesService.OFFLINE_MANAGER_AUTO_REPLY,
+            },
+            {
+              content: {
+                startsWith: 'Запрошен поставщик:',
+              },
+            },
+            {
+              content: {
+                contains: 'AI передал диалог менеджеру',
+              },
+            },
+            {
+              content: {
+                contains: 'переведён в статус: closed',
+              },
+            },
+            {
+              content: {
+                contains: 'переведён в статус "Решён"',
+              },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   private resolveMessageSenderName(message: {
     senderType?: string | null;
     senderProfile?: {
@@ -1523,7 +1564,9 @@ export class MessagesService {
       const messages = await tx.message.findMany({
         where: {
           ticketId,
-          ...(viewerType === 'client' ? { isInternal: false } : {}),
+          ...(viewerType === 'client'
+            ? this.buildClientVisibleMessagesWhere()
+            : {}),
         },
         orderBy: { createdAt: 'asc' },
         include: {

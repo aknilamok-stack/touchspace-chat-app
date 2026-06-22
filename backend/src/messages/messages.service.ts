@@ -868,11 +868,16 @@ export class MessagesService {
         }
 
         if (senderType === 'supplier') {
+          const isDirectSupplierDialog =
+            ticket.conversationMode === 'direct_supplier';
+
           ticketUpdateData.supplierId =
-            supplierActorProfile?.supplierId?.trim() ||
-            ticket.supplierId ||
-            actorId ||
-            null;
+            isDirectSupplierDialog
+              ? ticket.supplierId || actorId || null
+              : supplierActorProfile?.supplierId?.trim() ||
+                ticket.supplierId ||
+                actorId ||
+                null;
           ticketUpdateData.supplierName =
             supplierActorProfile?.companyName?.trim() ||
             actorName ||

@@ -74,6 +74,7 @@ type ChatAccessActor = {
 @Injectable()
 export class MessagesService {
   private static readonly EDIT_WINDOW_MS = 20 * 60 * 1000;
+  private static readonly MANAGER_SUGGESTION_MAX_LENGTH = 180;
   private static readonly OFFLINE_MANAGER_AUTO_REPLY =
     'Спасибо, что написали. Сейчас менеджеры не в сети, но как только кто-то появится, мы сразу вернёмся с ответом.';
   private static readonly OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS =
@@ -168,7 +169,11 @@ export class MessagesService {
   private isSuggestionCandidate(value: string) {
     const collapsed = value.replace(/\s+/g, ' ').trim();
 
-    if (!collapsed || collapsed.length < 4 || collapsed.length > 700) {
+    if (
+      !collapsed ||
+      collapsed.length < 4 ||
+      collapsed.length > MessagesService.MANAGER_SUGGESTION_MAX_LENGTH
+    ) {
       return false;
     }
 
@@ -194,29 +199,33 @@ export class MessagesService {
     const phraseText = content.replace(/\s+/g, ' ').trim();
     const phraseTextNormalized = this.normalizeSuggestionText(phraseText);
 
-    await tx.managerMessageSuggestion.upsert({
-      where: {
-        managerId_phraseTextNormalized: {
+    try {
+      await tx.managerMessageSuggestion.upsert({
+        where: {
+          managerId_phraseTextNormalized: {
+            managerId,
+            phraseTextNormalized,
+          },
+        },
+        create: {
           managerId,
+          phraseText,
           phraseTextNormalized,
+          usageCount: 1,
+          lastUsedAt: usedAt,
         },
-      },
-      create: {
-        managerId,
-        phraseText,
-        phraseTextNormalized,
-        usageCount: 1,
-        lastUsedAt: usedAt,
-      },
-      update: {
-        phraseText,
-        usageCount: {
-          increment: 1,
+        update: {
+          phraseText,
+          usageCount: {
+            increment: 1,
+          },
+          lastUsedAt: usedAt,
+          isHidden: false,
         },
-        lastUsedAt: usedAt,
-        isHidden: false,
-      },
-    });
+      });
+    } catch (error) {
+      console.error('Не удалось сохранить быструю фразу менеджера:', error);
+    }
   }
 
   private async createSystemMessage(

@@ -67,6 +67,7 @@ const isHiddenClientSystemMessage = (message: Message) =>
     message.content ===
       "Спасибо, что написали. Сейчас менеджеры не в сети, но как только кто-то появится, мы сразу вернёмся с ответом." ||
     message.content.startsWith("Запрошен поставщик:") ||
+    message.content.startsWith("Диалог взят в работу менеджером ") ||
     message.content.includes("AI передал диалог менеджеру") ||
     message.content.includes("переведён в статус: closed") ||
     message.content.includes('переведён в статус "Решён"')
@@ -1356,13 +1357,16 @@ export default function ClientPage() {
         }
 
         if (
+          message.content.startsWith("Диалог взят в работу менеджером ") ||
           message.content.includes("переведён в статус: closed") ||
           message.content.includes('переведён в статус "Решён"')
         ) {
           return [
             {
               ...message,
-              displayContent: "Чат переведён менеджеру TouchSpace.",
+              displayContent: message.content.startsWith("Диалог взят в работу менеджером ")
+                ? message.content
+                : "Чат переведён менеджеру TouchSpace.",
               attachments: [],
             },
           ];

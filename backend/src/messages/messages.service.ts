@@ -115,6 +115,11 @@ export class MessagesService {
             },
             {
               content: {
+                startsWith: 'Диалог взят в работу менеджером ',
+              },
+            },
+            {
+              content: {
                 contains: 'AI передал диалог менеджеру',
               },
             },

@@ -729,13 +729,31 @@ const getDateInputValue = (value?: string | null) => {
   return `${year}-${month}-${day}`;
 };
 
-const getManagerMessageAuthorLabel = (message: ChatMessage, chat?: ChatItem | null) => {
+const getManagerMessageAuthorLabel = (
+  message: ChatMessage,
+  currentManagerId: string,
+  currentManagerName: string,
+  chat?: ChatItem | null,
+) => {
   if (message.isInternal || message.from === "ai" || message.from === "supplier") {
     return "";
   }
 
   if (message.from === "manager") {
-    return "Вы";
+    const messageAuthorId = message.senderProfileId?.trim();
+    const messageAuthorName = message.senderName?.trim();
+
+    if (
+      (messageAuthorId && currentManagerId && messageAuthorId === currentManagerId) ||
+      (!messageAuthorId &&
+        messageAuthorName &&
+        currentManagerName.trim() &&
+        messageAuthorName === currentManagerName.trim())
+    ) {
+      return "Вы";
+    }
+
+    return messageAuthorName || "Менеджер";
   }
 
   if (message.from === "client") {
@@ -5518,7 +5536,12 @@ export default function Home() {
                   getMessageDayKey(message.createdAt);
               const isSearchMatched = chatSearchMatchIdSet.has(message.id);
               const isCurrentSearchMatch = currentChatSearchMatchId === message.id;
-              const authorLabel = getManagerMessageAuthorLabel(message, activeChat);
+              const authorLabel = getManagerMessageAuthorLabel(
+                message,
+                currentManagerId,
+                currentManagerName,
+                activeChat,
+              );
 
               return (
                 <div

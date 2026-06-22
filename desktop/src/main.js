@@ -344,6 +344,8 @@ function buildManagerNotificationPayload(candidate) {
     metaLabel,
     primaryLabel,
     secondaryLabel: "Позже",
+    informational: isClaimedByOther,
+    autoCloseMs: isClaimedByOther ? 10000 : 0,
     header: "Входящее сообщение",
     ticketId: candidate?.ticketId,
     scopeStatus: candidate?.scopeStatus,
@@ -1215,6 +1217,8 @@ app.whenReady().then(() => {
           typeof payload.secondaryLabel === "string" && payload.secondaryLabel.trim()
             ? payload.secondaryLabel.trim()
             : "Позже",
+        informational: Boolean(payload.informational),
+        autoCloseMs: Number(payload.autoCloseMs) > 0 ? Number(payload.autoCloseMs) : 0,
         header:
           typeof payload.header === "string" && payload.header.trim()
             ? payload.header.trim()

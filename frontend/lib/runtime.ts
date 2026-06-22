@@ -19,6 +19,8 @@ export type DesktopShellNotificationPayload = {
   primaryLabel?: string;
   secondaryLabel?: string;
   header?: string;
+  informational?: boolean;
+  autoCloseMs?: number;
   messageId?: string;
   avatarEmoji?: string | null;
   avatarColor?: string | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useEffect } from "react";
 
 type IncomingAlertItem = {
   id: string;
@@ -13,6 +14,8 @@ type IncomingAlertItem = {
   primaryLabel?: string;
   secondaryLabel?: string;
   metaLabel?: string | null;
+  informational?: boolean;
+  autoCloseMs?: number;
 };
 
 const notificationTone = {
@@ -57,6 +60,23 @@ export function IncomingAlertStack({
   onSecondary?: (id: string) => void;
   onPrimary?: (id: string) => void;
 }) {
+  const autoCloseItems = items.filter(
+    (item) => item.informational && item.autoCloseMs && item.autoCloseMs > 0
+  );
+  const autoCloseSignature = autoCloseItems
+    .map((item) => `${item.id}:${item.autoCloseMs}`)
+    .join("|");
+
+  useEffect(() => {
+    const timeoutIds = autoCloseItems.map((item) =>
+      window.setTimeout(() => onClose(item.id), item.autoCloseMs)
+    );
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [autoCloseSignature, onClose]);
+
   if (items.length === 0) {
     return null;
   }
@@ -73,6 +93,7 @@ export function IncomingAlertStack({
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex w-[min(420px,calc(100vw-24px))] flex-col gap-3">
       {items.map((item) => {
         const tone = notificationTone[item.tone ?? "blue"];
+        const isInformational = Boolean(item.informational);
         const cardStyle = {
           "--touchspace-alert-bg": tone.backgroundColor,
           "--touchspace-alert-border": tone.borderColor,
@@ -113,12 +134,16 @@ export function IncomingAlertStack({
             </div>
 
             <div
-              className="flex cursor-pointer gap-4 px-5 pb-5"
-              onClick={() => onPrimary?.(item.id)}
-              role="button"
-              tabIndex={0}
+              className={`flex gap-4 px-5 pb-5 ${isInformational ? "" : "cursor-pointer"}`}
+              onClick={() => {
+                if (!isInformational) {
+                  onPrimary?.(item.id);
+                }
+              }}
+              role={isInformational ? undefined : "button"}
+              tabIndex={isInformational ? undefined : 0}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+                if (!isInformational && (event.key === "Enter" || event.key === " ")) {
                   event.preventDefault();
                   onPrimary?.(item.id);
                 }
@@ -147,38 +172,40 @@ export function IncomingAlertStack({
               </div>
             </div>
 
-            <div
-              className="touchspace-incoming-alert-footer grid grid-cols-2 gap-0 border-t px-2 py-2"
-              style={{
-                backgroundColor: tone.footerBackgroundColor,
-                borderColor: tone.footerBorderColor,
-              }}
-            >
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPrimary?.(item.id);
+            {!isInformational ? (
+              <div
+                className="touchspace-incoming-alert-footer grid grid-cols-2 gap-0 border-t px-2 py-2"
+                style={{
+                  backgroundColor: tone.footerBackgroundColor,
+                  borderColor: tone.footerBorderColor,
                 }}
-                className="rounded-[16px] px-4 py-3 text-sm font-medium text-inherit transition hover:bg-white/10"
               >
-                {item.primaryLabel ?? "Ответить"}
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (onSecondary) {
-                    onSecondary(item.id);
-                    return;
-                  }
-                  onClose(item.id);
-                }}
-                className="rounded-[16px] px-4 py-3 text-sm font-medium text-inherit opacity-90 transition hover:bg-white/10"
-              >
-                {item.secondaryLabel ?? "Позже"}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPrimary?.(item.id);
+                  }}
+                  className="rounded-[16px] px-4 py-3 text-sm font-medium text-inherit transition hover:bg-white/10"
+                >
+                  {item.primaryLabel ?? "Ответить"}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (onSecondary) {
+                      onSecondary(item.id);
+                      return;
+                    }
+                    onClose(item.id);
+                  }}
+                  className="rounded-[16px] px-4 py-3 text-sm font-medium text-inherit opacity-90 transition hover:bg-white/10"
+                >
+                  {item.secondaryLabel ?? "Позже"}
+                </button>
+              </div>
+            ) : null}
           </section>
         );
       })}

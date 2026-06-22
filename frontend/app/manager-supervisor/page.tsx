@@ -1434,6 +1434,8 @@ export default function Home() {
       metaLabel?: string | null;
       primaryLabel?: string;
       secondaryLabel?: string;
+      informational?: boolean;
+      autoCloseMs?: number;
       avatarEmoji?: string | null;
       avatarColor?: string | null;
       tone?: "blue" | "green" | "amber";
@@ -1455,6 +1457,8 @@ export default function Home() {
         metaLabel: options?.metaLabel ?? null,
         primaryLabel: options?.primaryLabel,
         secondaryLabel: options?.secondaryLabel,
+        informational: options?.informational,
+        autoCloseMs: options?.autoCloseMs,
         avatarEmoji: options?.avatarEmoji ?? null,
         avatarColor: options?.avatarColor ?? null,
         tone: options?.tone ?? "blue",
@@ -3051,6 +3055,8 @@ export default function Home() {
         metaLabel: notificationMeta,
         primaryLabel: notificationPrimaryLabel,
         secondaryLabel: "Позже",
+        informational: isClaimedByOther,
+        autoCloseMs: isClaimedByOther ? 10000 : undefined,
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
         tone: isClaimedByOther ? "amber" : isDirectSupplierDialog ? "green" : "blue",
@@ -4833,6 +4839,9 @@ export default function Home() {
                     ? "Взять в работу"
                     : "Ответить",
               secondaryLabel: "Позже",
+              informational: candidate.scopeStatus === "claimed_by_other_recently",
+              autoCloseMs:
+                candidate.scopeStatus === "claimed_by_other_recently" ? 10000 : undefined,
             }))}
             onClose={dismissFloatingNotification}
             onSecondary={dismissFloatingNotification}

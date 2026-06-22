@@ -198,6 +198,10 @@
         padding: 0 20px 20px;
       }
 
+      .content.is-actionable {
+        cursor: pointer;
+      }
+
       .avatar {
         flex-shrink: 0;
         display: flex;
@@ -269,6 +273,10 @@
         background-image: none !important;
       }
 
+      .footer[hidden] {
+        display: none;
+      }
+
       .action {
         padding: 12px 16px;
         border-radius: var(--footer-radius);
@@ -290,7 +298,7 @@
           <button class="card-button close" id="close" aria-label="Закрыть уведомление"></button>
         </div>
 
-        <div class="content" id="primary-surface">
+        <div class="content is-actionable" id="primary-surface">
           <div class="avatar" id="avatar">💬</div>
           <div class="content-body">
             <p class="title" id="title">Новое сообщение</p>
@@ -300,7 +308,7 @@
           </div>
         </div>
 
-        <div class="footer">
+        <div class="footer" id="footer">
           <button class="card-button action" id="primary">Открыть</button>
           <button class="card-button action" id="secondary">Позже</button>
         </div>
@@ -319,8 +327,11 @@
       const closeButton = document.getElementById("close");
       const avatarElement = document.getElementById("avatar");
       const primarySurfaceElement = document.getElementById("primary-surface");
+      const footerElement = document.getElementById("footer");
 
       let currentUrl = "";
+      let isInformational = false;
+      let autoCloseTimer = null;
 
       const resolveAvatar = (title) => {
         const normalized = String(title || "").trim();
@@ -333,6 +344,12 @@
       };
 
       window.touchspaceDesktopNotification.onData((payload) => {
+        if (autoCloseTimer) {
+          clearTimeout(autoCloseTimer);
+          autoCloseTimer = null;
+        }
+
+        isInformational = Boolean(payload?.informational);
         headerElement.textContent = payload?.header || "Входящее сообщение";
         titleElement.textContent = payload?.title || "Новое сообщение";
         subtitleElement.textContent = payload?.subtitle || "";
@@ -343,6 +360,14 @@
         metaElement.hidden = !payload?.metaLabel;
         primaryButton.textContent = payload?.primaryLabel || "Ответить";
         secondaryButton.textContent = payload?.secondaryLabel || "Позже";
+        footerElement.hidden = isInformational;
+        primarySurfaceElement.classList.toggle("is-actionable", !isInformational);
+        primarySurfaceElement.tabIndex = isInformational ? -1 : 0;
+        if (isInformational) {
+          primarySurfaceElement.removeAttribute("role");
+        } else {
+          primarySurfaceElement.setAttribute("role", "button");
+        }
         currentUrl = payload?.url || "";
         avatarElement.textContent = payload?.avatarEmoji || resolveAvatar(payload?.title);
         avatarElement.style.backgroundColor = payload?.avatarColor || "rgba(255, 255, 255, 0.24)";
@@ -351,9 +376,20 @@
         requestAnimationFrame(() => {
           window.touchspaceDesktopNotification.rendered();
         });
+
+        const autoCloseMs = Number(payload?.autoCloseMs) || 0;
+        if (isInformational && autoCloseMs > 0) {
+          autoCloseTimer = setTimeout(() => {
+            void window.touchspaceDesktopNotification.act("close", currentUrl);
+          }, autoCloseMs);
+        }
       });
 
       const handlePrimary = () => {
+        if (isInformational) {
+          return;
+        }
+
         void window.touchspaceDesktopNotification.act("primary", currentUrl);
       };
 
@@ -389,11 +425,17 @@
 
       primaryButton.addEventListener("click", (event) => {
         stopNotificationAction(event);
+        if (isInformational) {
+          return;
+        }
         void window.touchspaceDesktopNotification.act("primary", currentUrl);
       });
 
       secondaryButton.addEventListener("click", (event) => {
         stopNotificationAction(event);
+        if (isInformational) {
+          return;
+        }
         void window.touchspaceDesktopNotification.act("secondary", currentUrl);
       });
 

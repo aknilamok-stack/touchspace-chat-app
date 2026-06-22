@@ -1229,6 +1229,7 @@ export default function Home() {
   const managerIsNearBottomRef = useRef(true);
   const previousActiveChatIdRef = useRef("");
   const previousActiveChatMessageCountRef = useRef(0);
+  const appliedDeepLinkTicketIdRef = useRef("");
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
@@ -2446,7 +2447,12 @@ export default function Home() {
       return;
     }
 
+    if (appliedDeepLinkTicketIdRef.current === deepLinkTicketId) {
+      return;
+    }
+
     if (chatData.some((chat) => chat.id === deepLinkTicketId)) {
+      appliedDeepLinkTicketIdRef.current = deepLinkTicketId;
       setIsChatPaneDismissed(false);
       setActiveChatId(deepLinkTicketId);
     }

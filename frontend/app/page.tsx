@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
 import { DialogListWideRow } from "@/components/chat/dialog-list-wide-row";
+import { LinkifiedText } from "@/components/chat/linkified-text";
 import { MessageStatusChecks } from "@/components/chat/message-status-checks";
 import { ContactCard, type ChatContactItem } from "@/components/chat/contact-card";
 import { PageTrackingCard, type ChatPageViewItem } from "@/components/chat/page-tracking-card";
@@ -1059,31 +1060,8 @@ const getDialogDurationLabel = (chat: ChatItem) => {
   return formatDuration(Math.max(endTime - startTime, 0));
 };
 
-const escapeSearchRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 const renderHighlightedText = (text: string, query: string) => {
-  const normalizedQuery = query.trim();
-
-  if (!normalizedQuery) {
-    return text;
-  }
-
-  const pattern = new RegExp(`(${escapeSearchRegExp(normalizedQuery)})`, "ig");
-  const parts = text.split(pattern);
-
-  return parts.map((part, index) =>
-    part.toLowerCase() === normalizedQuery.toLowerCase() ? (
-      <mark
-        key={`${part}-${index}`}
-        className="rounded bg-[#FFE08A] px-0.5 text-inherit"
-      >
-        {part}
-      </mark>
-    ) : (
-      <span key={`${part}-${index}`}>{part}</span>
-    )
-  );
+  return <LinkifiedText text={text} query={query} />;
 };
 
 export default function Home() {

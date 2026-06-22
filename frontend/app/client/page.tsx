@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
+import { LinkifiedText } from "@/components/chat/linkified-text";
 import { getOrCreateClientSession, writeClientSession } from "@/lib/auth";
 import { fetchManagerStatuses } from "@/lib/manager-presence";
 import {
@@ -1506,7 +1507,7 @@ export default function ClientPage() {
                     {message.senderType === "system" ? (
                       <div className="flex justify-center">
                         <div className="max-w-[88%] rounded-full border border-[#E5E5EA] bg-[#F7F7FA] px-4 py-2.5 text-center text-xs text-[#8E8E93]">
-                          {message.displayContent}
+                          <LinkifiedText text={message.displayContent} />
                         </div>
                       </div>
                     ) : (
@@ -1633,7 +1634,7 @@ export default function ClientPage() {
                             ) : null}
                             <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
                               <p className="min-w-0 break-words leading-6 [overflow-wrap:anywhere]">
-                                {message.displayContent}
+                                <LinkifiedText text={message.displayContent} />
                               </p>
                               <div
                                 className={`ml-auto flex shrink-0 pl-5 items-center gap-1 text-[10px] leading-none ${

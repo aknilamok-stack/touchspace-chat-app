@@ -2477,6 +2477,10 @@ export default function SupplierPage() {
         return false;
       }
 
+      if (candidate.requestId && candidate.requestId === selectedRequestId) {
+        return false;
+      }
+
       if (candidate.scopeStatus !== "claimed_by_other_recently") {
         return true;
       }
@@ -2566,6 +2570,14 @@ export default function SupplierPage() {
       const originalHiddenUntil = originalNotificationKey
         ? dismissedNotificationUntil[originalNotificationKey] ?? 0
         : 0;
+      const isActiveCandidateVisible =
+        document.visibilityState === "visible" &&
+        candidate.requestId &&
+        candidate.requestId === selectedRequestId;
+
+      if (!isClaimedByOther && isActiveCandidateVisible) {
+        return;
+      }
 
       if (
         isClaimedByOther &&
@@ -2654,8 +2666,11 @@ export default function SupplierPage() {
       titleFlashIntervalRef.current = null;
     }
 
+    const pageIsVisible = document.visibilityState === "visible";
     const actionableNotifications = notificationCandidates.filter(
-      (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+      (candidate) =>
+        candidate.scopeStatus !== "claimed_by_other_recently" &&
+        !(pageIsVisible && candidate.requestId && candidate.requestId === selectedRequestId)
     );
 
     if (!supplierSupervisorPowerEnabled || actionableNotifications.length === 0) {
@@ -2685,7 +2700,7 @@ export default function SupplierPage() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [notificationCandidates, supplierSupervisorPowerEnabled]);
+  }, [notificationCandidates, selectedRequestId, supplierSupervisorPowerEnabled]);
 
   useEffect(() => {
     setEditTarget(null);

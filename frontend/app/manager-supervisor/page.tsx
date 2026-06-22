@@ -2957,9 +2957,7 @@ export default function Home() {
       const originalNotificationKey = `ticket:${candidate.ticketId}:${candidate.messageId}`;
       const originalHiddenUntil = dismissedNotificationUntil[originalNotificationKey] ?? 0;
       const isActiveChatVisible =
-        candidate.ticketId === activeChatId &&
-        document.visibilityState === "visible" &&
-        document.hasFocus();
+        candidate.ticketId === activeChatId && document.visibilityState === "visible";
 
       if (!isClaimedByOther && isActiveChatVisible) {
         return;
@@ -3078,8 +3076,11 @@ export default function Home() {
       return;
     }
 
+    const pageIsVisible = document.visibilityState === "visible";
     const actionableNotifications = notificationCandidates.filter(
-      (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+      (candidate) =>
+        candidate.scopeStatus !== "claimed_by_other_recently" &&
+        !(pageIsVisible && candidate.ticketId === activeChatId)
     );
 
     if (!managerSupervisorPowerEnabled || actionableNotifications.length === 0) {
@@ -3103,7 +3104,7 @@ export default function Home() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [notificationCandidates, managerSupervisorPowerEnabled]);
+  }, [activeChatId, notificationCandidates, managerSupervisorPowerEnabled]);
 
   useEffect(() => {
     if (!showQuickReplies && !showEmojiPicker) {

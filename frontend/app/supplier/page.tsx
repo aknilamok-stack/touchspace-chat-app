@@ -3507,6 +3507,19 @@ export default function SupplierPage() {
         return false;
       }
 
+      const isDirectManagerDialog = candidate.kind === "direct";
+      const isSelectedCandidate =
+        (isDirectManagerDialog &&
+          candidate.ticketId &&
+          candidate.ticketId === selectedManagerTicketId) ||
+        (!isDirectManagerDialog &&
+          candidate.requestId &&
+          candidate.requestId === selectedRequestId);
+
+      if (isSelectedCandidate) {
+        return false;
+      }
+
       if (candidate.scopeStatus !== "claimed_by_other_recently") {
         return true;
       }
@@ -3604,7 +3617,6 @@ export default function SupplierPage() {
       const isClaimedByOther = candidate.scopeStatus === "claimed_by_other_recently";
       const isActiveCandidateVisible =
         document.visibilityState === "visible" &&
-        document.hasFocus() &&
         ((isDirectManagerDialog &&
           candidate.ticketId &&
           candidate.ticketId === selectedManagerTicketId) ||
@@ -3700,9 +3712,22 @@ export default function SupplierPage() {
       titleFlashIntervalRef.current = null;
     }
 
-    const actionableNotifications = effectiveNotificationCandidates.filter(
-      (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
-    );
+    const pageIsVisible = document.visibilityState === "visible";
+    const actionableNotifications = effectiveNotificationCandidates.filter((candidate) => {
+      const isDirectManagerDialog = candidate.kind === "direct";
+      const isSelectedCandidate =
+        (isDirectManagerDialog &&
+          candidate.ticketId &&
+          candidate.ticketId === selectedManagerTicketId) ||
+        (!isDirectManagerDialog &&
+          candidate.requestId &&
+          candidate.requestId === selectedRequestId);
+
+      return (
+        candidate.scopeStatus !== "claimed_by_other_recently" &&
+        !(pageIsVisible && isSelectedCandidate)
+      );
+    });
 
     if (actionableNotifications.length === 0) {
       document.title = defaultDocumentTitleRef.current;
@@ -3731,7 +3756,7 @@ export default function SupplierPage() {
       }
       document.title = defaultDocumentTitleRef.current;
     };
-  }, [effectiveNotificationCandidates]);
+  }, [effectiveNotificationCandidates, selectedManagerTicketId, selectedRequestId]);
 
   useEffect(() => {
     setEditTarget(null);

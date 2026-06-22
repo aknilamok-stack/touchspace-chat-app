@@ -321,6 +321,7 @@ export class NotificationsService {
     const now = new Date();
     const missedThreshold = new Date(now.getTime() - 10 * 60 * 1000);
     const rescueThreshold = new Date(now.getTime() - 20 * 60 * 1000);
+    const readAutoResolveThreshold = new Date(now.getTime() - 4 * 60 * 60 * 1000);
 
     const [unclaimedTickets, stalledAssignedTickets] = await Promise.all([
       this.prisma.ticket.findMany({
@@ -359,6 +360,21 @@ export class NotificationsService {
           assignedManagerName: true,
           lastClientMessageAt: true,
           lastManagerReplyAt: true,
+          messages: {
+            where: {
+              senderType: 'client',
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              deliveryStatus: true,
+              createdAt: true,
+            },
+          },
         },
       }),
     ]);
@@ -391,6 +407,63 @@ export class NotificationsService {
         ticket.lastClientMessageAt &&
         ticket.lastManagerReplyAt >= ticket.lastClientMessageAt
       ) {
+        continue;
+      }
+
+      const latestClientMessage = ticket.messages[0] ?? null;
+      const latestClientMessageWasRead =
+        latestClientMessage?.status === 'read' ||
+        latestClientMessage?.deliveryStatus === 'read';
+
+      if (latestClientMessageWasRead) {
+        if (
+          latestClientMessage.createdAt > readAutoResolveThreshold ||
+          (ticket.lastClientMessageAt &&
+            ticket.lastClientMessageAt > readAutoResolveThreshold)
+        ) {
+          continue;
+        }
+
+        const resolvedAt = new Date();
+        const updateResult = await this.prisma.ticket.updateMany({
+          where: {
+            id: ticket.id,
+            assignedManagerId: ticket.assignedManagerId,
+            status: {
+              notIn: ['resolved', 'closed'],
+            },
+          },
+          data: {
+            status: 'resolved',
+            assignedManagerId: null,
+            assignedManagerName: null,
+            lastResolvedByManagerId: ticket.assignedManagerId,
+            lastResolvedByManagerName: ticket.assignedManagerName,
+            lastResolvedByRole: 'manager',
+            managerRating: null,
+            managerRatingSubmittedAt: null,
+            resolvedAt,
+            closedAt: resolvedAt,
+          },
+        });
+
+        if (updateResult.count > 0) {
+          await this.prisma.message.create({
+            data: {
+              ticketId: ticket.id,
+              content:
+                'Диалог автоматически переведён в статус "Решён": менеджер прочитал сообщение и не ответил более 4 часов',
+              senderType: 'system',
+              senderRole: 'system',
+              status: 'sent',
+              deliveryStatus: 'sent',
+              messageType: 'system',
+              isInternal: true,
+              createdAt: resolvedAt,
+            },
+          });
+        }
+
         continue;
       }
 

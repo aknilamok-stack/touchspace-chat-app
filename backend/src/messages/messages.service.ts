@@ -89,6 +89,33 @@ export class MessagesService {
     private readonly emailService: EmailService,
   ) {}
 
+  private isWriteConflictError(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2034'
+    );
+  }
+
+  private async runWithWriteConflictRetry<T>(operation: () => Promise<T>) {
+    let attempt = 0;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error) {
+        attempt += 1;
+
+        if (!this.isWriteConflictError(error) || attempt >= 3) {
+          throw error;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 80 * attempt));
+      }
+    }
+  }
+
   private normalizeSuggestionText(value: string) {
     return value.replace(/\s+/g, ' ').trim().toLowerCase();
   }
@@ -609,7 +636,8 @@ export class MessagesService {
     }
 
     const { message, shouldAiReply, ticketSnapshot } =
-      await this.prisma.$transaction(async (tx) => {
+      await this.runWithWriteConflictRetry(() =>
+        this.prisma.$transaction(async (tx) => {
         const ticket = await tx.ticket.findUnique({
           where: { id: ticketId },
           select: {
@@ -976,19 +1004,20 @@ export class MessagesService {
           });
         }
 
-        return {
-          message,
-          shouldAiReply: senderType === 'client' && ticket.aiEnabled,
-          ticketSnapshot: {
-            id: ticket.id,
-            title: ticket.title ?? 'Диалог TouchSpace',
-            assignedManagerId: ticket.assignedManagerId,
-            invitedManagerIds: ticket.invitedManagerIds,
-            supplierId: ticket.supplierId,
-            aiEnabled: ticket.aiEnabled,
-          },
-        };
-      });
+          return {
+            message,
+            shouldAiReply: senderType === 'client' && ticket.aiEnabled,
+            ticketSnapshot: {
+              id: ticket.id,
+              title: ticket.title ?? 'Диалог TouchSpace',
+              assignedManagerId: ticket.assignedManagerId,
+              invitedManagerIds: ticket.invitedManagerIds,
+              supplierId: ticket.supplierId,
+              aiEnabled: ticket.aiEnabled,
+            },
+          };
+        }),
+      );
 
     if (shouldAiReply) {
       void this.chatAiService.persistAiTurn(ticketId).catch((error) => {
@@ -1418,7 +1447,8 @@ export class MessagesService {
       attachments,
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runWithWriteConflictRetry(() =>
+      this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findUnique({
         where: { id: ticketId },
         select: {
@@ -1527,8 +1557,9 @@ export class MessagesService {
         );
       }
 
-      return message;
-    });
+        return message;
+      }),
+    );
   }
 
   async findByTicket(
@@ -1540,7 +1571,8 @@ export class MessagesService {
 
     const viewerType = viewer?.viewerType?.trim();
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runWithWriteConflictRetry(() =>
+      this.prisma.$transaction(async (tx) => {
       if (viewerType) {
         const readAt = markAsRead ? new Date() : null;
         const statusToSet = markAsRead ? 'read' : 'delivered';
@@ -1590,11 +1622,12 @@ export class MessagesService {
         },
       });
 
-      return messages.map((message) => ({
+        return messages.map((message) => ({
         ...message,
         senderName: this.resolveMessageSenderName(message),
-      }));
-    });
+        }));
+      }),
+    );
   }
 
   async update(

@@ -627,9 +627,9 @@ export class TicketsService {
     };
   }
 
-  private normalizePageViewString(value?: string | null) {
+  private normalizePageViewString(value?: string | null, maxLength = 190) {
     const trimmedValue = value?.trim();
-    return trimmedValue ? trimmedValue : null;
+    return trimmedValue ? trimmedValue.slice(0, maxLength) : null;
   }
 
   private resolvePageViewVisitedAt(timestamp?: string) {

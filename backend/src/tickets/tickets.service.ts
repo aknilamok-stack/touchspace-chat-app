@@ -1898,6 +1898,38 @@ export class TicketsService {
           Boolean(supplier),
       );
 
+    const supplierIds = supplierScopes.map((supplier) => supplier.supplierId);
+    const existingSupplierDialogs =
+      supplierIds.length > 0
+        ? await this.prisma.ticket.findMany({
+            where: {
+              conversationMode: 'direct_supplier',
+              assignedManagerId: normalizedManagerId,
+              supplierId: {
+                in: supplierIds,
+              },
+            },
+            select: {
+              supplierId: true,
+            },
+          })
+        : [];
+    const existingSupplierDialogIds = new Set(
+      existingSupplierDialogs
+        .map((dialog) => dialog.supplierId?.trim())
+        .filter((supplierId): supplierId is string => Boolean(supplierId)),
+    );
+
+    if (
+      supplierIds.length > 0 &&
+      supplierIds.every((supplierId) => existingSupplierDialogIds.has(supplierId))
+    ) {
+      return this.findDirectSupplierDialogs({
+        assignedManagerId: normalizedManagerId,
+        supplierIds,
+      });
+    }
+
     await this.prisma.$transaction(async (tx) => {
       for (const supplier of supplierScopes) {
         const existingDialog = await tx.ticket.findFirst({
@@ -1952,7 +1984,7 @@ export class TicketsService {
 
     return this.findDirectSupplierDialogs({
       assignedManagerId: normalizedManagerId,
-      supplierIds: supplierScopes.map((supplier) => supplier.supplierId),
+      supplierIds,
     });
   }
 
@@ -2263,6 +2295,39 @@ export class TicketsService {
         fullName: true,
       },
     });
+
+    const managerIds = managers.map((manager) => manager.id);
+    const existingManagerDialogs =
+      managerIds.length > 0 && supplierScopeIds.length > 0
+        ? await this.prisma.ticket.findMany({
+            where: {
+              conversationMode: 'direct_supplier',
+              assignedManagerId: {
+                in: managerIds,
+              },
+              supplierId: {
+                in: supplierScopeIds,
+              },
+            },
+            select: {
+              assignedManagerId: true,
+            },
+          })
+        : [];
+    const existingManagerDialogIds = new Set(
+      existingManagerDialogs
+        .map((dialog) => dialog.assignedManagerId?.trim())
+        .filter((managerId): managerId is string => Boolean(managerId)),
+    );
+
+    if (
+      managerIds.length > 0 &&
+      managerIds.every((managerId) => existingManagerDialogIds.has(managerId))
+    ) {
+      return this.findDirectSupplierDialogs({
+        supplierIds: supplierScopeIds,
+      });
+    }
 
     await this.prisma.$transaction(async (tx) => {
       for (const manager of managers) {

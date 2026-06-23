@@ -2505,7 +2505,7 @@ export default function Home() {
       };
 
       void refreshManagerData();
-    }, 2000);
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, activeChatId, currentManagerId, currentManagerName]);
@@ -2704,7 +2704,7 @@ export default function Home() {
         .catch((error) => {
           console.error("Ошибка live-обновления активного чата:", error);
         });
-    }, 1500);
+    }, 3000);
 
     return () => window.clearInterval(intervalId);
   }, [activeChatId]);

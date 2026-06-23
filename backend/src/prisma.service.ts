@@ -27,8 +27,17 @@ export class PrismaService
     const database =
       process.env.DATABASE_NAME?.trim() ||
       databaseUrl.pathname.replace(/^\//, '');
+    const connectionLimit = Number(
+      process.env.DATABASE_CONNECTION_LIMIT?.trim() || '40',
+    );
 
-    if (!host || !user || !database || Number.isNaN(port)) {
+    if (
+      !host ||
+      !user ||
+      !database ||
+      Number.isNaN(port) ||
+      Number.isNaN(connectionLimit)
+    ) {
       throw new Error('Database adapter configuration is incomplete');
     }
 
@@ -38,6 +47,7 @@ export class PrismaService
       user,
       password,
       database,
+      connectionLimit,
     });
 
     super({ adapter });

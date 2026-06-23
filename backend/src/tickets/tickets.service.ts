@@ -1784,6 +1784,7 @@ export class TicketsService {
 
     return this.prisma.ticket.findMany({
       where: ticketWhere,
+      take: 200,
       include: {
         messages: {
           take: 1,

@@ -1786,6 +1786,7 @@ export class TicketsService {
       where: ticketWhere,
       include: {
         messages: {
+          take: 1,
           select: {
             id: true,
             content: true,
@@ -1796,7 +1797,7 @@ export class TicketsService {
             status: true,
             createdAt: true,
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
         },
         pageViews: {
           select: {
@@ -2596,6 +2597,7 @@ export class TicketsService {
       },
       include: {
         messages: {
+          take: 1,
           select: {
             id: true,
             content: true,
@@ -2612,7 +2614,7 @@ export class TicketsService {
             status: true,
             createdAt: true,
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
         },
       },
       orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],

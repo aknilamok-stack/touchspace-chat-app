@@ -195,6 +195,11 @@ model Ticket {
   supplierRequests        SupplierRequest[]
   contacts                TicketContact[]
   pageViews               TicketPageView[]
+
+  @@index([conversationMode, assignedManagerId, lastMessageAt], map: "Ticket_mode_manager_lastMessage_idx")
+  @@index([conversationMode, supplierId, lastMessageAt], map: "Ticket_mode_supplier_lastMessage_idx")
+  @@index([status, assignedManagerId, lastMessageAt], map: "Ticket_status_manager_lastMessage_idx")
+  @@index([clientId, conversationMode, lastMessageAt], map: "Ticket_client_mode_lastMessage_idx")
 }
 
 model ClientVisualIdentity {
@@ -269,6 +274,9 @@ model Message {
 
   ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   senderProfile  Profile? @relation("MessageSender", fields: [senderProfileId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt], map: "Message_ticket_createdAt_idx")
+  @@index([ticketId, senderType, status, createdAt], map: "Message_ticket_sender_status_createdAt_idx")
 }
 
 model ManagerMessageSuggestion {

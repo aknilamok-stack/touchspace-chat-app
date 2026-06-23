@@ -1800,6 +1800,7 @@ export class TicketsService {
           orderBy: { createdAt: 'desc' },
         },
         pageViews: {
+          take: 1,
           select: {
             id: true,
             pageUrl: true,
@@ -1813,7 +1814,7 @@ export class TicketsService {
             sourceType: true,
             visitedAt: true,
           },
-          orderBy: { visitedAt: 'asc' },
+          orderBy: { visitedAt: 'desc' },
         },
       },
       orderBy: [

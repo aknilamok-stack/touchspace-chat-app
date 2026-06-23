@@ -19,6 +19,22 @@ type DesktopUpdateCheckInput = {
   platform?: string;
 };
 
+type DesktopUpdateCheckPayload = {
+  updateAvailable: boolean;
+  shouldNotify: boolean;
+  required: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  title: string;
+  message: string;
+  releaseNotes: string;
+  downloadUrl: string;
+  macUrl: string;
+  windowsUrl: string;
+  notificationToken: string;
+  notifiedAt: Date | null;
+};
+
 const defaultDesktopUpdate = {
   id: 'desktop',
   latestVersion: '0.1.1',
@@ -33,6 +49,11 @@ const defaultDesktopUpdate = {
 
 @Injectable()
 export class AppUpdatesService {
+  private readonly desktopCheckCache = new Map<
+    string,
+    { expiresAt: number; payload: DesktopUpdateCheckPayload }
+  >();
+
   constructor(private readonly prisma: PrismaService) {}
 
   private normalizeVersion(value?: string | null) {
@@ -122,7 +143,7 @@ export class AppUpdatesService {
 
     const now = new Date();
 
-    return this.prisma.desktopAppUpdate.upsert({
+    const updated = await this.prisma.desktopAppUpdate.upsert({
       where: { id: 'desktop' },
       create: {
         id: 'desktop',
@@ -154,17 +175,29 @@ export class AppUpdatesService {
         createdByAdminId: input.createdByAdminId?.trim() || null,
       },
     });
+
+    this.desktopCheckCache.clear();
+    return updated;
   }
 
   async checkDesktopUpdate(input: DesktopUpdateCheckInput) {
-    const update = await this.getOrCreateDesktopUpdate();
     const currentVersion = this.normalizeVersion(input.version) || '0.1.0';
+    const platform = input.platform?.trim().toLowerCase() || 'unknown';
+    const cacheKey = `${currentVersion}:${platform}`;
+    const now = Date.now();
+    const cached = this.desktopCheckCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > now) {
+      return cached.payload;
+    }
+
+    const update = await this.getOrCreateDesktopUpdate();
     const updateAvailable = this.isVersionGreater(
       update.latestVersion,
       currentVersion,
     );
 
-    return {
+    const payload = {
       updateAvailable,
       shouldNotify: updateAvailable && Boolean(update.notifiedAt),
       required: update.required && updateAvailable,
@@ -179,5 +212,12 @@ export class AppUpdatesService {
       notificationToken: update.notificationToken,
       notifiedAt: update.notifiedAt,
     };
+
+    this.desktopCheckCache.set(cacheKey, {
+      expiresAt: now + 60_000,
+      payload,
+    });
+
+    return payload;
   }
 }

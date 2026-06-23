@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { readDesktopRuntimeMeta } from "@/lib/runtime";
 
@@ -21,7 +21,7 @@ const dismissedStorageKey = "touchspace-desktop-update-dismissed-token";
 
 export function DesktopUpdatePrompt() {
   const [update, setUpdate] = useState<DesktopUpdatePayload | null>(null);
-  const [checking, setChecking] = useState(false);
+  const checkingRef = useRef(false);
 
   const openDownload = useCallback(async () => {
     if (!update?.downloadUrl) {
@@ -37,7 +37,7 @@ export function DesktopUpdatePrompt() {
   }, [update]);
 
   const checkUpdate = useCallback(async (force = false) => {
-    if (checking) {
+    if (checkingRef.current) {
       return;
     }
 
@@ -47,7 +47,7 @@ export function DesktopUpdatePrompt() {
       return;
     }
 
-    setChecking(true);
+    checkingRef.current = true;
 
     try {
       const version = meta.version?.trim() || "0.1.0";
@@ -78,9 +78,9 @@ export function DesktopUpdatePrompt() {
     } catch {
       return;
     } finally {
-      setChecking(false);
+      checkingRef.current = false;
     }
-  }, [checking]);
+  }, []);
 
   useEffect(() => {
     void checkUpdate();

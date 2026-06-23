@@ -2493,8 +2493,6 @@ export default function Home() {
           }
           syncTickets(tickets);
 
-          await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
-
           if (!activeChatId) {
             return;
           }
@@ -2510,7 +2508,7 @@ export default function Home() {
     }, 2000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, activeChatId, currentManagerId, currentManagerName, syncMessagesForTickets]);
+  }, [authReady, activeChatId, currentManagerId, currentManagerName]);
 
   useEffect(() => {
     if (!authReady || !currentManagerId || !currentManagerName) {
@@ -2542,7 +2540,6 @@ export default function Home() {
 
         if (tickets.length > 0) {
           syncTickets(tickets);
-          await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
         }
 
         setNotificationCandidates(candidates);
@@ -2556,7 +2553,6 @@ export default function Home() {
     currentManagerName,
     currentManagerStatus,
     managerPresenceRecords,
-    syncMessagesForTickets,
   ]);
 
   useEffect(() => {

@@ -2330,8 +2330,6 @@ export default function Home() {
           }
           syncTickets(tickets);
 
-          await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
-
           if (!activeChatId) {
             return;
           }
@@ -2353,7 +2351,6 @@ export default function Home() {
     currentManagerId,
     currentManagerName,
     managerSupervisorPowerEnabled,
-    syncMessagesForTickets,
   ]);
 
   useEffect(() => {
@@ -2398,7 +2395,6 @@ export default function Home() {
 
         if (tickets.length > 0) {
           syncTickets(tickets);
-          await syncMessagesForTickets(tickets.map((ticket) => ticket.id));
         }
 
         setNotificationCandidates(candidates);
@@ -2413,7 +2409,6 @@ export default function Home() {
     currentManagerStatus,
     managerPresenceRecords,
     managerSupervisorPowerEnabled,
-    syncMessagesForTickets,
   ]);
 
   useEffect(() => {

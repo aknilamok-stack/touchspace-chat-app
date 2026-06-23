@@ -1,0 +1,51 @@
+import { Injectable, MessageEvent } from '@nestjs/common';
+import { Observable, Subject, interval, map, merge } from 'rxjs';
+
+export type LiveEventPayload = {
+  type: string;
+  ticketId?: string;
+  actorType?: string;
+  actorId?: string | null;
+  targetProfileIds?: string[];
+  createdAt: string;
+};
+
+@Injectable()
+export class LiveEventsService {
+  private readonly events$ = new Subject<MessageEvent>();
+
+  stream(): Observable<MessageEvent> {
+    const heartbeat$ = interval(25_000).pipe(
+      map(
+        (): MessageEvent => ({
+          type: 'heartbeat',
+          data: { type: 'heartbeat', createdAt: new Date().toISOString() },
+        }),
+      ),
+    );
+
+    return merge(this.events$.asObservable(), heartbeat$);
+  }
+
+  emit(payload: Omit<LiveEventPayload, 'createdAt'>) {
+    this.events$.next({
+      type: payload.type,
+      data: {
+        ...payload,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  emitTicketChanged(payload: {
+    ticketId: string;
+    actorType?: string;
+    actorId?: string | null;
+    targetProfileIds?: string[];
+  }) {
+    this.emit({
+      type: 'ticket.changed',
+      ...payload,
+    });
+  }
+}

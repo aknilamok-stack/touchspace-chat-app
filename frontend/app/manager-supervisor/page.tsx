@@ -1214,6 +1214,7 @@ export default function Home() {
   const previousActiveChatMessageCountRef = useRef(0);
   const appliedDeepLinkTicketIdRef = useRef("");
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
+  const liveRefreshTimeoutRef = useRef<number | null>(null);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
@@ -1785,6 +1786,84 @@ export default function Home() {
     const payload = (await response.json()) as { items?: SupplierCompanyOption[] };
     return Array.isArray(payload.items) ? payload.items : [];
   };
+
+  useEffect(() => {
+    if (!authReady || !currentManagerId) {
+      return;
+    }
+
+    const source = new EventSource(
+      apiUrl(
+        `/live/events?viewerType=manager&viewerId=${encodeURIComponent(
+          currentManagerId
+        )}`
+      )
+    );
+
+    const scheduleLiveRefresh = (ticketId?: string) => {
+      if (liveRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(liveRefreshTimeoutRef.current);
+      }
+
+      liveRefreshTimeoutRef.current = window.setTimeout(() => {
+        liveRefreshTimeoutRef.current = null;
+
+        void (async () => {
+          try {
+            const tickets = await fetchTickets();
+            syncTickets(tickets);
+            await refreshNotificationCandidates();
+
+            if (ticketId && ticketId === activeChatId) {
+              const [messages, supplierRequests] = await Promise.all([
+                fetchMessages(ticketId, true),
+                fetchSupplierRequests(ticketId).catch(
+                  (): ApiSupplierRequest[] => []
+                ),
+              ]);
+
+              applyMessagesToTicket(ticketId, messages);
+              applySupplierRequestsToTicket(ticketId, supplierRequests);
+            }
+          } catch (error) {
+            console.error("Ошибка live-обновления старшего менеджера:", error);
+          }
+        })();
+      }, 500);
+    };
+
+    const handleTicketChanged = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as { ticketId?: string };
+        scheduleLiveRefresh(payload.ticketId);
+      } catch {
+        scheduleLiveRefresh();
+      }
+    };
+
+    source.addEventListener("ticket.changed", handleTicketChanged);
+    source.onerror = () => {
+      console.warn("Live-канал старшего менеджера временно недоступен, остаётся fallback polling");
+    };
+
+    return () => {
+      source.removeEventListener("ticket.changed", handleTicketChanged);
+      source.close();
+
+      if (liveRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(liveRefreshTimeoutRef.current);
+        liveRefreshTimeoutRef.current = null;
+      }
+    };
+  }, [
+    activeChatId,
+    authReady,
+    currentManagerId,
+    currentManagerName,
+    managerPresenceRecords,
+    managerSupervisorPowerEnabled,
+    refreshNotificationCandidates,
+  ]);
 
   const fetchTyping = async (
     ticketId: string

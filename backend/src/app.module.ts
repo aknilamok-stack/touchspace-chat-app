@@ -13,6 +13,7 @@ import { EmailPollingService } from './email/email-polling.service';
 import { EmailService } from './email/email.service';
 import { MessagesController } from './messages/messages.controller';
 import { MessagesService } from './messages/messages.service';
+import { LiveEventsModule } from './live-events/live-events.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from './prisma.service';
@@ -34,6 +35,7 @@ import { TypingService } from './typing.service';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    LiveEventsModule,
     AdminModule,
     SupplierRequestsModule,
   ],

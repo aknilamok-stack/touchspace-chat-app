@@ -12,6 +12,7 @@ import { PushService } from '../push.service';
 import { readJsonStringArray } from '../prisma-json.util';
 import { resolveTicketClientContext } from '../tickets/client-context.util';
 import { EmailService } from '../email/email.service';
+import { LiveEventsService } from '../live-events/live-events.service';
 import {
   getSupplierRequestSyncState,
   SUPPLIER_REQUEST_SYNC_MESSAGE_TYPE,
@@ -87,6 +88,7 @@ export class MessagesService {
     private readonly chatAiService: ChatAiService,
     private readonly pushService: PushService,
     private readonly emailService: EmailService,
+    private readonly liveEventsService: LiveEventsService,
   ) {}
 
   private isWriteConflictError(error: unknown) {
@@ -1237,6 +1239,17 @@ export class MessagesService {
         );
     }
 
+    this.liveEventsService.emitTicketChanged({
+      ticketId,
+      actorType: senderType,
+      actorId: actorId ?? null,
+      targetProfileIds: [
+        ticketSnapshot.assignedManagerId,
+        ticketSnapshot.supplierId,
+        ...readJsonStringArray(ticketSnapshot.invitedManagerIds),
+      ].filter((value): value is string => Boolean(value)),
+    });
+
     return message;
   }
 
@@ -1717,6 +1730,12 @@ export class MessagesService {
           },
         },
       },
+    });
+
+    this.liveEventsService.emitTicketChanged({
+      ticketId: message.ticketId,
+      actorType: senderType,
+      actorId: normalizedSenderId,
     });
 
     return {

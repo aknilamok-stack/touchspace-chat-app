@@ -326,6 +326,13 @@ model SupplierRequest {
   supplierProfile   Profile? @relation("SupplierRequestSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
   createdByManager  Profile? @relation("SupplierRequestCreatedByManager", fields: [createdByManagerId], references: [id], onDelete: SetNull)
   assignedSupplierProfile Profile? @relation("SupplierRequestAssignedSupplier", fields: [assignedSupplierProfileId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt], map: "SupplierRequest_ticket_createdAt_idx")
+  @@index([supplierId, status, createdAt], map: "SupplierRequest_supplier_status_createdAt_idx")
+  @@index([supplierName, status, createdAt], map: "SupplierRequest_name_status_createdAt_idx")
+  @@index([assignedSupplierProfileId, status, claimRequiredAt], map: "SupplierRequest_assigned_status_claim_idx")
+  @@index([createdByManagerId, createdAt], map: "SupplierRequest_manager_createdAt_idx")
+  @@index([claimMissedAt, claimRequiredAt], map: "SupplierRequest_missed_required_idx")
 }
 
 model RegistrationRequest {

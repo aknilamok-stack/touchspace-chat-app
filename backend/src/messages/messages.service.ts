@@ -1576,63 +1576,59 @@ export class MessagesService {
 
     const viewerType = viewer?.viewerType?.trim();
 
-    return this.runWithWriteConflictRetry(() =>
-      this.prisma.$transaction(async (tx) => {
-      if (viewerType) {
-        const readAt = markAsRead ? new Date() : null;
-        const statusToSet = markAsRead ? 'read' : 'delivered';
+    if (viewerType) {
+      const readAt = markAsRead ? new Date() : null;
+      const statusToSet = markAsRead ? 'read' : 'delivered';
 
-        await tx.message.updateMany({
-          where: {
-            ticketId,
-            ...(viewerType === 'client' ? { isInternal: false } : {}),
-            senderType: {
-              notIn: [viewerType, 'system'],
-            },
-            status: markAsRead
-              ? {
-                  in: ['sent', 'delivered'],
-                }
-              : 'sent',
-          },
-          data: {
-            status: statusToSet,
-            deliveryStatus: statusToSet,
-            readAt,
-          },
-        });
-      }
-
-      const messages = await tx.message.findMany({
+      await this.prisma.message.updateMany({
         where: {
           ticketId,
-          ...(viewerType === 'client'
-            ? this.buildClientVisibleMessagesWhere()
-            : {}),
+          ...(viewerType === 'client' ? { isInternal: false } : {}),
+          senderType: {
+            notIn: [viewerType, 'system'],
+          },
+          status: markAsRead
+            ? {
+                in: ['sent', 'delivered'],
+              }
+            : 'sent',
         },
-        orderBy: { createdAt: 'asc' },
-        include: {
-          senderProfile: {
-            select: {
-              fullName: true,
-              companyName: true,
-              supplierId: true,
-            },
-          },
-          ticket: {
-            select: {
-              supplierName: true,
-            },
-          },
+        data: {
+          status: statusToSet,
+          deliveryStatus: statusToSet,
+          readAt,
         },
       });
+    }
 
-        return messages.map((message) => ({
-        ...message,
-        senderName: this.resolveMessageSenderName(message),
-        }));
-      }),
-    );
+    const messages = await this.prisma.message.findMany({
+      where: {
+        ticketId,
+        ...(viewerType === 'client'
+          ? this.buildClientVisibleMessagesWhere()
+          : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        senderProfile: {
+          select: {
+            fullName: true,
+            companyName: true,
+            supplierId: true,
+          },
+        },
+        ticket: {
+          select: {
+            supplierName: true,
+          },
+        },
+      },
+    });
+
+    return messages.map((message) => ({
+      ...message,
+      senderName: this.resolveMessageSenderName(message),
+    }));
   }
 
   async update(

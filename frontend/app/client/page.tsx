@@ -170,6 +170,7 @@ export default function ClientPage() {
   const clientIsNearBottomRef = useRef(true);
   const previousVisibleMessageCountRef = useRef(0);
   const shouldForceScrollToBottomRef = useRef(false);
+  const clientLiveRefreshTimeoutRef = useRef<number | null>(null);
 
   const isResolved = activeTicket?.status === "resolved";
   const shouldMarkMessagesAsRead = !isEmbeddedWidget || hostWidgetOpen;
@@ -759,6 +760,81 @@ export default function ClientPage() {
       return;
     }
 
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const source = new EventSource(
+      apiUrl(
+        `/live/events?viewerType=client&viewerId=${encodeURIComponent(
+          clientSession.clientId
+        )}&ticketId=${encodeURIComponent(activeTicket.id)}`
+      )
+    );
+
+    const refreshActiveTicket = async () => {
+      try {
+        const freshTicket = await fetchTicketById(activeTicket.id);
+
+        if (!freshTicket) {
+          clearActiveTicket();
+          setError("Текущее обращение больше не найдено");
+          return;
+        }
+
+        setActiveTicket(freshTicket);
+        await loadTicketContext(freshTicket);
+      } catch (error) {
+        console.error("Ошибка live-обновления client ticket:", error);
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (clientLiveRefreshTimeoutRef.current) {
+        window.clearTimeout(clientLiveRefreshTimeoutRef.current);
+      }
+
+      clientLiveRefreshTimeoutRef.current = window.setTimeout(() => {
+        clientLiveRefreshTimeoutRef.current = null;
+        void refreshActiveTicket();
+      }, 500);
+    };
+
+    const handleTicketChanged = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as { ticketId?: string };
+
+        if (payload.ticketId && payload.ticketId !== activeTicket.id) {
+          return;
+        }
+      } catch {
+        return;
+      }
+
+      scheduleRefresh();
+    };
+
+    source.addEventListener("ticket.changed", handleTicketChanged);
+    source.onerror = () => {
+      console.warn("Live-обновления клиента временно недоступны, polling остается резервом");
+    };
+
+    return () => {
+      if (clientLiveRefreshTimeoutRef.current) {
+        window.clearTimeout(clientLiveRefreshTimeoutRef.current);
+        clientLiveRefreshTimeoutRef.current = null;
+      }
+
+      source.removeEventListener("ticket.changed", handleTicketChanged);
+      source.close();
+    };
+  }, [activeTicket?.id, clientSession.clientId, shouldMarkMessagesAsRead]);
+
+  useEffect(() => {
+    if (!activeTicket) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       const refreshActiveTicket = async () => {
         try {
@@ -778,7 +854,7 @@ export default function ClientPage() {
       };
 
       void refreshActiveTicket();
-    }, 4000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [activeTicket, shouldMarkMessagesAsRead]);

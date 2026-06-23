@@ -1184,6 +1184,7 @@ export default function SupplierPage() {
   const visibleNotificationRequestIdsRef = useRef<Set<string>>(new Set());
   const defaultDocumentTitleRef = useRef("");
   const titleFlashIntervalRef = useRef<number | null>(null);
+  const supplierLiveRefreshTimeoutRef = useRef<number | null>(null);
   const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
   const supplierNotificationBaselineReadyRef = useRef(false);
   const lastSeenSupplierRequestByTicketRef = useRef<Record<string, string>>({});
@@ -2522,7 +2523,7 @@ export default function SupplierPage() {
     };
 
     void loadDirectDialogs();
-    const intervalId = window.setInterval(loadDirectDialogs, 5000);
+    const intervalId = window.setInterval(loadDirectDialogs, 15000);
 
     return () => {
       cancelled = true;
@@ -2712,6 +2713,113 @@ export default function SupplierPage() {
       return;
     }
 
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const source = new EventSource(
+      apiUrl(
+        `/live/events?viewerType=supplier&viewerId=${encodeURIComponent(
+          supplierId
+        )}&profileId=${encodeURIComponent(supplierProfileId)}`
+      )
+    );
+
+    const refreshSupplierWorkspace = async () => {
+      try {
+        const requests = await fetchSupplierRequests();
+        const nextRequestCards = buildSupplierRequestCards(
+          requests,
+          ticketMessagesByTicketId,
+          pinnedRequestIds,
+          ticketsById
+        );
+        syncSupplierRequests(requests);
+
+        void fetchTicketsMap(supplierId)
+          .then((ticketsMap) => {
+            setTicketsById(ticketsMap);
+          })
+          .catch((error) => {
+            console.error("Ошибка live-обновления тикетов поставщика:", error);
+          });
+
+        void fetchMessagesMapForRequests(requests, supplierId)
+          .then((messagesMap) => {
+            setTicketMessagesByTicketId((currentMap) =>
+              areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
+            );
+          })
+          .catch((error) => {
+            console.error("Ошибка live-обновления сообщений поставщика:", error);
+          });
+
+        void fetchDirectManagerTickets()
+          .then((tickets) => {
+            setDirectManagerTickets(tickets);
+          })
+          .catch((error) => {
+            console.error("Ошибка live-обновления прямых чатов поставщика:", error);
+          });
+
+        void refreshNotificationCandidates();
+
+        const freshSelectedRequest =
+          requests.find((request) => request.id === selectedRequestId) ??
+          requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
+          nextRequestCards[0]?.request ??
+          null;
+
+        if (!freshSelectedRequest) {
+          setTicketMessages([]);
+          return;
+        }
+
+        const messages = await fetchTicketMessages(freshSelectedRequest.ticketId);
+        setTicketMessages((currentMessages) =>
+          areMessagesEqual(currentMessages, messages) ? currentMessages : messages
+        );
+      } catch (error) {
+        console.error("Ошибка live-обновления supplier page:", error);
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (supplierLiveRefreshTimeoutRef.current) {
+        window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
+      }
+
+      supplierLiveRefreshTimeoutRef.current = window.setTimeout(() => {
+        supplierLiveRefreshTimeoutRef.current = null;
+        void refreshSupplierWorkspace();
+      }, 500);
+    };
+
+    const handleTicketChanged = () => {
+      scheduleRefresh();
+    };
+
+    source.addEventListener("ticket.changed", handleTicketChanged);
+    source.onerror = () => {
+      console.warn("Live-обновления поставщика временно недоступны, polling остается резервом");
+    };
+
+    return () => {
+      if (supplierLiveRefreshTimeoutRef.current) {
+        window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
+        supplierLiveRefreshTimeoutRef.current = null;
+      }
+
+      source.removeEventListener("ticket.changed", handleTicketChanged);
+      source.close();
+    };
+  }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       const refreshSupplierWorkspace = async () => {
         try {
@@ -2763,7 +2871,7 @@ export default function SupplierPage() {
       };
 
       void refreshSupplierWorkspace();
-    }, 1000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
@@ -2777,7 +2885,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void refreshNotificationCandidates();
-    }, 1000);
+    }, 10000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, refreshNotificationCandidates, supplierProfileId]);

@@ -1,5 +1,5 @@
 import { Injectable, MessageEvent } from '@nestjs/common';
-import { Observable, Subject, interval, map, merge } from 'rxjs';
+import { Observable, Subject, filter, interval, map, merge } from 'rxjs';
 
 export type LiveEventPayload = {
   type: string;
@@ -14,7 +14,7 @@ export type LiveEventPayload = {
 export class LiveEventsService {
   private readonly events$ = new Subject<MessageEvent>();
 
-  stream(): Observable<MessageEvent> {
+  stream(filters?: { ticketId?: string }): Observable<MessageEvent> {
     const heartbeat$ = interval(25_000).pipe(
       map(
         (): MessageEvent => ({
@@ -24,7 +24,18 @@ export class LiveEventsService {
       ),
     );
 
-    return merge(this.events$.asObservable(), heartbeat$);
+    const events$ = this.events$.asObservable().pipe(
+      filter((event) => {
+        if (!filters?.ticketId) {
+          return true;
+        }
+
+        const data = event.data as LiveEventPayload | undefined;
+        return data?.ticketId === filters.ticketId;
+      }),
+    );
+
+    return merge(events$, heartbeat$);
   }
 
   emit(payload: Omit<LiveEventPayload, 'createdAt'>) {

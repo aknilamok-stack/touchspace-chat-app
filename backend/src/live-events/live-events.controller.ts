@@ -1,4 +1,4 @@
-import { Controller, MessageEvent, Sse } from '@nestjs/common';
+import { Controller, MessageEvent, Query, Sse } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { LiveEventsService } from './live-events.service';
 
@@ -7,7 +7,9 @@ export class LiveEventsController {
   constructor(private readonly liveEventsService: LiveEventsService) {}
 
   @Sse('events')
-  events(): Observable<MessageEvent> {
-    return this.liveEventsService.stream();
+  events(@Query('ticketId') ticketId?: string): Observable<MessageEvent> {
+    return this.liveEventsService.stream({
+      ticketId: ticketId?.trim() || undefined,
+    });
   }
 }

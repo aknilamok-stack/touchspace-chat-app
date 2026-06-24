@@ -3162,8 +3162,9 @@ export default function Home() {
             : "Ответить";
       const lastNotificationAt = lastNotificationAtRef.current[candidate.notificationKey] ?? 0;
       const lastMessageId = lastNotificationMessageIdRef.current[candidate.notificationKey];
+      const isNewNotificationMessage = lastMessageId !== candidate.messageId;
       const shouldNotify =
-        lastMessageId !== candidate.messageId ||
+        isNewNotificationMessage ||
         (!isClaimedByOther &&
           !isDirectSupplierDialog &&
           Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
@@ -3183,7 +3184,10 @@ export default function Home() {
         delete next[candidate.notificationKey];
         return next;
       });
-      playNotificationSound();
+
+      if (isNewNotificationMessage) {
+        playNotificationSound();
+      }
 
       void showDesktopNotification(notificationTitle, notificationBody, {
         tag: candidate.notificationKey,

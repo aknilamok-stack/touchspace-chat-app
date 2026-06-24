@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
@@ -1024,6 +1024,7 @@ export default function SupplierPage() {
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isComposerDragActive, setIsComposerDragActive] = useState(false);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingReply, setIsSendingReply] = useState(false);
@@ -1506,6 +1507,69 @@ export default function SupplierPage() {
     !isResolvingTicket &&
     selectedTicket?.status !== "resolved" &&
     selectedRequestCard?.queueTab !== "completed";
+  const canAttachToActiveChat = canSupplierReply && supplierSupervisorPowerEnabled;
+
+  const attachComposerFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      const validationMessage = validateChatAttachmentFiles(files);
+
+      if (validationMessage) {
+        setReplyError(validationMessage);
+        setSelectedFiles([]);
+        setAttachmentName("");
+        return;
+      }
+
+      setReplyError("");
+      setSelectedFiles(files);
+      setAttachmentName(getChatAttachmentSelectionSummary(files));
+      setShowQuickReplies(false);
+      setShowEmojiPicker(false);
+      window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+    },
+    []
+  );
+
+  const handleComposerDragEvent = (event: DragEvent<HTMLDivElement>) => {
+    if (!canAttachToActiveChat) {
+      return;
+    }
+
+    if (Array.from(event.dataTransfer.types ?? []).includes("Files")) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleComposerDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    handleComposerDragEvent(event);
+
+    if (canAttachToActiveChat && Array.from(event.dataTransfer.types ?? []).includes("Files")) {
+      setIsComposerDragActive(true);
+    }
+  };
+
+  const handleComposerDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsComposerDragActive(false);
+    }
+  };
+
+  const handleComposerDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!canAttachToActiveChat) {
+      return;
+    }
+
+    handleComposerDragEvent(event);
+    setIsComposerDragActive(false);
+    attachComposerFiles(Array.from(event.dataTransfer.files ?? []));
+  };
+
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const activeTabRequests = supplierRequestCards.filter((card) => {
     if (card.queueTab !== activeQueueTab) {
@@ -4443,6 +4507,18 @@ export default function SupplierPage() {
 
                     {canSupplierReply ? (
                       <>
+                      <div
+                        className="relative"
+                        onDragEnter={handleComposerDragEnter}
+                        onDragOver={handleComposerDragEvent}
+                        onDragLeave={handleComposerDragLeave}
+                        onDrop={handleComposerDrop}
+                      >
+                      {isComposerDragActive ? (
+                        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[28px] border-2 border-dashed border-[#0A84FF] bg-[#EAF3FF]/92 text-sm font-semibold text-[#0A84FF] shadow-[0_18px_44px_rgba(10,132,255,0.18)]">
+                          Отпустите файл, чтобы прикрепить
+                        </div>
+                      ) : null}
                       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#F1DFC7]/0 bg-transparent px-0 py-0">
                         <button
                           type="button"
@@ -4769,19 +4845,7 @@ export default function SupplierPage() {
                               return;
                             }
 
-                            const validationMessage = validateChatAttachmentFiles(files);
-
-                            if (validationMessage) {
-                              setReplyError(validationMessage);
-                              setSelectedFiles([]);
-                              setAttachmentName("");
-                              event.target.value = "";
-                              return;
-                            }
-
-                            setReplyError("");
-                            setSelectedFiles(files);
-                            setAttachmentName(getChatAttachmentSelectionSummary(files));
+                            attachComposerFiles(files);
                             event.target.value = "";
                           }}
                         />
@@ -4811,6 +4875,7 @@ export default function SupplierPage() {
                           </div>
                           ) : null}
                       </button>
+                      </div>
                       </div>
                       </>
                     ) : null}

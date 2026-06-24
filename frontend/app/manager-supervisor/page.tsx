@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type DragEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
@@ -1106,6 +1106,7 @@ export default function Home() {
   const [hoveredComposerAction, setHoveredComposerAction] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isComposerDragActive, setIsComposerDragActive] = useState(false);
   const [sendMode, setSendMode] = useState<"chat" | "email">("chat");
   const [emailRecipient, setEmailRecipient] = useState("");
   const [chatSearchQuery, setChatSearchQuery] = useState("");
@@ -2016,6 +2017,75 @@ export default function Home() {
     },
     [currentManagerId, managerSupervisorPowerEnabled]
   );
+
+  const canAttachToActiveChat = activeChat
+    ? activeChat.rawStatus !== "resolved" && canCurrentManagerWriteToChat(activeChat)
+    : false;
+
+  const attachComposerFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      const validationMessage = validateChatAttachmentFiles(files);
+
+      if (validationMessage) {
+        setToast({
+          message: validationMessage,
+          tone: "error",
+        });
+        return;
+      }
+
+      setSelectedFiles(files);
+      setAttachmentName(getChatAttachmentSelectionSummary(files));
+      setShowQuickReplies(false);
+      setShowEmojiPicker(false);
+      setManagerSuggestions([]);
+      setActiveManagerSuggestionIndex(-1);
+      requestAnimationFrame(() => composerTextareaRef.current?.focus());
+    },
+    []
+  );
+
+  const handleComposerDragEvent = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files") || !canAttachToActiveChat) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleComposerDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    handleComposerDragEvent(event);
+
+    if (event.dataTransfer.types.includes("Files") && canAttachToActiveChat) {
+      setIsComposerDragActive(true);
+    }
+  };
+
+  const handleComposerDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    handleComposerDragEvent(event);
+
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+
+    setIsComposerDragActive(false);
+  };
+
+  const handleComposerDrop = (event: DragEvent<HTMLDivElement>) => {
+    handleComposerDragEvent(event);
+    setIsComposerDragActive(false);
+
+    if (!canAttachToActiveChat) {
+      return;
+    }
+
+    attachComposerFiles(Array.from(event.dataTransfer.files ?? []));
+  };
 
   const filteredChats = chatData.filter((chat) => {
     if (filter === "all") return true;
@@ -5691,10 +5761,22 @@ export default function Home() {
                     </p>
                   ) : null}
                 </div>
-              ) : (
-                <>
-              {attachmentName ? (
-                <div className="mb-3 flex">
+	              ) : (
+	                <>
+                <div
+                  className="relative"
+                  onDragEnter={handleComposerDragEnter}
+                  onDragOver={handleComposerDragEvent}
+                  onDragLeave={handleComposerDragLeave}
+                  onDrop={handleComposerDrop}
+                >
+                  {isComposerDragActive ? (
+                    <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[28px] border-2 border-dashed border-[#0A84FF] bg-[#EAF3FF]/92 text-sm font-semibold text-[#0A84FF] shadow-[0_18px_44px_rgba(10,132,255,0.18)]">
+                      Отпустите файл, чтобы прикрепить
+                    </div>
+                  ) : null}
+	              {attachmentName ? (
+	                <div className="mb-3 flex">
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
                     <span className="truncate max-w-[240px]">{attachmentName}</span>
                     <button
@@ -6194,24 +6276,10 @@ export default function Home() {
                         return;
                       }
 
-                      const validationMessage = validateChatAttachmentFiles(files);
-
-                      if (validationMessage) {
-                        setToast({
-                          message: validationMessage,
-                          tone: "error",
-                        });
-                        setSelectedFiles([]);
-                        setAttachmentName("");
-                        event.target.value = "";
-                        return;
-                      }
-
-                      setSelectedFiles(files);
-                      setAttachmentName(getChatAttachmentSelectionSummary(files));
-                      event.target.value = "";
-                    }}
-                  />
+	                      attachComposerFiles(files);
+	                      event.target.value = "";
+	                    }}
+	                  />
                 </div>
 
                 <button
@@ -6239,12 +6307,13 @@ export default function Home() {
                 </button>
               </div>
               {!managerSupervisorPowerEnabled ? (
-                <p className="mt-3 text-sm text-[#8E8E93]">
-                  Молния выключена: управленец может читать диалоги, но не получает уведомления и не может писать.
-                </p>
-              ) : null}
-                </>
-              )}
+	                <p className="mt-3 text-sm text-[#8E8E93]">
+	                  Молния выключена: управленец может читать диалоги, но не получает уведомления и не может писать.
+	                </p>
+	              ) : null}
+                </div>
+	                </>
+	              )}
             </div>
           </div>
             </>

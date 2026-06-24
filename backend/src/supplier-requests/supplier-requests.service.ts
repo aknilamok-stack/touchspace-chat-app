@@ -362,7 +362,7 @@ export class SupplierRequestsService {
     const actorId = input.actorId?.trim() || null;
     const actorName = input.actorName?.trim() || null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const supplierRequest = await this.prisma.$transaction(async (tx) => {
       const supplierRequest = await tx.supplierRequest.findUnique({
         where: { id },
       });
@@ -483,8 +483,7 @@ export class SupplierRequestsService {
           (state.mode === 'awaiting_manager' || !state.isPaused)) ||
         (input.action === 'resume_defer' && state.mode !== 'awaiting_manager')
       ) {
-        const [enrichedRequest] = await this.attachSyncState([supplierRequest]);
-        return enrichedRequest;
+        return supplierRequest;
       }
 
       const nextAction =
@@ -514,9 +513,11 @@ export class SupplierRequestsService {
         },
       });
 
-      const [updatedRequest] = await this.attachSyncState([supplierRequest]);
-      return updatedRequest;
+      return supplierRequest;
     });
+
+    const [updatedRequest] = await this.attachSyncState([supplierRequest]);
+    return updatedRequest;
   }
 
   async updateStatus(id: string, input: UpdateSupplierRequestStatusDto) {

@@ -485,6 +485,79 @@ const areMessageMapsEqual = (
   return leftKeys.every((key) => areMessagesEqual(left[key] ?? [], right[key] ?? []));
 };
 
+const mergeMessagesById = <T extends { id: string; createdAt: string }>(
+  currentMessages: T[] = [],
+  nextMessages: T[] = []
+) => {
+  const byId = new Map<string, T>();
+
+  currentMessages.forEach((message) => {
+    byId.set(message.id, message);
+  });
+
+  nextMessages.forEach((message) => {
+    byId.set(message.id, message);
+  });
+
+  return [...byId.values()].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime();
+    const rightTime = new Date(right.createdAt).getTime();
+
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+};
+
+const mergeDirectManagerTickets = (
+  currentTickets: Ticket[],
+  nextTickets: Ticket[]
+) => {
+  const currentById = new Map(currentTickets.map((ticket) => [ticket.id, ticket]));
+
+  return nextTickets.map((ticket) => {
+    const currentTicket = currentById.get(ticket.id);
+
+    if (!currentTicket) {
+      return ticket;
+    }
+
+    const messages = mergeMessagesById(
+      currentTicket.messages ?? [],
+      ticket.messages ?? []
+    );
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt ?? currentTicket.lastMessageAt,
+    };
+  });
+};
+
+const addMessagesToDirectManagerTicket = (
+  tickets: Ticket[],
+  ticketId: string,
+  messagesToAdd: TicketMessageApi[]
+) =>
+  tickets.map((ticket) => {
+    if (ticket.id !== ticketId) {
+      return ticket;
+    }
+
+    const messages = mergeMessagesById(ticket.messages ?? [], messagesToAdd);
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt,
+    };
+  });
+
 const getVisibleMessagesForTicket = (
   requests: SupplierRequest[],
   messages: TicketMessage[]
@@ -2575,7 +2648,9 @@ export default function SupplierPage() {
           return;
         }
 
-        setDirectManagerTickets(tickets);
+        setDirectManagerTickets((currentTickets) =>
+          mergeDirectManagerTickets(currentTickets, tickets)
+        );
         setSelectedManagerTicketId((currentId) =>
           currentId && tickets.some((ticket) => ticket.id === currentId)
             ? currentId
@@ -2820,7 +2895,9 @@ export default function SupplierPage() {
 
         void fetchDirectManagerTickets()
           .then((tickets) => {
-            setDirectManagerTickets(tickets);
+            setDirectManagerTickets((currentTickets) =>
+              mergeDirectManagerTickets(currentTickets, tickets)
+            );
           })
           .catch((error) => {
             console.error("Ошибка live-обновления прямых чатов поставщика:", error);
@@ -3606,7 +3683,7 @@ export default function SupplierPage() {
             ticket.id === selectedManagerTicket.id
               ? {
                   ...ticket,
-                  messages,
+                  messages: mergeMessagesById(ticket.messages ?? [], messages),
                 }
               : ticket
           )
@@ -4367,8 +4444,17 @@ export default function SupplierPage() {
         setReplyTarget(null);
         setAttachmentName("");
         setSelectedFiles([]);
+        setDirectManagerTickets((currentTickets) =>
+          addMessagesToDirectManagerTicket(
+            currentTickets,
+            selectedManagerTicket.id,
+            createdMessages
+          )
+        );
         const tickets = await fetchDirectManagerTickets();
-        setDirectManagerTickets(tickets);
+        setDirectManagerTickets((currentTickets) =>
+          mergeDirectManagerTickets(currentTickets, tickets)
+        );
       } catch (error) {
         setReplyError(
           error instanceof Error ? error.message : "Не удалось отправить сообщение менеджеру"

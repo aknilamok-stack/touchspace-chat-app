@@ -4834,7 +4834,10 @@ export default function SupplierPage() {
               <div className="grid grid-cols-2 gap-1">
                 <button
                   type="button"
-                  onClick={() => setActiveSupplierSection("requests")}
+                  onClick={() => {
+                    setActiveSupplierSection("requests");
+                    setSelectedManagerTicketId("");
+                  }}
                   className={`relative inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
                     activeSupplierSection === "requests"
                       ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
@@ -4977,6 +4980,8 @@ export default function SupplierPage() {
                       Boolean(card.request.claimMissedAt || card.request.returnedToQueueAt)
                     }
                     onClick={() => {
+                      setActiveSupplierSection("requests");
+                      setSelectedManagerTicketId("");
                       setIsChatPaneDismissed(false);
                       setSelectedRequestId(card.request.id);
                     }}
@@ -6785,6 +6790,8 @@ export default function SupplierPage() {
                       <DialogListWideRow
                         key={card.request.id}
                         onClick={() => {
+                          setActiveSupplierSection("requests");
+                          setSelectedManagerTicketId("");
                           setIsChatPaneDismissed(false);
                           setSelectedRequestId(card.request.id);
                         }}

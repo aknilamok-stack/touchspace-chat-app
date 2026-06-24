@@ -920,7 +920,7 @@ export class TicketsService {
       lastPageView &&
       lastPageView.pagePath === pagePath &&
       (lastPageView.pageTitle ?? null) === pageTitle &&
-      visitedAt.getTime() - lastPageView.visitedAt.getTime() <= 3000
+      visitedAt.getTime() - lastPageView.visitedAt.getTime() <= 60_000
     ) {
       return {
         recorded: false,

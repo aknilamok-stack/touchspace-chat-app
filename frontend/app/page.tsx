@@ -2583,7 +2583,7 @@ export default function Home() {
       };
 
       void refreshManagerData();
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, activeChatId, currentManagerId, currentManagerName]);
@@ -2782,7 +2782,7 @@ export default function Home() {
         .catch((error) => {
           console.error("Ошибка live-обновления активного чата:", error);
         });
-    }, 3000);
+    }, 10000);
 
     return () => window.clearInterval(intervalId);
   }, [activeChatId]);
@@ -2809,7 +2809,7 @@ export default function Home() {
         .catch((error) => {
           console.error("Ошибка live-обновления истории страниц:", error);
         });
-    }, 3000);
+    }, 30000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, activeChatId, currentManagerId]);
@@ -2984,7 +2984,7 @@ export default function Home() {
 
     const intervalId = window.setInterval(() => {
       void loadTypingState();
-    }, 1000);
+    }, 3000);
 
     return () => window.clearInterval(intervalId);
   }, [activeChatId]);
@@ -3065,7 +3065,7 @@ export default function Home() {
 
     const intervalId = window.setInterval(() => {
       emitManagerTyping(activeChatId);
-    }, 900);
+    }, 2500);
 
     return () => window.clearInterval(intervalId);
   }, [messageText, activeChatId]);

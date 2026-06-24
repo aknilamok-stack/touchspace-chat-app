@@ -108,7 +108,7 @@ function getDesktopApiBaseUrl() {
     return `${start.protocol}//api.${start.hostname.slice(4)}`;
   }
 
-  return start.origin;
+  return `${start.origin}/api`;
 }
 
 function readDesktopAuthSessionJson() {
@@ -609,7 +609,7 @@ function startDesktopNotificationPolling() {
     }
 
     void pollDesktopManagerNotifications();
-  }, 1000);
+  }, 5000);
 }
 
 function stopDesktopNotificationPolling() {

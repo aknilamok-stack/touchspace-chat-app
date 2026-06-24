@@ -1762,7 +1762,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void loadSupplierPresenceRecords();
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, supplierProfileId]);
@@ -3305,7 +3305,7 @@ export default function SupplierPage() {
         .catch((error) => {
           console.error("Ошибка live-обновления истории страниц:", error);
         });
-    }, 3000);
+    }, 30000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, selectedRequest?.ticketId]);

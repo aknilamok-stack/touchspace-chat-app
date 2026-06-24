@@ -8,6 +8,7 @@ import {
 } from './supplier-requests/supplier-request-sync.util';
 
 const MANAGER_SUPPLIER_CLIENT_ESCALATION_MS = 2 * 60 * 1000;
+const NOTIFICATION_CANDIDATES_CACHE_TTL_MS = 3_000;
 
 type NotificationPreferencesInput = {
   notificationPushEnabled?: boolean;
@@ -113,10 +114,40 @@ const isSpecificSupplierContactName = (
 
 @Injectable()
 export class NotificationsService {
+  private readonly notificationCandidatesCache = new Map<
+    string,
+    {
+      expiresAt: number;
+      value: { items: Array<ManagerNotificationCandidate | SupplierNotificationCandidate> };
+    }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly profilesService: ProfilesService,
   ) {}
+
+  private getCachedNotificationCandidates<
+    T extends ManagerNotificationCandidate | SupplierNotificationCandidate,
+  >(key: string): { items: T[] } | null {
+    const cached = this.notificationCandidatesCache.get(key);
+
+    if (!cached || cached.expiresAt <= Date.now()) {
+      this.notificationCandidatesCache.delete(key);
+      return null;
+    }
+
+    return cached.value as { items: T[] };
+  }
+
+  private setCachedNotificationCandidates<
+    T extends ManagerNotificationCandidate | SupplierNotificationCandidate,
+  >(key: string, value: { items: T[] }) {
+    this.notificationCandidatesCache.set(key, {
+      expiresAt: Date.now() + NOTIFICATION_CANDIDATES_CACHE_TTL_MS,
+      value,
+    });
+  }
 
   private async resolveScopedRole(profileId: string, fallbackRole: string) {
     const existingProfile = await this.prisma.profile.findUnique({
@@ -136,7 +167,7 @@ export class NotificationsService {
   }
 
   private async ensureSettingsProfile(profileId: string, role: string) {
-    const normalizedProfileId = profileId?.trim();
+    const normalizedProfileId = profileId?.trim() ?? '';
     const normalizedRole = role?.trim();
 
     if (!normalizedProfileId || !normalizedRole) {
@@ -709,6 +740,24 @@ export class NotificationsService {
   }
 
   async getManagerNotificationCandidates(profileId: string) {
+    const normalizedProfileId = profileId?.trim() ?? '';
+    const cacheKey = `manager:${normalizedProfileId}`;
+    const cached =
+      this.getCachedNotificationCandidates<ManagerNotificationCandidate>(
+        cacheKey,
+      );
+
+    if (cached) {
+      return cached;
+    }
+
+    const response =
+      await this.buildManagerNotificationCandidates(normalizedProfileId);
+    this.setCachedNotificationCandidates(cacheKey, response);
+    return response;
+  }
+
+  private async buildManagerNotificationCandidates(profileId: string) {
     const profile = await this.ensureSettingsProfile(profileId, 'manager');
     await this.ensureManagerOperationalState();
 
@@ -1266,6 +1315,30 @@ export class NotificationsService {
   }
 
   async getSupplierNotificationCandidates(
+    profileId: string,
+    supplierId?: string,
+  ) {
+    const normalizedProfileId = profileId?.trim() ?? '';
+    const normalizedSupplierId = supplierId?.trim() || '';
+    const cacheKey = `supplier:${normalizedProfileId}:${normalizedSupplierId}`;
+    const cached =
+      this.getCachedNotificationCandidates<SupplierNotificationCandidate>(
+        cacheKey,
+      );
+
+    if (cached) {
+      return cached;
+    }
+
+    const response = await this.buildSupplierNotificationCandidates(
+      normalizedProfileId,
+      normalizedSupplierId,
+    );
+    this.setCachedNotificationCandidates(cacheKey, response);
+    return response;
+  }
+
+  private async buildSupplierNotificationCandidates(
     profileId: string,
     supplierId?: string,
   ) {
@@ -1835,6 +1908,7 @@ export class NotificationsService {
     input: NotificationPreferencesInput,
   ) {
     await this.ensureSettingsProfile(profileId, role);
+    this.notificationCandidatesCache.clear();
 
     const updated = await this.prisma.profile.update({
       where: { id: profileId },

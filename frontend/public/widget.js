@@ -399,7 +399,7 @@
     lastSignature: "",
     lastSentAt: 0,
   };
-  var PAGE_VIEW_HEARTBEAT_INTERVAL_MS = 15000;
+  var PAGE_VIEW_HEARTBEAT_INTERVAL_MS = 60000;
 
   function sendPageView() {
     if (!pageTrackingState.apiBaseUrl || !fallbackTradePointId) {
@@ -415,7 +415,7 @@
 
     if (
       pageTrackingState.lastSignature === signature &&
-      now - pageTrackingState.lastSentAt <= 3000
+      now - pageTrackingState.lastSentAt <= 10000
     ) {
       return;
     }

@@ -1381,7 +1381,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void loadSupplierStatuses();
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, supplierId, supplierProfileId]);
@@ -1405,7 +1405,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void loadStatuses();
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady]);
@@ -2374,7 +2374,7 @@ export default function SupplierPage() {
 
     const intervalId = window.setInterval(() => {
       void refreshNotificationCandidates();
-    }, 5000);
+    }, 10000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, refreshNotificationCandidates, supplierProfileId, supplierSupervisorPowerEnabled]);
@@ -2411,7 +2411,7 @@ export default function SupplierPage() {
         .catch((error) => {
           console.error("Ошибка live-обновления истории страниц:", error);
         });
-    }, 3000);
+    }, 30000);
 
     return () => window.clearInterval(intervalId);
   }, [authReady, selectedRequest?.ticketId]);

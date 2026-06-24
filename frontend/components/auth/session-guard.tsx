@@ -67,7 +67,7 @@ export function SessionGuard() {
 
     const intervalId = window.setInterval(() => {
       void verifySession();
-    }, 5000);
+    }, 60000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {

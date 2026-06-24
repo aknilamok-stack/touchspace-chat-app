@@ -543,7 +543,7 @@ export default function ClientPage() {
 
     const intervalId = window.setInterval(() => {
       void refreshManagerAvailability();
-    }, 15000);
+    }, 30000);
 
     return () => window.clearInterval(intervalId);
   }, []);
@@ -944,7 +944,7 @@ export default function ClientPage() {
 
     const intervalId = window.setInterval(() => {
       void loadTypingState();
-    }, 1000);
+    }, 3000);
 
     return () => window.clearInterval(intervalId);
   }, [activeTicket?.id, activeTicket?.status]);

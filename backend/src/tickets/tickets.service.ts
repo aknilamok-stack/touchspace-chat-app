@@ -178,6 +178,8 @@ export class TicketsService {
     'Спасибо, что написали. Сейчас менеджеры не в сети, но как только кто-то появится, мы сразу вернёмся с ответом.';
   private static readonly OFFLINE_MANAGER_AUTO_REPLY_COOLDOWN_MS =
     15 * 60 * 1000;
+  private readonly pageViewDuplicateCache = new Map<string, number>();
+  private readonly pageViewDuplicateCacheTtlMs = 60_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -875,6 +877,34 @@ export class TicketsService {
         'tradePointId, pageUrl and pagePath are required',
       );
     }
+
+    const duplicateCacheKey = [
+      tradePointId,
+      pagePath,
+      pageTitle ?? '',
+      pageUrl,
+    ].join('|');
+    const lastDuplicateSeenAt =
+      this.pageViewDuplicateCache.get(duplicateCacheKey) ?? 0;
+
+    if (Date.now() - lastDuplicateSeenAt <= this.pageViewDuplicateCacheTtlMs) {
+      return {
+        recorded: false,
+        reason: 'duplicate',
+      };
+    }
+
+    if (this.pageViewDuplicateCache.size > 2_000) {
+      const now = Date.now();
+
+      for (const [key, seenAt] of this.pageViewDuplicateCache.entries()) {
+        if (now - seenAt > this.pageViewDuplicateCacheTtlMs) {
+          this.pageViewDuplicateCache.delete(key);
+        }
+      }
+    }
+
+    this.pageViewDuplicateCache.set(duplicateCacheKey, Date.now());
 
     const ticket = await this.prisma.ticket.findFirst({
       where: {

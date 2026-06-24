@@ -43,6 +43,20 @@ type EnsureProfileInput = {
 
 @Injectable()
 export class ProfilesService {
+  private managerStatusesCache:
+    | {
+        expiresAt: number;
+        value: Awaited<ReturnType<ProfilesService['buildManagerStatuses']>>;
+      }
+    | null = null;
+  private supplierStatusesCache:
+    | {
+        expiresAt: number;
+        value: Awaited<ReturnType<ProfilesService['buildSupplierStatuses']>>;
+      }
+    | null = null;
+  private readonly presenceStatusesCacheTtlMs = 5_000;
+
   constructor(private readonly prisma: PrismaService) {}
 
   private buildDirectSupplierDialogTitle(supplierName: string) {
@@ -187,6 +201,22 @@ export class ProfilesService {
   }
 
   async getManagerStatuses() {
+    if (
+      this.managerStatusesCache &&
+      this.managerStatusesCache.expiresAt > Date.now()
+    ) {
+      return this.managerStatusesCache.value;
+    }
+
+    const value = await this.buildManagerStatuses();
+    this.managerStatusesCache = {
+      expiresAt: Date.now() + this.presenceStatusesCacheTtlMs,
+      value,
+    };
+    return value;
+  }
+
+  private async buildManagerStatuses() {
     const managers = await this.prisma.profile.findMany({
       where: {
         role: {
@@ -264,6 +294,8 @@ export class ProfilesService {
         normalizedStatus === 'offline' ? null : new Date(),
     });
 
+    this.managerStatusesCache = null;
+
     return this.prisma.profile.update({
       where: {
         id: normalizedId,
@@ -283,6 +315,22 @@ export class ProfilesService {
   }
 
   async getSupplierStatuses() {
+    if (
+      this.supplierStatusesCache &&
+      this.supplierStatusesCache.expiresAt > Date.now()
+    ) {
+      return this.supplierStatusesCache.value;
+    }
+
+    const value = await this.buildSupplierStatuses();
+    this.supplierStatusesCache = {
+      expiresAt: Date.now() + this.presenceStatusesCacheTtlMs,
+      value,
+    };
+    return value;
+  }
+
+  private async buildSupplierStatuses() {
     const suppliers = await this.prisma.profile.findMany({
       where: {
         role: {
@@ -378,6 +426,8 @@ export class ProfilesService {
       supplierPresenceHeartbeatAt:
         normalizedStatus === 'offline' ? null : new Date(),
     });
+
+    this.supplierStatusesCache = null;
 
     return this.prisma.profile.update({
       where: {

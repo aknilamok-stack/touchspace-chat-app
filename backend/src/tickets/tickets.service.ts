@@ -3367,6 +3367,8 @@ export class TicketsService {
         conversationMode: 'manager',
         currentHandlerType: 'manager',
         claimedAt: now,
+        claimRequiredAt: null,
+        claimMissedAt: null,
         rescueQueuedAt: null,
         returnedToQueueAt: null,
         handedToManagerAt: now,

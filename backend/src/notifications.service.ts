@@ -450,11 +450,13 @@ export class NotificationsService {
         latestClientMessage?.deliveryStatus === 'read';
 
       if (latestClientMessageWasRead) {
-        const managerReadAt =
-          latestClientMessage.readAt ??
-          ticket.claimedAt ??
-          ticket.handedToManagerAt ??
-          null;
+        const managerReadAt = [
+          latestClientMessage.readAt,
+          ticket.claimedAt,
+          ticket.handedToManagerAt,
+        ]
+          .filter((value): value is Date => Boolean(value))
+          .sort((left, right) => right.getTime() - left.getTime())[0];
 
         if (!managerReadAt || managerReadAt > readAutoResolveThreshold) {
           continue;

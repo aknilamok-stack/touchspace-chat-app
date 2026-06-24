@@ -65,10 +65,6 @@ export function SessionGuard() {
 
     void verifySession();
 
-    const intervalId = window.setInterval(() => {
-      void verifySession();
-    }, 60000);
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         void verifySession();
@@ -80,7 +76,6 @@ export function SessionGuard() {
 
     return () => {
       isCancelled = true;
-      window.clearInterval(intervalId);
       window.removeEventListener("focus", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };

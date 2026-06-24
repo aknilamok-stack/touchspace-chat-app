@@ -70,8 +70,7 @@ const isHiddenClientSystemMessage = (message: Message) =>
     message.content.startsWith("Запрошен поставщик:") ||
     message.content.startsWith("Диалог взят в работу менеджером ") ||
     message.content.includes("AI передал диалог менеджеру") ||
-    message.content.includes("переведён в статус: closed") ||
-    message.content.includes('переведён в статус "Решён"')
+    message.content === "Спасибо за оценку"
   );
 
 const formatMessageTime = (createdAt: string) =>
@@ -1433,17 +1432,11 @@ export default function ClientPage() {
           ];
         }
 
-        if (
-          message.content.startsWith("Диалог взят в работу менеджером ") ||
-          message.content.includes("переведён в статус: closed") ||
-          message.content.includes('переведён в статус "Решён"')
-        ) {
+        if (message.content.startsWith("Диалог взят в работу менеджером ")) {
           return [
             {
               ...message,
-              displayContent: message.content.startsWith("Диалог взят в работу менеджером ")
-                ? message.content
-                : "Чат переведён менеджеру TouchSpace.",
+              displayContent: message.content,
               attachments: [],
             },
           ];
@@ -1454,6 +1447,16 @@ export default function ClientPage() {
             {
               ...message,
               displayContent: "Чат переведён менеджеру TouchSpace.",
+              attachments: [],
+            },
+          ];
+        }
+
+        if (message.content === "Спасибо за оценку") {
+          return [
+            {
+              ...message,
+              displayContent: "Спасибо за оценку",
               attachments: [],
             },
           ];

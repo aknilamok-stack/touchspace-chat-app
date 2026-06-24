@@ -153,14 +153,7 @@ export class MessagesService {
               },
             },
             {
-              content: {
-                contains: 'переведён в статус: closed',
-              },
-            },
-            {
-              content: {
-                contains: 'переведён в статус "Решён"',
-              },
+              content: 'Спасибо за оценку',
             },
           ],
         },

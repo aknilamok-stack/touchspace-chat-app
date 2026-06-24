@@ -2850,7 +2850,7 @@ export default function SupplierPage() {
 
     const loadDirectManagerMessages = async () => {
       try {
-        const messages = await fetchTicketMessages(selectedManagerTicket.id);
+        const messages = await markTicketMessagesRead(selectedManagerTicket.id);
 
         if (cancelled) {
           return;
@@ -2867,6 +2867,7 @@ export default function SupplierPage() {
               : ticket
           )
         );
+        void refreshNotificationCandidates();
       } catch (error) {
         console.error("Ошибка загрузки прямого чата с менеджером:", error);
       }
@@ -2877,7 +2878,14 @@ export default function SupplierPage() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, activeSupplierSection, selectedManagerTicket?.id, supplierId]);
+  }, [
+    authReady,
+    activeSupplierSection,
+    selectedManagerTicket?.id,
+    supplierId,
+    markTicketMessagesRead,
+    refreshNotificationCandidates,
+  ]);
 
   useEffect(() => {
     if (supplierChatSearchMatchIds.length === 0) {
@@ -3756,6 +3764,7 @@ export default function SupplierPage() {
               : ticket
           )
         );
+        void refreshNotificationCandidates();
       })
       .catch((error) => {
         console.error("Ошибка отметки прямого чата как прочитанного:", error);
@@ -3766,6 +3775,7 @@ export default function SupplierPage() {
     authReady,
     latestUnreadDirectManagerMessage,
     markTicketMessagesRead,
+    refreshNotificationCandidates,
     selectedManagerTicket?.id,
   ]);
 

@@ -389,6 +389,8 @@ export class NotificationsService {
           id: true,
           assignedManagerId: true,
           assignedManagerName: true,
+          claimedAt: true,
+          handedToManagerAt: true,
           lastClientMessageAt: true,
           lastManagerReplyAt: true,
           messages: {
@@ -403,6 +405,7 @@ export class NotificationsService {
               id: true,
               status: true,
               deliveryStatus: true,
+              readAt: true,
               createdAt: true,
             },
           },
@@ -447,11 +450,13 @@ export class NotificationsService {
         latestClientMessage?.deliveryStatus === 'read';
 
       if (latestClientMessageWasRead) {
-        if (
-          latestClientMessage.createdAt > readAutoResolveThreshold ||
-          (ticket.lastClientMessageAt &&
-            ticket.lastClientMessageAt > readAutoResolveThreshold)
-        ) {
+        const managerReadAt =
+          latestClientMessage.readAt ??
+          ticket.claimedAt ??
+          ticket.handedToManagerAt ??
+          null;
+
+        if (!managerReadAt || managerReadAt > readAutoResolveThreshold) {
           continue;
         }
 

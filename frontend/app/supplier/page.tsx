@@ -558,6 +558,31 @@ const addMessagesToDirectManagerTicket = (
     };
   });
 
+const removeMessagesFromDirectManagerTicket = (
+  tickets: Ticket[],
+  ticketId: string,
+  messageIdsToRemove: string[]
+) => {
+  const idsToRemove = new Set(messageIdsToRemove);
+
+  return tickets.map((ticket) => {
+    if (ticket.id !== ticketId) {
+      return ticket;
+    }
+
+    const messages = (ticket.messages ?? []).filter(
+      (message) => !idsToRemove.has(message.id)
+    );
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt,
+    };
+  });
+};
+
 const getVisibleMessagesForTicket = (
   requests: SupplierRequest[],
   messages: TicketMessage[]
@@ -2812,6 +2837,49 @@ export default function SupplierPage() {
   }, [activeSupplierSection, selectedManagerTicket?.id, selectedRequest?.ticketId]);
 
   useEffect(() => {
+    if (
+      !authReady ||
+      activeSupplierSection !== "manager" ||
+      !selectedManagerTicket?.id ||
+      !supplierId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDirectManagerMessages = async () => {
+      try {
+        const messages = await fetchTicketMessages(selectedManagerTicket.id);
+
+        if (cancelled) {
+          return;
+        }
+
+        setDirectManagerTickets((currentTickets) =>
+          currentTickets.map((ticket) =>
+            ticket.id === selectedManagerTicket.id
+              ? {
+                  ...ticket,
+                  messages: mergeMessagesById(ticket.messages ?? [], messages),
+                  lastMessageAt: messages.at(-1)?.createdAt ?? ticket.lastMessageAt,
+                }
+              : ticket
+          )
+        );
+      } catch (error) {
+        console.error("Ошибка загрузки прямого чата с менеджером:", error);
+      }
+    };
+
+    void loadDirectManagerMessages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, activeSupplierSection, selectedManagerTicket?.id, supplierId]);
+
+  useEffect(() => {
     if (supplierChatSearchMatchIds.length === 0) {
       setActiveChatSearchMatchIndex(0);
       return;
@@ -4361,11 +4429,41 @@ export default function SupplierPage() {
 
   const handleSendReply = async () => {
     if (activeSupplierSection === "manager") {
-      const hasTextToSend = Boolean(replyText.trim());
+      const textToSend = replyText.trim();
+      const hasTextToSend = Boolean(textToSend);
       const hasAttachmentToSend = selectedFiles.length > 0;
 
       if (!selectedManagerTicket || (!hasTextToSend && !hasAttachmentToSend)) {
         return;
+      }
+
+      const optimisticTextMessage: TicketMessageApi | null = hasTextToSend
+        ? {
+            id: `temp-direct-${Date.now()}`,
+            ticketId: selectedManagerTicket.id,
+            content: textToSend,
+            senderType: "supplier",
+            senderProfileId: supplierProfileId,
+            senderName: resolvedSupplierEmployeeName,
+            messageType: "text",
+            transport: "chat",
+            status: "sent",
+            createdAt: new Date().toISOString(),
+          }
+        : null;
+
+      if (optimisticTextMessage) {
+        setDirectManagerTickets((currentTickets) =>
+          addMessagesToDirectManagerTicket(
+            currentTickets,
+            selectedManagerTicket.id,
+            [optimisticTextMessage]
+          )
+        );
+        setReplyText("");
+        requestAnimationFrame(() => {
+          scrollSupplierChatToBottom("smooth");
+        });
       }
 
       setIsSendingReply(true);
@@ -4382,7 +4480,7 @@ export default function SupplierPage() {
             },
             body: JSON.stringify({
               ticketId: selectedManagerTicket.id,
-              content: replyText,
+              content: textToSend,
               senderType: "supplier",
               transport: "chat",
               senderId: supplierProfileId,
@@ -4444,6 +4542,15 @@ export default function SupplierPage() {
         setReplyTarget(null);
         setAttachmentName("");
         setSelectedFiles([]);
+        if (optimisticTextMessage) {
+          setDirectManagerTickets((currentTickets) =>
+            removeMessagesFromDirectManagerTicket(
+              currentTickets,
+              selectedManagerTicket.id,
+              [optimisticTextMessage.id]
+            )
+          );
+        }
         setDirectManagerTickets((currentTickets) =>
           addMessagesToDirectManagerTicket(
             currentTickets,
@@ -4456,6 +4563,16 @@ export default function SupplierPage() {
           mergeDirectManagerTickets(currentTickets, tickets)
         );
       } catch (error) {
+        if (optimisticTextMessage) {
+          setDirectManagerTickets((currentTickets) =>
+            removeMessagesFromDirectManagerTicket(
+              currentTickets,
+              selectedManagerTicket.id,
+              [optimisticTextMessage.id]
+            )
+          );
+          setReplyText(textToSend);
+        }
         setReplyError(
           error instanceof Error ? error.message : "Не удалось отправить сообщение менеджеру"
         );

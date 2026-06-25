@@ -26,6 +26,8 @@ const windowIconPath = path.join(__dirname, "..", "assets", "icon.png");
 const shouldOpenDevTools = process.env.DESKTOP_OPEN_DEVTOOLS === "true";
 const windowsAppUserModelId = "com.touchspace.workspace";
 const repeatedNotificationIntervalMs = 60_000;
+const managerQueueNotificationRepeatIntervalMs = 2 * 60_000;
+const managerOwnedActiveNotificationRepeatIntervalMs = 30 * 60_000;
 const desktopAttentionCooldownMs = 15_000;
 
 let mainWindow = null;
@@ -287,6 +289,12 @@ function setLastBackgroundNotificationState(notificationKey, messageId) {
   });
 }
 
+function getManagerRepeatedNotificationIntervalMs(candidate) {
+  return candidate?.scopeStatus === "owned_active"
+    ? managerOwnedActiveNotificationRepeatIntervalMs
+    : managerQueueNotificationRepeatIntervalMs;
+}
+
 function buildManagerNotificationPayload(candidate) {
   const isDirectSupplierDialog = candidate?.conversationMode === "direct_supplier";
   const isClaimedByOther = candidate?.scopeStatus === "claimed_by_other_recently";
@@ -489,7 +497,7 @@ async function pollDesktopManagerNotifications() {
 
       if (
         lastNotificationState.messageId === messageId &&
-        Date.now() - lastNotificationState.shownAt < repeatedNotificationIntervalMs
+        Date.now() - lastNotificationState.shownAt < getManagerRepeatedNotificationIntervalMs(candidate)
       ) {
         return;
       }

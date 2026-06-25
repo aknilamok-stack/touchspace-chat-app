@@ -45,10 +45,16 @@ import {
   showDesktopShellNotification,
 } from "@/lib/runtime";
 
-const REPEATED_NOTIFICATION_INTERVAL_MS = 60_000;
+const QUEUE_NOTIFICATION_REPEAT_INTERVAL_MS = 2 * 60_000;
+const OWNED_ACTIVE_NOTIFICATION_REPEAT_INTERVAL_MS = 30 * 60_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
 const managerReplyMapStorageKey = "touchspace_manager_reply_map";
 const managerSupervisorPowerStorageKey = "touchspace_manager_supervisor_power_enabled";
+
+const getRepeatedNotificationIntervalMs = (candidate: { scopeStatus?: string | null }) =>
+  candidate.scopeStatus === "owned_active"
+    ? OWNED_ACTIVE_NOTIFICATION_REPEAT_INTERVAL_MS
+    : QUEUE_NOTIFICATION_REPEAT_INTERVAL_MS;
 
 type MessageRole = "client" | "manager" | "supplier" | "ai" | "system";
 type ReplyMeta = {
@@ -3053,9 +3059,15 @@ export default function Home() {
   }, [visibleFloatingNotifications]);
 
   const dismissFloatingNotification = (notificationKey: string) => {
+    const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
+
     setDismissedNotificationUntil((current) => ({
       ...current,
-      [notificationKey]: Date.now() + REPEATED_NOTIFICATION_INTERVAL_MS,
+      [notificationKey]:
+        Date.now() +
+        (candidate
+          ? getRepeatedNotificationIntervalMs(candidate)
+          : QUEUE_NOTIFICATION_REPEAT_INTERVAL_MS),
     }));
   };
 
@@ -3167,7 +3179,7 @@ export default function Home() {
         isNewNotificationMessage ||
         (!isClaimedByOther &&
           !isDirectSupplierDialog &&
-          Date.now() - lastNotificationAt >= REPEATED_NOTIFICATION_INTERVAL_MS);
+          Date.now() - lastNotificationAt >= getRepeatedNotificationIntervalMs(candidate));
 
       if (!shouldNotify) {
         return;

@@ -1946,11 +1946,7 @@ export class AdminService {
       );
     }
 
-    if (
-      existing.role === 'supplier_supervisor' &&
-      nextRole !== 'supplier_supervisor' &&
-      existing._count.supervisedProfiles > 0
-    ) {
+    if (existing._count.supervisedProfiles > 0 && nextRole !== 'supplier_supervisor') {
       throw new BadRequestException(
         'Нельзя сменить роль руководителя поставщика, пока к нему привязаны сотрудники',
       );

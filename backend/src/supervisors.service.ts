@@ -247,6 +247,9 @@ export class SupervisorsService {
               {
                 supervisorProfileId: null,
                 supplierId: supervisor.supplierId,
+                id: {
+                  not: supervisor.supplierId,
+                },
               },
             ]
           : []),

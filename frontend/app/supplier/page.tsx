@@ -47,6 +47,7 @@ import {
 const supplierStatusStorageKey = "touchspace_supplier_status";
 const supplierPinnedRequestsStorageKey = "touchspace_supplier_pinned_requests";
 const supplierReplyMapStorageKey = "touchspace_supplier_reply_map";
+const supplierEmailComposerEnabled = false;
 const supplierStatusLabels: Record<ManagerPresence, string> = {
   online: "В сети",
   break: "На перерыве",
@@ -4595,7 +4596,7 @@ export default function SupplierPage() {
 
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
-    const isEmailMode = sendMode === "email";
+    const isEmailMode = supplierEmailComposerEnabled && sendMode === "email";
 
     if (
       !selectedRequest ||
@@ -6362,17 +6363,19 @@ export default function SupplierPage() {
                         >
                           Чат
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setSendMode("email")}
-                          className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                            sendMode === "email"
-                              ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
-                              : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
-                          }`}
-                        >
-                          Email
-                        </button>
+                        {supplierEmailComposerEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => setSendMode("email")}
+                            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                              sendMode === "email"
+                                ? "bg-[#111827] text-white shadow-[0_8px_16px_rgba(17,24,39,0.18)]"
+                                : "bg-[#F2F2F7] text-[#6C6C70] hover:bg-[#ECEEF5]"
+                            }`}
+                          >
+                            Email
+                          </button>
+                        ) : null}
                         {sendMode === "chat" ? (
                           <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
                             <div className="relative min-w-[220px] flex-1">
@@ -6465,7 +6468,7 @@ export default function SupplierPage() {
                             ) : null}
                           </div>
                         ) : null}
-                        {sendMode === "email" ? (
+                        {supplierEmailComposerEnabled && sendMode === "email" ? (
                           <>
                             <span className="ml-1 text-sm font-medium text-[#9A6B2E]">
                               Получатель:

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatDuration, formatNumber } from "@/lib/admin-format";
@@ -77,6 +78,24 @@ const periodOptions = [
   { value: "custom", label: "Произвольный" },
 ];
 
+const ratingMeta: Record<number, { emoji: string; label: string; tone: string }> = {
+  3: {
+    emoji: "😄",
+    label: "Хорошо",
+    tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  },
+  2: {
+    emoji: "😐",
+    label: "Нормально",
+    tone: "border-amber-200 bg-amber-50 text-amber-900",
+  },
+  1: {
+    emoji: "☹️",
+    label: "Плохо",
+    tone: "border-rose-200 bg-rose-50 text-rose-900",
+  },
+};
+
 export function AdminOverview() {
   const [period, setPeriod] = useState("week");
   const [dateFrom, setDateFrom] = useState("");
@@ -84,6 +103,7 @@ export function AdminOverview() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [showRatingDetails, setShowRatingDetails] = useState(false);
 
   const load = async () => {
     try {
@@ -183,6 +203,21 @@ export function AdminOverview() {
       hint: "за выбранный период",
     },
   ];
+  const ratings = data?.ratings ?? {};
+  const ratingSummary = [
+    {
+      rating: 3,
+      value: ratings.good ?? data?.metrics?.ratingsGood ?? 0,
+    },
+    {
+      rating: 2,
+      value: ratings.neutral ?? data?.metrics?.ratingsNeutral ?? 0,
+    },
+    {
+      rating: 1,
+      value: ratings.bad ?? data?.metrics?.ratingsBad ?? 0,
+    },
+  ];
 
   return (
     <section className="grid gap-4">
@@ -277,6 +312,142 @@ export function AdminOverview() {
               <p className="mt-2 text-xs text-slate-500">{item.hint}</p>
             </div>
           ))}
+        </div>
+      </AdminPanel>
+
+      <AdminPanel
+        title="Оценки клиентов"
+        actions={
+          <AdminButton
+            tone="secondary"
+            onClick={() => setShowRatingDetails((current) => !current)}
+          >
+            {showRatingDetails ? "Скрыть" : "Подробнее"}
+          </AdminButton>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-5 py-4">
+              <p className="text-sm font-medium text-slate-600">Всего оценок за период</p>
+              <div className="mt-3 flex items-end gap-3">
+                <p className="text-[38px] font-semibold tracking-tight text-slate-950">
+                  {formatNumber(ratings.total ?? data?.metrics?.ratingsTotal ?? 0)}
+                </p>
+                <p className="pb-2 text-sm text-slate-500">
+                  средняя:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {ratings.total ? Number(ratings.avgRating ?? 0).toFixed(1) : "—"}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {ratingSummary.map((item) => {
+                const meta = ratingMeta[item.rating];
+
+                return (
+                  <div
+                    key={item.rating}
+                    className={`rounded-[22px] border px-4 py-4 ${meta.tone}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-3xl leading-none">{meta.emoji}</span>
+                      <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold">
+                        {meta.label}
+                      </span>
+                    </div>
+                    <p className="mt-4 text-[32px] font-semibold tracking-tight">
+                      {formatNumber(item.value)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {showRatingDetails ? (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+              <div className="overflow-hidden rounded-[20px] border border-slate-200">
+                <div className="grid grid-cols-[minmax(0,1.2fr)_80px_80px_80px_90px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
+                  <span>Менеджер</span>
+                  <span>😄</span>
+                  <span>😐</span>
+                  <span>☹️</span>
+                  <span>Средняя</span>
+                </div>
+                <div className="grid">
+                  {(ratings.managers ?? []).length > 0 ? (
+                    ratings.managers.map((item: any) => (
+                      <div
+                        key={item.managerId}
+                        className="grid grid-cols-[minmax(0,1.2fr)_80px_80px_80px_90px] gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-950">{item.managerName}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Всего оценок: {formatNumber(item.total)}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-emerald-700">{formatNumber(item.good)}</span>
+                        <span className="font-semibold text-amber-700">{formatNumber(item.neutral)}</span>
+                        <span className="font-semibold text-rose-700">{formatNumber(item.bad)}</span>
+                        <span className="font-semibold text-slate-900">
+                          {item.total ? Number(item.avgRating ?? 0).toFixed(1) : "—"}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-5 text-sm text-slate-500">
+                      За выбранный период оценок пока нет.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-950">Последние оценки</p>
+                  <Link href="/admin/dialogs" className="text-xs font-semibold text-sky-700 hover:text-sky-900">
+                    Все диалоги
+                  </Link>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {(ratings.recent ?? []).length > 0 ? (
+                    ratings.recent.map((item: any) => {
+                      const meta = ratingMeta[item.rating as 1 | 2 | 3] ?? ratingMeta[2];
+
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-950">
+                                {item.clientName ?? item.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-slate-500">
+                                Менеджер: {item.managerName}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-slate-500">
+                                Чат: {item.title}
+                              </p>
+                            </div>
+                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>
+                              {meta.emoji} {meta.label}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs text-slate-400">
+                            {formatDateTime(item.ratingSubmittedAt ?? item.resolvedAt ?? item.createdAt)}
+                          </p>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    compactEmpty("Пока нет оцененных диалогов за выбранный период.")
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </AdminPanel>
 

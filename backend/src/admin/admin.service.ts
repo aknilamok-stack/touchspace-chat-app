@@ -730,6 +730,10 @@ export class AdminService {
           createdAt: true,
           assignedManagerId: true,
           assignedManagerName: true,
+          lastResolvedByManagerId: true,
+          lastResolvedByManagerName: true,
+          managerRating: true,
+          managerRatingSubmittedAt: true,
           assignedManagerProfile: {
             select: {
               fullName: true,
@@ -744,6 +748,7 @@ export class AdminService {
             },
           },
           clientId: true,
+          clientName: true,
           clientEmail: true,
           tradePointExternalId: true,
           tradePointName: true,
@@ -751,6 +756,7 @@ export class AdminService {
           topicCategory: true,
           supplierEscalatedAt: true,
           slaBreached: true,
+          resolvedAt: true,
         },
         orderBy: [{ createdAt: 'asc' }],
       }),
@@ -1200,6 +1206,126 @@ export class AdminService {
               dialogsByDay.length,
           )
         : 0;
+    const ratedTicketsInRange = tickets.filter((ticket) => {
+      if (typeof ticket.managerRating !== 'number') {
+        return false;
+      }
+
+      const ratingDate =
+        ticket.managerRatingSubmittedAt ??
+        ticket.resolvedAt ??
+        ticket.lastMessageAt ??
+        ticket.createdAt;
+
+      return ratingDate >= range.from && ratingDate <= range.to;
+    });
+    const ratingBuckets = {
+      good: ratedTicketsInRange.filter((ticket) => ticket.managerRating === 3)
+        .length,
+      neutral: ratedTicketsInRange.filter((ticket) => ticket.managerRating === 2)
+        .length,
+      bad: ratedTicketsInRange.filter((ticket) => ticket.managerRating === 1)
+        .length,
+    };
+    const buildRatingLabel = (rating?: number | null) =>
+      rating === 3 ? 'Хорошо' : rating === 2 ? 'Нормально' : 'Плохо';
+    const buildRatingDialog = (ticket: (typeof tickets)[number]) => ({
+      id: ticket.id,
+      title: ticket.title || 'Диалог без названия',
+      clientName:
+        ticket.tradePointName?.trim() ||
+        ticket.clientName?.trim() ||
+        ticket.clientEmail?.trim() ||
+        null,
+      managerName:
+        ticket.lastResolvedByManagerName?.trim() ||
+        ticket.assignedManagerProfile?.fullName?.trim() ||
+        ticket.assignedManagerName?.trim() ||
+        'Не назначен',
+      rating: ticket.managerRating,
+      ratingLabel: buildRatingLabel(ticket.managerRating),
+      ratingSubmittedAt: ticket.managerRatingSubmittedAt,
+      resolvedAt: ticket.resolvedAt,
+      createdAt: ticket.createdAt,
+    });
+    const ratingManagersMap = new Map<
+      string,
+      {
+        managerId: string;
+        managerName: string;
+        good: number;
+        neutral: number;
+        bad: number;
+        total: number;
+        avgRating: number | null;
+        ratingSum: number;
+        dialogs: ReturnType<typeof buildRatingDialog>[];
+      }
+    >();
+
+    for (const ticket of ratedTicketsInRange) {
+      const managerId =
+        ticket.lastResolvedByManagerId?.trim() ||
+        ticket.assignedManagerId?.trim() ||
+        'unknown';
+      const managerName =
+        ticket.lastResolvedByManagerName?.trim() ||
+        ticket.assignedManagerProfile?.fullName?.trim() ||
+        ticket.assignedManagerName?.trim() ||
+        'Не назначен';
+      const current =
+        ratingManagersMap.get(managerId) ??
+        {
+          managerId,
+          managerName,
+          good: 0,
+          neutral: 0,
+          bad: 0,
+          total: 0,
+          avgRating: null,
+          ratingSum: 0,
+          dialogs: [],
+        };
+      const rating = ticket.managerRating ?? 0;
+
+      if (rating === 3) {
+        current.good += 1;
+      } else if (rating === 2) {
+        current.neutral += 1;
+      } else if (rating === 1) {
+        current.bad += 1;
+      }
+
+      current.total += 1;
+      current.ratingSum += rating;
+      current.avgRating = Number((current.ratingSum / current.total).toFixed(2));
+      current.dialogs.push(buildRatingDialog(ticket));
+      ratingManagersMap.set(managerId, current);
+    }
+
+    const sortRatingDialogs = <T extends { ratingSubmittedAt: Date | null; resolvedAt: Date | null; createdAt: Date }>(
+      items: T[],
+    ) =>
+      items.sort((left, right) => {
+        const leftDate = left.ratingSubmittedAt ?? left.resolvedAt ?? left.createdAt;
+        const rightDate = right.ratingSubmittedAt ?? right.resolvedAt ?? right.createdAt;
+
+        return rightDate.getTime() - leftDate.getTime();
+      });
+    const ratingManagers = [...ratingManagersMap.values()]
+      .map(({ ratingSum, dialogs, ...manager }) => ({
+        ...manager,
+        dialogs: sortRatingDialogs(dialogs).slice(0, 8),
+      }))
+      .sort(
+        (left, right) =>
+          right.bad - left.bad ||
+          right.total - left.total ||
+          left.managerName.localeCompare(right.managerName, 'ru'),
+      );
+    const recentRatings = sortRatingDialogs(
+      ratedTicketsInRange.map(buildRatingDialog),
+    ).slice(0, 12);
 
     return {
       period: range,
@@ -1239,6 +1365,13 @@ export class AdminService {
         totalChatRequests,
         totalSupplierRequests: supplierRequestsInRange.length,
         avgDialogsPerDay,
+        ratingsTotal: ratedTicketsInRange.length,
+        ratingsGood: ratingBuckets.good,
+        ratingsNeutral: ratingBuckets.neutral,
+        ratingsBad: ratingBuckets.bad,
+        avgManagerRating: this.average(
+          ratedTicketsInRange.map((ticket) => ticket.managerRating),
+        ),
       },
       attention: {
         dialogsWithoutAnswer: dialogsWithoutAnswer.length,
@@ -1285,6 +1418,17 @@ export class AdminService {
           claimedAt: message.createdAt,
           content: message.content,
         })),
+      },
+      ratings: {
+        total: ratedTicketsInRange.length,
+        good: ratingBuckets.good,
+        neutral: ratingBuckets.neutral,
+        bad: ratingBuckets.bad,
+        avgRating: this.average(
+          ratedTicketsInRange.map((ticket) => ticket.managerRating),
+        ),
+        managers: ratingManagers,
+        recent: recentRatings,
       },
     };
   }

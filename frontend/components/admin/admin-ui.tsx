@@ -115,14 +115,19 @@ export function AdminCards({
 
 export function AdminPanel({
   title,
+  actions,
   children,
 }: {
   title: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_50px_rgba(148,163,184,0.14)]">
-      <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      </div>
       <div className="mt-4">{children}</div>
     </section>
   );

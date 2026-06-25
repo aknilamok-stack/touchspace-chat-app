@@ -42,7 +42,9 @@ const statusOptions: Array<{ value: UserStatus; label: string }> = [
 const quickRoleFilters = [
   { label: "Все", value: "" },
   { label: "Менеджеры", value: "manager" },
+  { label: "Рук. менеджеров", value: "manager_supervisor" },
   { label: "Поставщики", value: "supplier" },
+  { label: "Рук. поставщиков", value: "supplier_supervisor" },
   { label: "Админы", value: "admin" },
   { label: "Заблокированные", value: "blocked", kind: "status" as const },
 ];
@@ -250,6 +252,11 @@ export function AdminUsers() {
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (submitting) {
+      return;
+    }
+
     setSubmitting(true);
     setMessage(null);
     setError(null);
@@ -280,7 +287,7 @@ export function AdminUsers() {
   const handleUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!editingUserId) {
+    if (!editingUserId || submitting) {
       return;
     }
 

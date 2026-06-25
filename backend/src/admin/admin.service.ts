@@ -1911,6 +1911,11 @@ export class AdminService {
         role: true,
         companyName: true,
         supplierId: true,
+        _count: {
+          select: {
+            supervisedProfiles: true,
+          },
+        },
       },
     });
 
@@ -1938,6 +1943,16 @@ export class AdminService {
     ) {
       throw new BadRequestException(
         'Для поставщика и управленца поставщика нужно указать компанию',
+      );
+    }
+
+    if (
+      existing.role === 'supplier_supervisor' &&
+      nextRole !== 'supplier_supervisor' &&
+      existing._count.supervisedProfiles > 0
+    ) {
+      throw new BadRequestException(
+        'Нельзя сменить роль руководителя поставщика, пока к нему привязаны сотрудники',
       );
     }
 

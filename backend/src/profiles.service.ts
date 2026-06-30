@@ -7,6 +7,7 @@ import {
   MANAGER_ROLES,
   SUPPLIER_ROLES,
 } from './role.utils';
+import { LiveEventsService } from './live-events/live-events.service';
 
 type EnsureProfileInput = {
   id?: string | null;
@@ -57,7 +58,10 @@ export class ProfilesService {
     | null = null;
   private readonly presenceStatusesCacheTtlMs = 5_000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly liveEventsService: LiveEventsService,
+  ) {}
 
   private buildDirectSupplierDialogTitle(supplierName: string) {
     return `Поставщик: ${supplierName}`;
@@ -296,7 +300,7 @@ export class ProfilesService {
 
     this.managerStatusesCache = null;
 
-    return this.prisma.profile.update({
+    const updatedProfile = await this.prisma.profile.update({
       where: {
         id: normalizedId,
       },
@@ -312,6 +316,15 @@ export class ProfilesService {
         managerPresenceHeartbeatAt: true,
       },
     });
+
+    this.liveEventsService.emitProfilePresenceChanged({
+      profileId: updatedProfile.id,
+      role: resolvedRole,
+      presenceStatus: updatedProfile.managerStatus ?? 'offline',
+      presenceHeartbeatAt: updatedProfile.managerPresenceHeartbeatAt,
+    });
+
+    return updatedProfile;
   }
 
   async getSupplierStatuses() {
@@ -429,7 +442,7 @@ export class ProfilesService {
 
     this.supplierStatusesCache = null;
 
-    return this.prisma.profile.update({
+    const updatedProfile = await this.prisma.profile.update({
       where: {
         id: normalizedId,
       },
@@ -445,6 +458,15 @@ export class ProfilesService {
         supplierPresenceHeartbeatAt: true,
       },
     });
+
+    this.liveEventsService.emitProfilePresenceChanged({
+      profileId: updatedProfile.id,
+      role: resolvedRole,
+      presenceStatus: updatedProfile.supplierStatus ?? 'offline',
+      presenceHeartbeatAt: updatedProfile.supplierPresenceHeartbeatAt,
+    });
+
+    return updatedProfile;
   }
 
   async ensureProfile(input: EnsureProfileInput) {

@@ -4,6 +4,10 @@ import { Observable, Subject, filter, interval, map, merge } from 'rxjs';
 export type LiveEventPayload = {
   type: string;
   ticketId?: string;
+  profileId?: string;
+  role?: string;
+  presenceStatus?: string;
+  presenceHeartbeatAt?: string | null;
   actorType?: string;
   actorId?: string | null;
   targetProfileIds?: string[];
@@ -57,6 +61,26 @@ export class LiveEventsService {
     this.emit({
       type: 'ticket.changed',
       ...payload,
+    });
+  }
+
+  emitProfilePresenceChanged(payload: {
+    profileId: string;
+    role: string;
+    presenceStatus: string;
+    presenceHeartbeatAt?: Date | string | null;
+  }) {
+    const heartbeatAt = payload.presenceHeartbeatAt;
+
+    this.emit({
+      type: 'profile.presence.changed',
+      profileId: payload.profileId,
+      role: payload.role,
+      presenceStatus: payload.presenceStatus,
+      presenceHeartbeatAt:
+        heartbeatAt instanceof Date
+          ? heartbeatAt.toISOString()
+          : heartbeatAt ?? null,
     });
   }
 }

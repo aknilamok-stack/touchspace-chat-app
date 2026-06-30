@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { apiUrl } from "@/lib/api";
 import { adminApi } from "@/lib/admin-api";
 import { formatDateTime, formatNumber } from "@/lib/admin-format";
 import {
@@ -259,13 +260,81 @@ export function AdminUsers() {
 
   useEffect(() => {
     void loadUsers();
-
-    const intervalId = window.setInterval(() => {
-      void loadUsers();
-    }, 20_000);
-
-    return () => window.clearInterval(intervalId);
   }, [filters.role, filters.status, filters.company]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const source = new EventSource(apiUrl("/live/events?viewerType=admin"));
+
+    const handlePresenceChanged = (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as {
+          profileId?: string;
+          role?: string;
+          presenceStatus?: string;
+          presenceHeartbeatAt?: string | null;
+        };
+
+        if (!update.profileId) {
+          return;
+        }
+
+        setPayload((current: any) => {
+          if (!current?.items) {
+            return current;
+          }
+
+          let changed = false;
+          const items = current.items.map((user: any) => {
+            if (user.id !== update.profileId) {
+              return user;
+            }
+
+            changed = true;
+
+            if (update.role === "supplier" || update.role === "supplier_supervisor") {
+              return {
+                ...user,
+                supplierStatus: update.presenceStatus ?? user.supplierStatus,
+                supplierPresenceHeartbeatAt:
+                  update.presenceHeartbeatAt ?? user.supplierPresenceHeartbeatAt,
+              };
+            }
+
+            return {
+              ...user,
+              managerStatus: update.presenceStatus ?? user.managerStatus,
+              managerPresenceHeartbeatAt:
+                update.presenceHeartbeatAt ?? user.managerPresenceHeartbeatAt,
+            };
+          });
+
+          return changed ? { ...current, items } : current;
+        });
+      } catch (eventError) {
+        console.warn("Не удалось разобрать live-статус пользователя:", eventError);
+      }
+    };
+
+    const handleHeartbeat = () => {
+      setPayload((current: any) => (current ? { ...current } : current));
+    };
+
+    source.addEventListener("profile.presence.changed", handlePresenceChanged);
+    source.addEventListener("heartbeat", handleHeartbeat);
+    source.onerror = () => {
+      console.warn("Live-канал админки временно недоступен");
+    };
+
+    return () => {
+      source.removeEventListener("profile.presence.changed", handlePresenceChanged);
+      source.removeEventListener("heartbeat", handleHeartbeat);
+      source.close();
+    };
+  }, []);
 
   useEffect(() => {
     void loadSupplierSupervisorCompanies();

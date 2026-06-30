@@ -688,7 +688,7 @@ export function AdminUsers() {
           <table className="min-w-full border-separate border-spacing-y-2">
             <thead>
               <tr>
-                {["Имя", "Email", "Роль", "Компания", "Статус", "Последний вход", "Действия"].map((label) => (
+                {["Имя", "Email", "Роль", "Компания", "Статус", "Последняя авторизация", "Действия"].map((label) => (
                   <th
                     key={label}
                     className="px-4 pb-2 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
@@ -1103,7 +1103,7 @@ export function AdminUsers() {
                         {formatDateTime(detail.createdAt)}
                       </p>
                       <p className="mt-2">
-                        <span className="font-medium text-slate-950">Последний вход:</span>{" "}
+                        <span className="font-medium text-slate-950">Последняя авторизация:</span>{" "}
                         {detail.lastLoginAt ? formatDateTime(detail.lastLoginAt) : "ещё не входил"}
                       </p>
                       <p className="mt-2">

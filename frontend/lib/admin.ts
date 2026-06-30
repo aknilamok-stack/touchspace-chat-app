@@ -285,7 +285,7 @@ const usersFallback: AdminRouteData = {
       { key: "role", label: "Роль" },
       { key: "status", label: "Доступ" },
       { key: "company", label: "Компания" },
-      { key: "lastLogin", label: "Последний вход" },
+      { key: "lastLogin", label: "Последняя авторизация" },
       { key: "activity", label: "Диалоги / запросы" },
     ],
     rows: [

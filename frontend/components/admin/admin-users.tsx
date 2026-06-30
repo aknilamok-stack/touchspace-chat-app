@@ -259,6 +259,12 @@ export function AdminUsers() {
 
   useEffect(() => {
     void loadUsers();
+
+    const intervalId = window.setInterval(() => {
+      void loadUsers();
+    }, 20_000);
+
+    return () => window.clearInterval(intervalId);
   }, [filters.role, filters.status, filters.company]);
 
   useEffect(() => {

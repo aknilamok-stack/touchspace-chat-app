@@ -24,6 +24,14 @@ type UserStatus = "active" | "blocked" | "pending_approval" | "inactive";
 
 type DrawerMode = "create" | "edit";
 
+type PresenceStatus = "online" | "break" | "offline";
+
+type PresenceIndicator = {
+  status: PresenceStatus;
+  label: string;
+  className: string;
+};
+
 const roleOptions: Array<{ value: InternalRole; label: string }> = [
   { value: "manager", label: "Менеджер" },
   { value: "manager_supervisor", label: "Руководитель менеджеров" },
@@ -74,6 +82,50 @@ const roleNeedsName = (_role?: string | null) => true;
 
 const getInviteCount = (items: any[]) =>
   items.filter((item) => item.status === "pending_approval" || !item.lastLoginAt).length;
+
+const presenceHeartbeatTtlMs = 45_000;
+
+const presenceLabels: Record<PresenceStatus, string> = {
+  online: "Онлайн",
+  break: "На перерыве",
+  offline: "Офлайн",
+};
+
+const presenceDotClasses: Record<PresenceStatus, string> = {
+  online: "bg-[#34C759]",
+  break: "bg-[#FFB340]",
+  offline: "bg-[#FF3B30]",
+};
+
+const getUserPresenceIndicator = (user: any): PresenceIndicator | null => {
+  const isManagerRole = user.role === "manager" || user.role === "manager_supervisor";
+  const isSupplierRole = user.role === "supplier" || user.role === "supplier_supervisor";
+
+  if (!isManagerRole && !isSupplierRole) {
+    return null;
+  }
+
+  const rawStatus = isManagerRole ? user.managerStatus : user.supplierStatus;
+  const heartbeatAt = isManagerRole
+    ? user.managerPresenceHeartbeatAt
+    : user.supplierPresenceHeartbeatAt;
+  const heartbeatTime = heartbeatAt ? new Date(heartbeatAt).getTime() : 0;
+  const hasFreshHeartbeat =
+    Number.isFinite(heartbeatTime) && heartbeatTime > 0 && Date.now() - heartbeatTime <= presenceHeartbeatTtlMs;
+
+  const status: PresenceStatus =
+    rawStatus === "break" && hasFreshHeartbeat
+      ? "break"
+      : rawStatus === "online" && hasFreshHeartbeat
+        ? "online"
+        : "offline";
+
+  return {
+    status,
+    label: presenceLabels[status],
+    className: presenceDotClasses[status],
+  };
+};
 
 const getStatusActionLabel = (status: UserStatus) => {
   if (status === "blocked") {
@@ -573,75 +625,101 @@ export function AdminUsers() {
             </thead>
             <tbody>
               {users.length > 0 ? (
-                users.map((user: any) => (
-                  <tr key={user.id} className="bg-slate-50">
-                    <td className="rounded-l-2xl px-4 py-4">
-                      <button
-                        type="button"
-                        onClick={() => void openEditDrawer(user.id)}
-                        className="text-left"
-                      >
-                        <p className="font-medium text-slate-950">{user.fullName}</p>
-                      </button>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-700">{user.email ?? user.authLogin ?? "нет данных"}</td>
-                    <td className="px-4 py-4 text-sm text-slate-700">{getRoleLabel(user.role)}</td>
-                    <td className="px-4 py-4 text-sm text-slate-700">{user.companyName ?? "—"}</td>
-                    <td className="px-4 py-4 text-sm text-slate-700">
-                      <AdminStatusBadge value={user.status} />
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-700">
-                      {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "ещё не входил"}
-                    </td>
-                    <td className="relative rounded-r-2xl px-4 py-4">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOpenActionsUserId((current) => (current === user.id ? null : user.id))
-                        }
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-xl leading-none text-slate-700 transition hover:bg-slate-200"
-                        aria-label={`Действия пользователя ${user.fullName}`}
-                      >
-                        ⋯
-                      </button>
-                      {openActionsUserId === user.id ? (
-                        <div className="absolute right-4 top-14 z-20 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.16)]">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenActionsUserId(null);
-                              void openEditDrawer(user.id);
-                            }}
-                            className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
-                          >
-                            Открыть
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleQuickStatusToggle(user)}
-                            className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
-                          >
-                            {getStatusActionLabel(user.status)}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleArchive(user)}
-                            className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
-                          >
-                            Архивировать
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => requestDeleteUser(user)}
-                            className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))
+                users.map((user: any) => {
+                  const presence = getUserPresenceIndicator(user);
+
+                  return (
+                    <tr key={user.id} className="bg-slate-50">
+                      <td className="rounded-l-2xl px-4 py-4">
+                        <button
+                          type="button"
+                          onClick={() => void openEditDrawer(user.id)}
+                          className="text-left"
+                        >
+                          <span className="flex items-center gap-2">
+                            {presence ? (
+                              <span
+                                className={`h-2.5 w-2.5 shrink-0 rounded-full ${presence.className}`}
+                                aria-label={presence.label}
+                                title={presence.label}
+                              />
+                            ) : null}
+                            <span className="font-medium text-slate-950">{user.fullName}</span>
+                          </span>
+                          {presence ? (
+                            <span className="mt-1 block text-xs text-slate-500">
+                              {presence.label}
+                            </span>
+                          ) : null}
+                        </button>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        {user.email ?? user.authLogin ?? "нет данных"}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        {getRoleLabel(user.role)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        {user.companyName ?? "—"}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        <AdminStatusBadge value={user.status} />
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "ещё не входил"}
+                      </td>
+                      <td className="relative rounded-r-2xl px-4 py-4">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenActionsUserId((current) =>
+                              current === user.id ? null : user.id
+                            )
+                          }
+                          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-xl leading-none text-slate-700 transition hover:bg-slate-200"
+                          aria-label={`Действия пользователя ${user.fullName}`}
+                        >
+                          ⋯
+                        </button>
+                        {openActionsUserId === user.id ? (
+                          <div className="absolute right-4 top-14 z-20 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.16)]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionsUserId(null);
+                                void openEditDrawer(user.id);
+                              }}
+                              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
+                            >
+                              Открыть
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleQuickStatusToggle(user)}
+                              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
+                            >
+                              {getStatusActionLabel(user.status)}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleArchive(user)}
+                              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100"
+                            >
+                              Архивировать
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => requestDeleteUser(user)}
+                              className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={7} className="px-6 py-16 text-center">

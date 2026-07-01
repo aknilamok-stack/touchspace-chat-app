@@ -366,9 +366,16 @@ const isSameLocalDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
-const getSupplierMessageAuthorLabel = (message: TicketMessage) => {
+const getSupplierMessageAuthorLabel = (message: TicketMessage, currentSupplierProfileId?: string) => {
   if (message.senderType === "supplier") {
-    return "Вы";
+    const messageSenderId = message.senderProfileId?.trim();
+    const currentProfileId = currentSupplierProfileId?.trim();
+
+    if (!messageSenderId || !currentProfileId || messageSenderId === currentProfileId) {
+      return "Вы";
+    }
+
+    return message.senderName?.trim() || "Поставщик";
   }
 
   if (message.senderType === "manager") {
@@ -5871,7 +5878,7 @@ export default function SupplierPage() {
                         const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
                         const isCurrentSearchMatch =
                           currentSupplierChatSearchMatchId === message.id;
-                        const authorLabel = getSupplierMessageAuthorLabel(message);
+                        const authorLabel = getSupplierMessageAuthorLabel(message, supplierProfileId);
 
                         return (
                           <div

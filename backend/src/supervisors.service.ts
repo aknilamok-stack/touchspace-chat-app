@@ -27,10 +27,29 @@ type AnalyticsRangeInput = {
 
 @Injectable()
 export class SupervisorsService {
+  private readonly presenceHeartbeatTtlMs = 45_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
   ) {}
+
+  private resolvePresenceStatus(
+    presenceStatus?: string | null,
+    heartbeatAt?: Date | null,
+  ) {
+    if (!presenceStatus || presenceStatus === 'offline') {
+      return 'offline';
+    }
+
+    const heartbeatTime = heartbeatAt?.getTime() ?? 0;
+
+    if (!heartbeatTime || Date.now() - heartbeatTime > this.presenceHeartbeatTtlMs) {
+      return 'offline';
+    }
+
+    return presenceStatus;
+  }
 
   private sanitizeLoginCandidate(value: string) {
     return value
@@ -357,8 +376,14 @@ export class SupervisorsService {
         supervisorProfileId: operator.supervisorProfileId,
         status:
           role === 'supplier_supervisor'
-            ? operator.supplierStatus || 'offline'
-            : operator.managerStatus || 'offline',
+            ? this.resolvePresenceStatus(
+                operator.supplierStatus,
+                operator.supplierPresenceHeartbeatAt,
+              )
+            : this.resolvePresenceStatus(
+                operator.managerStatus,
+                operator.managerPresenceHeartbeatAt,
+              ),
         lastSeenAt:
           role === 'supplier_supervisor'
             ? operator.supplierPresenceHeartbeatAt || operator.lastLoginAt

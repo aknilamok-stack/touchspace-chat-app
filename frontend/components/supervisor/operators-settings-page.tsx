@@ -88,6 +88,25 @@ const operatorStatusTone: Record<OperatorStatus, string> = {
   offline: "bg-[#C7C7CC]",
 };
 
+const presenceHeartbeatTtlMs = 45_000;
+
+const isOperatorStatus = (value: unknown): value is OperatorStatus =>
+  value === "online" || value === "break" || value === "offline";
+
+const getEffectiveOperatorStatus = (operator: OperatorItem): OperatorStatus => {
+  if (operator.status === "offline") {
+    return "offline";
+  }
+
+  const heartbeatTime = operator.lastSeenAt ? new Date(operator.lastSeenAt).getTime() : 0;
+  const hasFreshHeartbeat =
+    Number.isFinite(heartbeatTime) &&
+    heartbeatTime > 0 &&
+    Date.now() - heartbeatTime <= presenceHeartbeatTtlMs;
+
+  return hasFreshHeartbeat ? operator.status : "offline";
+};
+
 const formatDateTime = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("ru-RU", {
@@ -176,6 +195,7 @@ export function OperatorsSettingsPage({
   const [analyticsPreset, setAnalyticsPreset] = useState<AnalyticsPreset>("day");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [presenceTick, setPresenceTick] = useState(0);
 
   const pageAccent = scope === "manager_supervisor" ? "text-[#0A84FF]" : "text-[#0F9F6E]";
   const buttonAccent =
@@ -258,7 +278,81 @@ export function OperatorsSettingsPage({
       .finally(() => setLoading(false));
   }, [router, scope]);
 
+  useEffect(() => {
+    if (!session?.userId || typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const source = new EventSource(
+      apiUrl(
+        `/live/events?viewerType=${encodeURIComponent(scope)}&viewerId=${encodeURIComponent(
+          session.userId
+        )}`
+      )
+    );
+
+    const handlePresenceChanged = (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as {
+          profileId?: string;
+          role?: string;
+          presenceStatus?: string;
+          presenceHeartbeatAt?: string | null;
+        };
+
+        if (!update.profileId || !isOperatorStatus(update.presenceStatus)) {
+          return;
+        }
+
+        const nextStatus = update.presenceStatus;
+
+        setOperators((currentOperators) =>
+          currentOperators.map((operator) =>
+            operator.id === update.profileId
+              ? {
+                  ...operator,
+                  status: nextStatus,
+                  lastSeenAt: update.presenceHeartbeatAt ?? operator.lastSeenAt,
+                }
+              : operator
+          )
+        );
+      } catch (eventError) {
+        console.warn("Не удалось разобрать live-статус оператора:", eventError);
+      }
+    };
+
+    const handleHeartbeat = () => {
+      setPresenceTick((current) => current + 1);
+    };
+
+    source.addEventListener("profile.presence.changed", handlePresenceChanged);
+    source.addEventListener("heartbeat", handleHeartbeat);
+    source.onerror = () => {
+      console.warn("Live-канал статусов операторов временно недоступен");
+    };
+
+    return () => {
+      source.removeEventListener("profile.presence.changed", handlePresenceChanged);
+      source.removeEventListener("heartbeat", handleHeartbeat);
+      source.close();
+    };
+  }, [scope, session?.userId]);
+
   const operatorsCountLabel = useMemo(() => `${operators.length} операторов`, [operators.length]);
+  const presenceSummary = useMemo(() => {
+    const summary = {
+      online: 0,
+      break: 0,
+      offline: 0,
+    } satisfies Record<OperatorStatus, number>;
+
+    operators.forEach((operator) => {
+      summary[getEffectiveOperatorStatus(operator)] += 1;
+    });
+
+    return summary;
+  }, [operators, presenceTick]);
   const analyticsTone = analytics
     ? analyticsToneClasses[analytics.summary.rating.tone]
     : analyticsToneClasses.good;
@@ -638,6 +732,71 @@ export function OperatorsSettingsPage({
           </div>
         ) : null}
 
+        {scope === "supplier_supervisor" ? (
+          <section className="mt-6 rounded-[24px] border border-[#E3E8F2] bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8E8E93]">
+                  Статусы операторов
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-[#1E1E1E]">
+                  Кто сейчас на линии
+                </h2>
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm font-medium">
+                <span className="rounded-full bg-[#F3FFF6] px-3 py-1.5 text-[#1B7A3C]">
+                  В сети: {presenceSummary.online}
+                </span>
+                <span className="rounded-full bg-[#FFF8EB] px-3 py-1.5 text-[#A06300]">
+                  Перерыв: {presenceSummary.break}
+                </span>
+                <span className="rounded-full bg-[#F2F4F8] px-3 py-1.5 text-[#6C6C70]">
+                  Не в сети: {presenceSummary.offline}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {operators.map((operator) => {
+                const effectiveStatus = getEffectiveOperatorStatus(operator);
+                const lastActivity = operator.lastSeenAt || operator.lastLoginAt;
+
+                return (
+                  <div
+                    key={`presence-${operator.id}`}
+                    className="flex items-center justify-between gap-4 rounded-[18px] border border-[#E8EDF4] bg-[#FBFCFE] px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${operatorStatusTone[effectiveStatus]}`}
+                        />
+                        <p className="truncate text-sm font-semibold text-[#1E1E1E]">
+                          {operator.fullName}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-[#8E8E93]">
+                        {effectiveStatus === "offline"
+                          ? `Последняя активность: ${formatDateTime(lastActivity)}`
+                          : operatorStatusLabel[effectiveStatus]}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#5F6673] shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+                      {operatorStatusLabel[effectiveStatus]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {operators.length === 0 ? (
+              <div className="mt-4 rounded-[18px] border border-dashed border-[#D6DCE7] bg-[#FBFCFE] px-4 py-5 text-center text-sm text-[#8E8E93]">
+                Операторы пока не найдены.
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {activeTab === "operators" ? (
         <section className="mt-6 space-y-4">
           {scope === "supplier_supervisor" ? (
@@ -743,7 +902,8 @@ export function OperatorsSettingsPage({
           ) : null}
 
           {operators.map((operator) => {
-            const showLastSeen = operator.status !== "online";
+            const effectiveStatus = getEffectiveOperatorStatus(operator);
+            const showLastSeen = effectiveStatus !== "online";
 
             return (
               <article
@@ -754,21 +914,21 @@ export function OperatorsSettingsPage({
                   <div>
                     <div className="flex items-center gap-3">
                       <span
-                        className={`h-3 w-3 rounded-full ${operatorStatusTone[operator.status]}`}
+                        className={`h-3 w-3 rounded-full ${operatorStatusTone[effectiveStatus]}`}
                       />
                       <h2 className="text-lg font-semibold text-[#1E1E1E]">
                         {operator.fullName}
                       </h2>
                     </div>
                     <p className="mt-2 text-sm text-[#6C6C70]">
-                      Статус: {operatorStatusLabel[operator.status]}
+                      Статус: {operatorStatusLabel[effectiveStatus]}
                     </p>
                     <p className="mt-1 text-xs text-[#8E8E93]">
                       Аккаунт: {operator.isActive === false ? "деактивирован" : "активен"}
                     </p>
                     {showLastSeen ? (
                       <p className="mt-1 text-xs text-[#8E8E93]">
-                        Последний вход: {formatDateTime(operator.lastLoginAt || operator.lastSeenAt)}
+                        Последняя активность: {formatDateTime(operator.lastSeenAt || operator.lastLoginAt)}
                       </p>
                     ) : null}
                   </div>

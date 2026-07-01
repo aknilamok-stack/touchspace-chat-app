@@ -97,6 +97,7 @@ export const adminApi = {
     }),
   getUsers: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/users", undefined, query),
+  getSupplierCompanies: () => adminRequest<any>("/supervisors/supplier-companies"),
   getUser: (id: string) => adminRequest<any>(`/admin/users/${id}`),
   createUser: (payload: Record<string, unknown>) =>
     adminRequest<any>("/admin/users", {

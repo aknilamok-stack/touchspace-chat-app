@@ -186,9 +186,7 @@ export function AdminUsers() {
 
   const loadSupplierSupervisorCompanies = async () => {
     try {
-      const result = await adminApi.getUsers({
-        role: "supplier_supervisor",
-      });
+      const result = await adminApi.getSupplierCompanies();
 
       const companies = Array.from(
         new Set<string>(

@@ -983,6 +983,22 @@ const getDirectSupplierContactName = (
   chat?: Pick<ChatItem, "supplierContactName"> | null
 ) => chat?.supplierContactName?.trim() || null;
 
+const isDirectSupplierCompanyChat = (
+  chat?: Pick<ChatItem, "supplierId" | "supplierCompanyName" | "supplierName" | "supplierContactName"> | null
+) => {
+  const supplierId = chat?.supplierId?.trim();
+  const companyName = chat?.supplierCompanyName?.trim();
+  const supplierName = chat?.supplierName?.trim();
+
+  return Boolean(
+    supplierId?.startsWith("supplier_scope_") ||
+      (!getDirectSupplierContactName(chat) &&
+        companyName &&
+        supplierName &&
+        companyName === supplierName)
+  );
+};
+
 const getDirectSupplierDisplayName = (
   chat?: Pick<
     ChatItem,
@@ -2395,8 +2411,7 @@ export default function Home() {
     ) => {
       const companyName = getDirectSupplierCompanyName(chat);
       const explicitContactName = getDirectSupplierContactName(chat);
-      const isCompanyChat =
-        !explicitContactName && Boolean(chat?.supplierId?.trim().startsWith("supplier_scope_"));
+      const isCompanyChat = isDirectSupplierCompanyChat(chat);
       const contactName =
         explicitContactName || (isCompanyChat ? null : getSupplierPresenceContactName(chat));
 
@@ -4936,7 +4951,7 @@ export default function Home() {
           setIsSupplierFormOpen(false);
         }}
         title={
-          isDirectSupplierDialog && !getDirectSupplierContactName(chat)
+          isDirectSupplierDialog && isDirectSupplierCompanyChat(chat)
             ? `Общий чат ${getDirectSupplierCompanyName(chat)}`
             : getChatDisplayName(chat)
         }

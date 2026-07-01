@@ -2812,21 +2812,21 @@ export class TicketsService {
         (dialog.supplierName
           ? profilesByCompanyName.get(dialog.supplierName)
           : null);
-      const dialogSupplierId = dialog.supplierId?.trim() || null;
-      const isCompanyDirectDialog =
-        Boolean(
-          dialogSupplierId &&
-            (dialogSupplierId.startsWith('supplier_scope_') ||
-              dialogSupplierId === supplierProfile?.supplierId?.trim()),
-        ) ||
-        Boolean(
-          supplierProfile?.companyName?.trim() &&
-            dialog.supplierName?.trim() === supplierProfile.companyName.trim(),
-        );
       const supplierCompanyName =
         supplierProfile?.companyName?.trim() ||
         dialog.supplierName?.trim() ||
         null;
+      const dialogSupplierId = dialog.supplierId?.trim() || null;
+      const isCompanyDirectDialog =
+        Boolean(dialogSupplierId?.startsWith('supplier_scope_')) ||
+        Boolean(
+          supplierCompanyName &&
+            dialog.supplierName?.trim() === supplierCompanyName &&
+            !isSpecificSupplierContactName(
+              supplierProfile?.fullName,
+              supplierCompanyName,
+            ),
+        );
       const supplierProfileName = isSpecificSupplierContactName(
         supplierProfile?.fullName,
         supplierCompanyName,

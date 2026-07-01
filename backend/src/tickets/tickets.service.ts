@@ -376,6 +376,17 @@ export class TicketsService {
     return `Поставщик: ${supplierName}`;
   }
 
+  private buildSupplierScopeId(companyName: string) {
+    const normalizedCompany = companyName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9а-яё]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+
+    return `supplier_scope_${normalizedCompany || 'default'}`;
+  }
+
   private isSyntheticSupplierScope(profile: {
     id: string;
     companyName?: string | null;
@@ -1894,42 +1905,54 @@ export class TicketsService {
       },
     });
 
-    const supplierScopes = [...supplierProfiles]
-      .sort((leftProfile, rightProfile) => {
-        const leftPriority =
-          leftProfile.role === 'supplier_supervisor' ? 0 : 1;
-        const rightPriority =
-          rightProfile.role === 'supplier_supervisor' ? 0 : 1;
+    const companyScopesById = new Map<
+      string,
+      { supplierId: string; supplierName: string }
+    >();
+    const contactScopesById = new Map<
+      string,
+      { supplierId: string; supplierName: string }
+    >();
 
-        return leftPriority - rightPriority;
-      })
-      .map((supplierProfile) => {
-        if (this.isSyntheticSupplierScope(supplierProfile)) {
-          return null;
+    for (const supplierProfile of supplierProfiles) {
+      if (this.isSyntheticSupplierScope(supplierProfile)) {
+        continue;
+      }
+
+      const companyName = supplierProfile.companyName?.trim();
+      const contactName = supplierProfile.fullName?.trim();
+
+      if (companyName) {
+        const companyScopeId =
+          supplierProfile.supplierId?.trim() ||
+          this.buildSupplierScopeId(companyName);
+
+        if (!companyScopesById.has(companyScopeId)) {
+          companyScopesById.set(companyScopeId, {
+            supplierId: companyScopeId,
+            supplierName: companyName,
+          });
         }
+      }
 
-        const supplierName =
-          supplierProfile.companyName?.trim() ||
-          supplierProfile.fullName?.trim();
+      if (
+        supplierProfile.role !== 'supplier' ||
+        !contactName ||
+        !isSpecificSupplierContactName(contactName, companyName)
+      ) {
+        continue;
+      }
 
-        if (
-          !supplierName ||
-          (!supplierProfile.companyName?.trim() &&
-            !supplierProfile.supplierId?.trim() &&
-            !isSpecificSupplierContactName(supplierProfile.fullName))
-        ) {
-          return null;
-        }
+      contactScopesById.set(supplierProfile.id, {
+        supplierId: supplierProfile.id,
+        supplierName: contactName,
+      });
+    }
 
-        return {
-          supplierId: supplierProfile.id,
-          supplierName,
-        };
-      })
-      .filter(
-        (supplier): supplier is { supplierId: string; supplierName: string } =>
-          Boolean(supplier),
-      );
+    const supplierScopes = [
+      ...companyScopesById.values(),
+      ...contactScopesById.values(),
+    ];
 
     const supplierIds = supplierScopes.map((supplier) => supplier.supplierId);
     const existingSupplierDialogs =
@@ -2292,6 +2315,9 @@ export class TicketsService {
       ...new Set([
         normalizedSupplierId,
         ...supplierProfiles.map((profile) => profile.id),
+        ...(isSpecificRequestedSupplierProfile && requestedSupplierProfile?.supplierId
+          ? [requestedSupplierProfile.supplierId.trim()]
+          : []),
         ...(isSpecificRequestedSupplierProfile
           ? []
           : supplierProfiles
@@ -2786,9 +2812,20 @@ export class TicketsService {
         (dialog.supplierName
           ? profilesByCompanyName.get(dialog.supplierName)
           : null);
+      const dialogSupplierId = dialog.supplierId?.trim() || null;
+      const isCompanyDirectDialog =
+        Boolean(
+          dialogSupplierId &&
+            (dialogSupplierId.startsWith('supplier_scope_') ||
+              dialogSupplierId === supplierProfile?.supplierId?.trim()),
+        ) ||
+        Boolean(
+          supplierProfile?.companyName?.trim() &&
+            dialog.supplierName?.trim() === supplierProfile.companyName.trim(),
+        );
       const supplierCompanyName =
-        dialog.supplierName?.trim() ||
         supplierProfile?.companyName?.trim() ||
+        dialog.supplierName?.trim() ||
         null;
       const supplierProfileName = isSpecificSupplierContactName(
         supplierProfile?.fullName,
@@ -2800,10 +2837,10 @@ export class TicketsService {
         (isSpecificSupplierContactName(
           lastSupplierMessage?.senderProfile?.fullName,
           supplierCompanyName,
-        )
+        ) && !isCompanyDirectDialog
           ? lastSupplierMessage?.senderProfile?.fullName?.trim()
           : null) ||
-        supplierProfileName ||
+        (isCompanyDirectDialog ? null : supplierProfileName) ||
         null;
       const managerProfileName = dialog.assignedManagerId
         ? managerProfilesById.get(dialog.assignedManagerId)?.fullName?.trim()

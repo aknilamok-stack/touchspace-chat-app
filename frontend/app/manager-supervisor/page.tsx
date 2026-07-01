@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, type DragEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type DragEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
@@ -284,6 +284,13 @@ type ChatItem = {
   messages: ChatMessage[];
   supplierRequests: ChatSupplierRequest[];
   pageViews: ChatPageViewItem[];
+};
+
+type SupplierDialogGroup = {
+  key: string;
+  companyName: string;
+  unreadCount: number;
+  chats: ChatItem[];
 };
 
 type NotificationCandidate = {
@@ -1095,6 +1102,9 @@ export default function Home() {
   const [managerPresenceRecords, setManagerPresenceRecords] = useState<
     ManagerPresenceRecord[]
   >([]);
+  const [expandedSupplierCompanyKeys, setExpandedSupplierCompanyKeys] = useState<
+    string[]
+  >([]);
   const [activeChatId, setActiveChatId] = useState("");
   const [messageText, setMessageText] = useState("");
   const [managerSuggestions, setManagerSuggestions] = useState<
@@ -1127,7 +1137,7 @@ export default function Home() {
   const [chatData, setChatData] = useState<ChatItem[]>(initialChats);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredHeaderAction, setHoveredHeaderAction] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"incoming" | "in_progress" | "all">("incoming");
+  const [filter, setFilter] = useState<"incoming" | "in_progress" | "supplier" | "all">("incoming");
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
 
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
@@ -1623,16 +1633,34 @@ export default function Home() {
   };
 
   const fetchTickets = async (): Promise<ApiTicket[]> => {
-    const response = await fetch(
-      apiUrl(
-        `/tickets?viewerType=manager&viewerId=${encodeURIComponent(currentManagerId)}`
-      )
-    );
-    if (!response.ok) {
+    const [ticketsResponse, directDialogsResponse] = await Promise.all([
+      fetch(
+        apiUrl(
+          `/tickets?viewerType=manager&viewerId=${encodeURIComponent(currentManagerId)}`
+        )
+      ),
+      fetch(
+        apiUrl(
+          `/tickets/manager-supplier-dialogs?managerId=${encodeURIComponent(
+            currentManagerId
+          )}&managerName=${encodeURIComponent(currentManagerName)}`
+        )
+      ),
+    ]);
+
+    if (!ticketsResponse.ok) {
       throw new Error("Не удалось загрузить тикеты");
     }
-    const tickets = (await response.json()) as ApiTicket[];
-    return tickets.filter((ticket) => ticket.conversationMode !== "direct_supplier");
+    const tickets = ((await ticketsResponse.json()) as ApiTicket[]).filter(
+      (ticket) => ticket.conversationMode !== "direct_supplier"
+    );
+    const directDialogs = directDialogsResponse.ok
+      ? ((await directDialogsResponse.json()) as ApiTicket[])
+      : [];
+
+    return [...tickets, ...directDialogs].filter(
+      (ticket, index, items) => items.findIndex((item) => item.id === ticket.id) === index
+    );
   };
 
   const fetchManagerNotificationCandidates = async (
@@ -2094,6 +2122,16 @@ export default function Home() {
   };
 
   const filteredChats = chatData.filter((chat) => {
+    const isDirectSupplierDialog = chat.conversationMode === "direct_supplier";
+
+    if (filter === "supplier") {
+      return isDirectSupplierDialog;
+    }
+
+    if (isDirectSupplierDialog) {
+      return false;
+    }
+
     if (filter === "all") return true;
 
     if (filter === "in_progress") {
@@ -2137,13 +2175,26 @@ export default function Home() {
   });
 
   const incomingTabChats = chatData.filter(
-    (chat) => chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled
+    (chat) =>
+      chat.conversationMode !== "direct_supplier" &&
+      chat.rawStatus === "new" &&
+      !chat.assignedManagerId &&
+      !chat.aiEnabled
   );
-  const myTabChats = chatData.filter((chat) => isChatMine(chat) && !chat.aiEnabled);
+  const myTabChats = chatData.filter(
+    (chat) =>
+      chat.conversationMode !== "direct_supplier" &&
+      isChatMine(chat) &&
+      !chat.aiEnabled
+  );
+  const supplierTabChats = chatData.filter(
+    (chat) => chat.conversationMode === "direct_supplier"
+  );
   const countChatsWithUnread = (chats: ChatItem[]) =>
     chats.filter((chat) => getUnreadCount(chat) > 0).length;
   const incomingTabBadgeCount = incomingTabChats.length;
   const myTabBadgeCount = countChatsWithUnread(myTabChats);
+  const supplierTabBadgeCount = countChatsWithUnread(supplierTabChats);
   const allTabBadgeCount = 0;
 
   const getManagerDisplayName = useCallback(
@@ -2215,7 +2266,11 @@ export default function Home() {
       > | null
     ) => {
       const companyName = getDirectSupplierCompanyName(chat);
-      const contactName = getDirectSupplierContactName(chat) || getSupplierPresenceContactName(chat);
+      const explicitContactName = getDirectSupplierContactName(chat);
+      const isCompanyChat =
+        !explicitContactName && Boolean(chat?.supplierId?.trim().startsWith("supplier_scope_"));
+      const contactName =
+        explicitContactName || (isCompanyChat ? null : getSupplierPresenceContactName(chat));
 
       return contactName ? `${contactName}/${companyName}` : companyName;
     },
@@ -2228,6 +2283,53 @@ export default function Home() {
         : getChatClientDisplayName(chat),
     [getDirectSupplierDisplayNameForChat]
   );
+  const supplierDialogGroups = useMemo<SupplierDialogGroup[]>(() => {
+    const groups = new Map<string, SupplierDialogGroup>();
+
+    for (const chat of searchedChats) {
+      if (chat.conversationMode !== "direct_supplier") {
+        continue;
+      }
+
+      const companyName = getDirectSupplierCompanyName(chat);
+      const key = companyName.trim().toLowerCase() || chat.supplierId || chat.id;
+      const existingGroup =
+        groups.get(key) ??
+        ({
+          key,
+          companyName,
+          unreadCount: 0,
+          chats: [],
+        } satisfies SupplierDialogGroup);
+
+      existingGroup.unreadCount += getUnreadCount(chat);
+      existingGroup.chats.push(chat);
+      groups.set(key, existingGroup);
+    }
+
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        chats: [...group.chats].sort((left, right) => {
+          const leftIsContactChat = getDirectSupplierContactName(left) ? 1 : 0;
+          const rightIsContactChat = getDirectSupplierContactName(right) ? 1 : 0;
+
+          if (leftIsContactChat !== rightIsContactChat) {
+            return leftIsContactChat - rightIsContactChat;
+          }
+
+          return getChatDisplayName(left).localeCompare(getChatDisplayName(right), "ru");
+        }),
+      }))
+      .sort((left, right) => left.companyName.localeCompare(right.companyName, "ru"));
+  }, [searchedChats, getChatDisplayName]);
+  const toggleSupplierCompanyGroup = (groupKey: string) => {
+    setExpandedSupplierCompanyKeys((currentKeys) =>
+      currentKeys.includes(groupKey)
+        ? currentKeys.filter((key) => key !== groupKey)
+        : [...currentKeys, groupKey]
+    );
+  };
   const getDirectSupplierMessageDisplayNameForChat = useCallback(
     (chat: ChatItem | null, senderName?: string | null) => {
       const companyName = getDirectSupplierCompanyName(chat);
@@ -4637,6 +4739,65 @@ export default function Home() {
     now: nowForSla,
     inactiveText: "Не активирован",
   });
+  const renderDialogCard = (chat: ChatItem) => {
+    const unreadCount = getUnreadCount(chat);
+    const chatTone = getChatTone(chat);
+    const isActive = activeChatId === chat.id;
+    const isDirectSupplierDialog = chat.conversationMode === "direct_supplier";
+    const isIncomingQueueChat =
+      chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
+
+    return (
+      <DialogListCard
+        key={chat.id}
+        active={isActive}
+        onClick={() => {
+          setIsChatPaneDismissed(false);
+          setActiveChatId(chat.id);
+          setIsSupplierFormOpen(false);
+        }}
+        title={
+          isDirectSupplierDialog && !getDirectSupplierContactName(chat)
+            ? `Общий чат ${getDirectSupplierCompanyName(chat)}`
+            : getChatDisplayName(chat)
+        }
+        identityKey={
+          isDirectSupplierDialog
+            ? chat.supplierId || chat.supplierName || chat.id
+            : chat.clientId || chat.clientName || chat.id
+        }
+        avatarColor={chat.avatarColor}
+        avatarEmoji={chat.avatarEmoji}
+        statusDotClassName={isDirectSupplierDialog ? undefined : chatTone.dot}
+        preview={getChatPreview(chat)}
+        managerLabel={isDirectSupplierDialog ? "Прямой чат" : getManagerDisplayName(chat)}
+        timeLabel={formatDialogActivityLabel(
+          chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
+        )}
+        statusLabel={isDirectSupplierDialog ? undefined : chatTone.label}
+        statusBadgeClassName={isDirectSupplierDialog ? undefined : chatTone.pill}
+        unreadCount={unreadCount}
+        pinned={chat.pinned}
+        footerAction={
+          isIncomingQueueChat ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsChatPaneDismissed(false);
+                setActiveChatId(chat.id);
+                void handleClaimIncoming(chat.id);
+              }}
+              className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
+            >
+              Взять в работу
+            </button>
+          ) : undefined
+        }
+      />
+    );
+  };
 
   return (
     <main
@@ -4828,6 +4989,28 @@ export default function Home() {
             </button>
 
             <button
+              onClick={() => setFilter("supplier")}
+              className={`rounded-full px-3 py-1.5 text-sm ${
+                filter === "supplier"
+                  ? "bg-[#0A84FF] text-white"
+                  : "bg-white text-[#6C6C70]"
+              }`}
+            >
+              Поставщик
+              {supplierTabBadgeCount > 0 && (
+                <span
+                  className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                    filter === "supplier"
+                      ? "bg-white text-[#0A84FF]"
+                      : "bg-[#0A84FF] text-white"
+                  }`}
+                >
+                  {supplierTabBadgeCount > 99 ? "99+" : supplierTabBadgeCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setFilter("all")}
               className={`rounded-full px-3 py-1.5 text-sm ${
                 filter === "all"
@@ -4887,58 +5070,42 @@ export default function Home() {
 
           {!isAllOverview ? (
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-              {searchedChats.map((chat) => (
-                (() => {
-                  const unreadCount = getUnreadCount(chat);
-                  const chatTone = getChatTone(chat);
-                  const isActive = activeChatId === chat.id;
-                  const isIncomingQueueChat =
-                    chat.rawStatus === "new" && !chat.assignedManagerId && !chat.aiEnabled;
+              {filter === "supplier"
+                ? supplierDialogGroups.map((group) => {
+                    const isExpanded = expandedSupplierCompanyKeys.includes(group.key);
 
-                  return (
-                    <DialogListCard
-                      key={chat.id}
-                      active={isActive}
-                      onClick={() => {
-                        setIsChatPaneDismissed(false);
-                        setActiveChatId(chat.id);
-                        setIsSupplierFormOpen(false);
-                      }}
-                      title={getChatDisplayName(chat)}
-                      identityKey={chat.clientId || chat.clientName || chat.id}
-                      avatarColor={chat.avatarColor}
-                      avatarEmoji={chat.avatarEmoji}
-                      statusDotClassName={chatTone.dot}
-                      preview={getChatPreview(chat)}
-                      managerLabel={getManagerDisplayName(chat)}
-                      timeLabel={formatDialogActivityLabel(
-                        chat.lastMessageAt ?? getLastNonSystemMessage(chat)?.createdAt ?? null
-                      )}
-                      statusLabel={chatTone.label}
-                      statusBadgeClassName={chatTone.pill}
-                      unreadCount={unreadCount}
-                      pinned={chat.pinned}
-                      footerAction={
-                        isIncomingQueueChat ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setIsChatPaneDismissed(false);
-                              setActiveChatId(chat.id);
-                              void handleClaimIncoming(chat.id);
-                            }}
-                            className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0077F2]"
-                          >
-                            Взять в работу
-                          </button>
-                        ) : undefined
-                      }
-                    />
-                  );
-                })()
-              ))}
+                    return (
+                      <div key={group.key} className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleSupplierCompanyGroup(group.key)}
+                          className="flex w-full items-center justify-between gap-3 rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#DCE7FF] hover:bg-[#FCFDFF]"
+                        >
+                          <span className="min-w-0 truncate text-[15px] font-semibold text-[#1E1E1E]">
+                            {group.companyName}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {group.unreadCount > 0 ? (
+                              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 text-[11px] font-semibold text-white">
+                                {group.unreadCount > 99 ? "99+" : group.unreadCount}
+                              </span>
+                            ) : null}
+                            <span className="text-[13px] text-[#8E8E93]">
+                              {group.chats.length}
+                            </span>
+                            <span className="text-[14px] text-[#8E8E93]">
+                              {isExpanded ? "⌃" : "⌄"}
+                            </span>
+                          </span>
+                        </button>
+
+                        {isExpanded ? (
+                          <div className="space-y-2 pl-2">{group.chats.map(renderDialogCard)}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                : searchedChats.map(renderDialogCard)}
             </div>
           ) : (
             <div className="min-h-0 flex-1" />

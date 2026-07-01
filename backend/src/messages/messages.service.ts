@@ -1013,6 +1013,7 @@ export class MessagesService {
               assignedManagerId: ticket.assignedManagerId,
               invitedManagerIds: ticket.invitedManagerIds,
               supplierId: ticket.supplierId,
+              conversationMode: ticket.conversationMode,
               aiEnabled: ticket.aiEnabled,
             },
           };
@@ -1166,7 +1167,14 @@ export class MessagesService {
           }
 
           if (!activeRequest) {
-            return null;
+            return ticketSnapshot.conversationMode === 'direct_supplier' &&
+              ticketSnapshot.supplierId
+              ? {
+                  supplierId: ticketSnapshot.supplierId,
+                  assignedSupplierProfileId: null,
+                  supplierSyncPaused: false,
+                }
+              : null;
           }
 
           const ticketRequests = await this.prisma.supplierRequest.findMany({
@@ -1232,6 +1240,13 @@ export class MessagesService {
         );
     }
 
+    const supplierLiveTargets =
+      senderType === 'manager' &&
+      ticketSnapshot.conversationMode === 'direct_supplier' &&
+      ticketSnapshot.supplierId
+        ? await this.pushService.getActiveSupplierProfileIds(ticketSnapshot.supplierId)
+        : [];
+
     this.liveEventsService.emitTicketChanged({
       ticketId,
       actorType: senderType,
@@ -1239,6 +1254,7 @@ export class MessagesService {
       targetProfileIds: [
         ticketSnapshot.assignedManagerId,
         ticketSnapshot.supplierId,
+        ...supplierLiveTargets,
         ...readJsonStringArray(ticketSnapshot.invitedManagerIds),
       ].filter((value): value is string => Boolean(value)),
     });

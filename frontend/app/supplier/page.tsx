@@ -367,16 +367,25 @@ const isSameLocalDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
-const getSupplierMessageAuthorLabel = (message: TicketMessage, currentSupplierProfileId?: string) => {
+const getSupplierMessageAuthorLabel = (
+  message: TicketMessage,
+  currentSupplierProfileId?: string,
+  currentSupplierName?: string,
+) => {
   if (message.senderType === "supplier") {
     const messageSenderId = message.senderProfileId?.trim();
     const currentProfileId = currentSupplierProfileId?.trim();
+    const messageSenderName = message.senderName?.trim();
+    const currentName = currentSupplierName?.trim();
 
-    if (!messageSenderId || !currentProfileId || messageSenderId === currentProfileId) {
+    if (
+      (messageSenderId && currentProfileId && messageSenderId === currentProfileId) ||
+      (!messageSenderId && messageSenderName && currentName && messageSenderName === currentName)
+    ) {
       return "Вы";
     }
 
-    return message.senderName?.trim() || "Поставщик";
+    return messageSenderName || "Поставщик";
   }
 
   if (message.senderType === "manager") {
@@ -5882,7 +5891,11 @@ export default function SupplierPage() {
                         const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
                         const isCurrentSearchMatch =
                           currentSupplierChatSearchMatchId === message.id;
-                        const authorLabel = getSupplierMessageAuthorLabel(message, supplierProfileId);
+                        const authorLabel = getSupplierMessageAuthorLabel(
+                          message,
+                          supplierProfileId,
+                          supplierEmployeeName
+                        );
 
                         return (
                           <div

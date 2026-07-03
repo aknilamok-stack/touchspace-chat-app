@@ -15,6 +15,21 @@ import { diskStorage } from 'multer';
 import { extname } from 'node:path';
 import { MessagesService } from './messages.service';
 
+const looksLikeMojibakeFileName = (value: string) => /[ÃÂÐÑ]/.test(value);
+
+const decodeUploadedFileName = (value: string) => {
+  if (!looksLikeMojibakeFileName(value)) {
+    return value;
+  }
+
+  try {
+    const decoded = Buffer.from(value, 'latin1').toString('utf8');
+    return decoded.includes('\uFFFD') ? value : decoded;
+  } catch {
+    return value;
+  }
+};
+
 @Controller()
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
@@ -96,14 +111,17 @@ export class MessagesController {
       storage: diskStorage({
         destination: './uploads',
         filename: (_request, file, callback) => {
-          const safeBaseName = file.originalname
-            .replace(extname(file.originalname), '')
+          const originalName = decodeUploadedFileName(file.originalname);
+          file.originalname = originalName;
+
+          const safeBaseName = originalName
+            .replace(extname(originalName), '')
             .replace(/[^a-zA-Z0-9-_]+/g, '-')
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '')
             .slice(0, 64);
           const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          const extension = extname(file.originalname) || '';
+          const extension = extname(originalName) || '';
           callback(
             null,
             `${safeBaseName || 'attachment'}-${suffix}${extension}`,

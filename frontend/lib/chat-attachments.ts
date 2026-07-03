@@ -31,6 +31,28 @@ export type ChatAttachmentPayload = {
   size?: number;
 };
 
+const countMojibakeMarkers = (value: string) => (value.match(/[ÃÂÐÑ]/g) ?? []).length;
+
+const decodeMojibakeFileName = (value: string) => {
+  if (countMojibakeMarkers(value) === 0) {
+    return value;
+  }
+
+  try {
+    const encodedBytes = Array.from(value)
+      .map((char) => {
+        const code = char.charCodeAt(0);
+        return code <= 255 ? `%${code.toString(16).padStart(2, "0")}` : char;
+      })
+      .join("");
+    const decoded = decodeURIComponent(encodedBytes);
+
+    return countMojibakeMarkers(decoded) < countMojibakeMarkers(value) ? decoded : value;
+  } catch {
+    return value;
+  }
+};
+
 const normalizeAttachmentPayload = (payload: {
   url?: string;
   name?: string;
@@ -46,7 +68,7 @@ const normalizeAttachmentPayload = (payload: {
     url: payload.url.startsWith("http")
       ? payload.url
       : `${getApiBaseUrl()}${payload.url}`,
-    name: payload.name,
+    name: decodeMojibakeFileName(payload.name),
     caption: payload.caption || "",
     mimeType: payload.mimeType || "",
     size: typeof payload.size === "number" ? payload.size : undefined,

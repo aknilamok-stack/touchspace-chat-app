@@ -72,6 +72,21 @@ type ChatAccessActor = {
   role: string;
 };
 
+const looksLikeMojibakeFileName = (value: string) => /[ÃÂÐÑ]/.test(value);
+
+const decodeUploadedFileName = (value: string) => {
+  if (!looksLikeMojibakeFileName(value)) {
+    return value;
+  }
+
+  try {
+    const decoded = Buffer.from(value, 'latin1').toString('utf8');
+    return decoded.includes('\uFFFD') ? value : decoded;
+  } catch {
+    return value;
+  }
+};
+
 @Injectable()
 export class MessagesService {
   private static readonly EDIT_WINDOW_MS = 20 * 60 * 1000;
@@ -1464,7 +1479,7 @@ export class MessagesService {
 
     const trimmedCaption = caption?.trim() || '';
     const attachments = files.map((file) => ({
-      name: file.originalname,
+      name: decodeUploadedFileName(file.originalname),
       url: `/uploads/${file.filename}`,
       mimeType: file.mimetype,
       size: file.size,

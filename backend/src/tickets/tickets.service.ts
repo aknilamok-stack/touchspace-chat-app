@@ -1841,23 +1841,6 @@ export class TicketsService {
           },
           orderBy: { createdAt: 'desc' },
         },
-        pageViews: {
-          take: 1,
-          select: {
-            id: true,
-            pageUrl: true,
-            pagePath: true,
-            pageTitle: true,
-            pageName: true,
-            routeType: true,
-            entityId: true,
-            entityName: true,
-            referrer: true,
-            sourceType: true,
-            visitedAt: true,
-          },
-          orderBy: { visitedAt: 'desc' },
-        },
       },
       orderBy: [
         { pinned: 'desc' },
@@ -1895,7 +1878,7 @@ export class TicketsService {
         },
         OR: [{ companyName: { not: null } }, { fullName: { not: '' } }],
       },
-      orderBy: [{ companyName: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ companyName: 'asc' }, { role: 'desc' }, { createdAt: 'asc' }],
       select: {
         id: true,
         role: true,
@@ -1923,13 +1906,11 @@ export class TicketsService {
       const contactName = supplierProfile.fullName?.trim();
 
       if (companyName) {
-        const companyScopeId =
-          supplierProfile.supplierId?.trim() ||
-          this.buildSupplierScopeId(companyName);
+        const companyScopeKey = companyName.toLowerCase();
 
-        if (!companyScopesById.has(companyScopeId)) {
-          companyScopesById.set(companyScopeId, {
-            supplierId: companyScopeId,
+        if (!companyScopesById.has(companyScopeKey)) {
+          companyScopesById.set(companyScopeKey, {
+            supplierId: supplierProfile.id,
             supplierName: companyName,
           });
         }

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
@@ -67,6 +67,7 @@ const QUICK_REPLIES = [
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
+const presenceHeartbeatTtlMs = 45_000;
 
 type SupplierRequest = {
   id: string;
@@ -218,6 +219,16 @@ type SupplierRequestCard = {
   ticket: Ticket | null;
 };
 
+type SupplierOperatorPresence = {
+  id: string;
+  fullName: string;
+  status: ManagerPresence;
+  lastSeenAt?: string | null;
+  lastLoginAt?: string | null;
+  isActive?: boolean;
+  isSelf?: boolean;
+};
+
 type SupplierPanelStatus = {
   label: string;
   badgeClassName: string;
@@ -319,6 +330,26 @@ const isSameLocalDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
+
+const isManagerPresence = (value: unknown): value is ManagerPresence =>
+  value === "online" || value === "break" || value === "offline";
+
+const getEffectiveSupplierOperatorStatus = (
+  operator: SupplierOperatorPresence,
+  nowMs: number,
+): ManagerPresence => {
+  if (operator.status === "offline") {
+    return "offline";
+  }
+
+  const lastSeenMs = operator.lastSeenAt ? new Date(operator.lastSeenAt).getTime() : 0;
+  const hasFreshHeartbeat =
+    Number.isFinite(lastSeenMs) &&
+    lastSeenMs > 0 &&
+    nowMs - lastSeenMs <= presenceHeartbeatTtlMs;
+
+  return hasFreshHeartbeat ? operator.status : "offline";
+};
 
 const isSpecificManagerName = (name?: string | null) => {
   const normalizedName = name?.trim().toLowerCase();
@@ -1061,6 +1092,9 @@ export default function SupplierPage() {
   const [requestHistoryCustomDate, setRequestHistoryCustomDate] = useState("");
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [supplierStatuses, setSupplierStatuses] = useState<Record<string, ManagerPresence>>({});
+  const [supplierOperators, setSupplierOperators] = useState<SupplierOperatorPresence[]>([]);
+  const [isOnlineSuppliersOpen, setIsOnlineSuppliersOpen] = useState(true);
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [notificationCandidates, setNotificationCandidates] = useState<
     SupplierNotificationCandidate[]
   >([]);
@@ -1207,32 +1241,57 @@ export default function SupplierPage() {
     availableManagers.find((manager) => manager.status === "online")?.id ??
     availableManagers[0]?.id ??
     "";
-  const onlineCompanySuppliers = Array.from(
-    new Map(
-      [
-        {
-          id: supplierProfileId,
-          name: resolvedSupplierEmployeeName,
-          status: supplierStatuses[supplierProfileId] ?? supplierStatus,
-        },
-        ...supplierRequests
-          .filter(
-            (request) =>
-              request.supplierId === supplierId &&
-              Boolean(request.assignedSupplierProfileId) &&
-              Boolean(request.assignedSupplierProfileName)
-          )
-          .map((request) => ({
-            id: request.assignedSupplierProfileId as string,
-            name: request.assignedSupplierProfileName as string,
-            status:
-              supplierStatuses[request.assignedSupplierProfileId as string] ?? "offline",
-          })),
-      ]
-        .filter((supplier) => supplier.id && supplier.name)
-        .map((supplier) => [supplier.id, supplier])
-    ).values()
-  ).filter((supplier) => supplier.status === "online");
+  const companySupplierPresenceRows = useMemo(() => {
+    const selfRow: SupplierOperatorPresence = {
+      id: supplierProfileId,
+      fullName: resolvedSupplierEmployeeName,
+      status: supplierStatuses[supplierProfileId] ?? supplierStatus,
+      lastSeenAt:
+        supplierStatus === "offline" ? null : new Date(presenceNow).toISOString(),
+      isActive: true,
+      isSelf: true,
+    };
+
+    return Array.from(
+      new Map(
+        [selfRow, ...supplierOperators]
+          .filter((operator) => operator.id && operator.fullName && operator.isActive !== false)
+          .map((operator) => {
+            const effectiveStatus = operator.isSelf
+              ? operator.status
+              : getEffectiveSupplierOperatorStatus(operator, presenceNow);
+
+            return [
+              operator.id,
+              {
+                ...operator,
+                status: effectiveStatus,
+              },
+            ];
+          })
+      ).values()
+    ).sort((left, right) => {
+      if (left.isSelf) {
+        return -1;
+      }
+
+      if (right.isSelf) {
+        return 1;
+      }
+
+      return left.fullName.localeCompare(right.fullName, "ru");
+    });
+  }, [
+    presenceNow,
+    resolvedSupplierEmployeeName,
+    supplierOperators,
+    supplierProfileId,
+    supplierStatus,
+    supplierStatuses,
+  ]);
+  const onlineCompanySuppliers = companySupplierPresenceRows.filter(
+    (supplier) => supplier.status === "online"
+  );
   const visibleSupplierMessages =
     selectedRequest ? getVisibleMessagesForTicket(selectedTicketRequests, ticketMessages) : [];
   visibleSupplierMessagesRef.current = visibleSupplierMessages;
@@ -1394,13 +1453,52 @@ export default function SupplierPage() {
     };
 
     void loadSupplierStatuses();
-
-    const intervalId = window.setInterval(() => {
-      void loadSupplierStatuses();
-    }, 15000);
-
-    return () => window.clearInterval(intervalId);
   }, [authReady, supplierId, supplierProfileId]);
+
+  useEffect(() => {
+    if (!authReady || !supplierProfileId) {
+      return;
+    }
+
+    const loadSupplierOperators = async () => {
+      try {
+        const response = await fetch(
+          apiUrl(`/supervisors/operators?supervisorId=${encodeURIComponent(supplierProfileId)}`)
+        );
+
+        if (!response.ok) {
+          throw new Error("Не удалось загрузить сотрудников поставщика");
+        }
+
+        const payload = (await response.json()) as {
+          items?: Array<{
+            id: string;
+            fullName: string;
+            status?: string | null;
+            lastSeenAt?: string | null;
+            lastLoginAt?: string | null;
+            isActive?: boolean;
+          }>;
+        };
+
+        setSupplierOperators(
+          (payload.items ?? []).map((operator) => ({
+            id: operator.id,
+            fullName: operator.fullName,
+            status: isManagerPresence(operator.status) ? operator.status : "offline",
+            lastSeenAt: operator.lastSeenAt ?? null,
+            lastLoginAt: operator.lastLoginAt ?? null,
+            isActive: operator.isActive,
+          }))
+        );
+      } catch (error) {
+        console.error("Ошибка загрузки сотрудников поставщика:", error);
+        setSupplierOperators([]);
+      }
+    };
+
+    void loadSupplierOperators();
+  }, [authReady, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady || !supplierProfileId) {
@@ -2372,7 +2470,54 @@ export default function SupplierPage() {
       scheduleRefresh();
     };
 
+    const handlePresenceChanged = (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as {
+          profileId?: string;
+          role?: string;
+          presenceStatus?: string;
+          presenceHeartbeatAt?: string | null;
+        };
+
+        if (!update.profileId || !isManagerPresence(update.presenceStatus)) {
+          return;
+        }
+
+        const nextStatus = update.presenceStatus;
+        setPresenceNow(Date.now());
+        setSupplierStatuses((currentStatuses) => ({
+          ...currentStatuses,
+          [update.profileId as string]: nextStatus,
+        }));
+
+        if (update.profileId === supplierProfileId) {
+          setSupplierStatus(nextStatus);
+          return;
+        }
+
+        setSupplierOperators((currentOperators) =>
+          currentOperators.map((operator) =>
+            operator.id === update.profileId
+              ? {
+                  ...operator,
+                  status: nextStatus,
+                  lastSeenAt: update.presenceHeartbeatAt ?? operator.lastSeenAt,
+                }
+              : operator
+          )
+        );
+      } catch (eventError) {
+        console.warn("Не удалось разобрать live-статус поставщика:", eventError);
+      }
+    };
+
+    const handleHeartbeat = () => {
+      setPresenceNow(Date.now());
+    };
+
     source.addEventListener("ticket.changed", handleTicketChanged);
+    source.addEventListener("profile.presence.changed", handlePresenceChanged);
+    source.addEventListener("heartbeat", handleHeartbeat);
     source.onerror = () => {
       console.warn(
         "Live-обновления поставщика-управленца временно недоступны, polling остается резервом"
@@ -2386,6 +2531,8 @@ export default function SupplierPage() {
       }
 
       source.removeEventListener("ticket.changed", handleTicketChanged);
+      source.removeEventListener("profile.presence.changed", handlePresenceChanged);
+      source.removeEventListener("heartbeat", handleHeartbeat);
       source.close();
     };
   }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
@@ -3670,28 +3817,46 @@ export default function SupplierPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#6C6C70]">
-              <span className="rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E]">
-                Онлайн: {onlineCompanySuppliers.length}
-              </span>
-              {onlineCompanySuppliers.length > 0 ? (
-                onlineCompanySuppliers.map((supplier) => (
-                  <span
-                    key={supplier.id}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
-                  >
-                    <span className="h-2 w-2 rounded-full bg-[#34C759]" />
-                    <span>
-                      {supplier.name}
-                      {supplier.id === supplierProfileId ? " (Вы)" : ""}
-                    </span>
-                  </span>
-                ))
-              ) : (
-                <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
-                  Нет поставщиков со статусом online
+            <div className="text-xs text-[#6C6C70]">
+              <button
+                type="button"
+                onClick={() => setIsOnlineSuppliersOpen((current) => !current)}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 font-semibold text-[#1E1E1E] shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition hover:bg-[#F7F8FB]"
+                aria-expanded={isOnlineSuppliersOpen}
+              >
+                <span>Онлайн: {onlineCompanySuppliers.length}</span>
+                <span
+                  className={`text-[#8E8E93] transition-transform ${
+                    isOnlineSuppliersOpen ? "rotate-180" : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  ▾
                 </span>
-              )}
+              </button>
+
+              {isOnlineSuppliersOpen ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {onlineCompanySuppliers.length > 0 ? (
+                    onlineCompanySuppliers.map((supplier) => (
+                      <span
+                        key={supplier.id}
+                        className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#EEF6FF] px-3 py-1.5"
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#34C759]" />
+                        <span className="truncate">
+                          {supplier.fullName}
+                          {supplier.isSelf ? " (Вы)" : ""}
+                        </span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="rounded-full bg-[#F2F2F7] px-3 py-1.5">
+                      Сейчас нет сотрудников в сети
+                    </span>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             {isLoadingRequests && (

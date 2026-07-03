@@ -95,6 +95,7 @@ type SupplierRequest = {
   supplierSyncResumeDeferredAt?: string | null;
   supplierSyncManagerPromptAvailableAt?: string | null;
   closedAt?: string | null;
+  createdByManagerName?: string | null;
   createdAt: string;
 };
 
@@ -652,9 +653,11 @@ const buildSupplierRequestCards = (
         requests: sortedRequests,
         queueTab: getSupplierQueueTab(activeRequest, ticketStatus),
         managerName:
+          activeRequest.createdByManagerName?.trim() ||
           (activeRequest.createdByManagerId
             ? managerNameById[activeRequest.createdByManagerId]
-            : undefined) ?? "Не указан",
+            : undefined) ||
+          "Не указан",
         pinned: pinnedRequestIds.includes(request.ticketId),
         lastActivityAt: lastVisibleMessage?.createdAt ?? request.createdAt,
         lastVisibleMessage,
@@ -1176,10 +1179,11 @@ export default function SupplierPage() {
   }, []);
 
   const selectedManagerName =
+    selectedActiveRequest?.createdByManagerName?.trim() ||
     (selectedActiveRequest?.createdByManagerId
       ? managerNameById[selectedActiveRequest.createdByManagerId]
-      : undefined) ??
-    selectedTicket?.assignedManagerName ??
+      : undefined) ||
+    selectedTicket?.assignedManagerName ||
     "Менеджер";
   const supplierCompanyName = formatSupplierCompanyName(supplierId, supplierName);
   const resolvedSupplierEmployeeName =

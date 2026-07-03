@@ -62,6 +62,18 @@ export class SupplierRequestsService {
     return value?.trim().toLowerCase() || null;
   }
 
+  private resolveCreatedByManagerName(request: {
+    createdByManager?: { fullName?: string | null } | null;
+    createdByManagerId?: string | null;
+  }) {
+    const profileName = request.createdByManager?.fullName?.trim();
+    if (profileName && profileName !== request.createdByManagerId?.trim()) {
+      return profileName;
+    }
+
+    return null;
+  }
+
   private supplierProfileMatchesRequestScope(
     profile: {
       id: string;
@@ -99,6 +111,8 @@ export class SupplierRequestsService {
       id: string;
       ticketId: string;
       createdAt: Date;
+      createdByManager?: { fullName?: string | null } | null;
+      createdByManagerId?: string | null;
     },
   >(requests: T[]) {
     if (requests.length === 0) {
@@ -183,6 +197,7 @@ export class SupplierRequestsService {
 
       return {
         ...request,
+        createdByManagerName: this.resolveCreatedByManagerName(request),
         supplierSyncPaused: state.isPaused,
         supplierSyncMode: state.mode,
         supplierSyncAwaitingManager: state.isAwaitingManager,
@@ -257,6 +272,13 @@ export class SupplierRequestsService {
           responseTime: null,
           responseBreached: false,
         },
+        include: {
+          createdByManager: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
       });
 
       await tx.message.create({
@@ -328,6 +350,13 @@ export class SupplierRequestsService {
           : {}),
       },
       orderBy: { createdAt: 'desc' },
+      include: {
+        createdByManager: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
     });
 
     return this.attachSyncState(requests);
@@ -353,6 +382,13 @@ export class SupplierRequestsService {
               : {}),
       },
       orderBy: { createdAt: 'desc' },
+      include: {
+        createdByManager: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
     });
 
     return this.attachSyncState(requests);

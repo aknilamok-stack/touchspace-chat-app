@@ -853,6 +853,9 @@ const getSupplierCardPreview = (card: SupplierRequestCard) => {
   return "Диалог создан";
 };
 
+const getSupplierCardAssigneeLabel = (request: SupplierRequest) =>
+  request.assignedSupplierProfileName?.trim() || "Не назначен";
+
 const getSupplierCompletedRequestLabel = (card: SupplierRequestCard) => {
   const latestManagerRequest = card.requests[0];
   const requestText = latestManagerRequest?.requestText?.trim();
@@ -5101,10 +5104,7 @@ export default function SupplierPage() {
               activeTabRequests.map((card) => (
                 (() => {
                   const tone = getSupplierCardTone(card.request, card.queueTab);
-                  const managerLabel =
-                    card.ticket?.assignedManagerName?.trim() ||
-                    card.ticket?.lastResolvedByManagerName?.trim() ||
-                    (card.managerName !== "Не указан" ? card.managerName : "Не назначен");
+                  const managerLabel = getSupplierCardAssigneeLabel(card.request);
 
                   return (
                   <DialogListCard
@@ -6918,10 +6918,7 @@ export default function SupplierPage() {
                 <div className="space-y-1">
                   {activeTabRequests.map((card) => {
                     const tone = getSupplierCardTone(card.request, card.queueTab);
-                    const managerLabel =
-                      card.ticket?.assignedManagerName?.trim() ||
-                      card.ticket?.lastResolvedByManagerName?.trim() ||
-                      (card.managerName !== "Не указан" ? card.managerName : "Не назначен");
+                    const managerLabel = getSupplierCardAssigneeLabel(card.request);
 
                     return (
                       <DialogListWideRow

@@ -716,6 +716,9 @@ const getSupplierCardPreview = (card: SupplierRequestCard) => {
   return "Диалог создан";
 };
 
+const getSupplierCardAssigneeLabel = (request: SupplierRequest) =>
+  request.assignedSupplierProfileName?.trim() || "Не назначен";
+
 const getSupplierCardTone = (
   request: SupplierRequest,
   queueTab: SupplierQueueTab
@@ -3704,10 +3707,7 @@ export default function SupplierPage() {
               activeTabRequests.map((card) => (
                 (() => {
                   const tone = getSupplierCardTone(card.request, card.queueTab);
-                  const managerLabel =
-                    card.ticket?.assignedManagerName?.trim() ||
-                    card.ticket?.lastResolvedByManagerName?.trim() ||
-                    (card.managerName !== "Не указан" ? card.managerName : "Не назначен");
+                  const managerLabel = getSupplierCardAssigneeLabel(card.request);
 
                   return (
                   <DialogListCard

@@ -17,6 +17,7 @@ type SupplierStatusRecord = {
   supplierId?: string | null;
   supplierStatus: string | null;
   lastLoginAt?: string | null;
+  supplierPresenceHeartbeatAt?: string | null;
 };
 
 export type SupplierPresenceRecord = {
@@ -26,6 +27,7 @@ export type SupplierPresenceRecord = {
   supplierId: string | null;
   status: ManagerPresence;
   lastLoginAt?: string | null;
+  lastSeenAt?: string | null;
 };
 
 export type ManagerPresenceRecord = {
@@ -179,6 +181,7 @@ export async function fetchSupplierStatusRecords(): Promise<SupplierPresenceReco
         ? supplier.supplierStatus
         : "offline",
     lastLoginAt: supplier.lastLoginAt ?? null,
+    lastSeenAt: supplier.supplierPresenceHeartbeatAt ?? supplier.lastLoginAt ?? null,
   }));
 }
 

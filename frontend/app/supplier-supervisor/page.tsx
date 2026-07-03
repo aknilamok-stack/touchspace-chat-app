@@ -34,6 +34,8 @@ import {
 import {
   fetchManagerStatuses,
   fetchSupplierStatuses,
+  fetchSupplierStatusRecords,
+  type SupplierPresenceRecord,
   updateSupplierPresence,
 } from "@/lib/manager-presence";
 import { playNotificationSound } from "@/lib/notification-sound";
@@ -1093,6 +1095,9 @@ export default function SupplierPage() {
   const [managerStatuses, setManagerStatuses] = useState<Record<string, ManagerPresence>>({});
   const [supplierStatuses, setSupplierStatuses] = useState<Record<string, ManagerPresence>>({});
   const [supplierOperators, setSupplierOperators] = useState<SupplierOperatorPresence[]>([]);
+  const [supplierPresenceRecords, setSupplierPresenceRecords] = useState<SupplierPresenceRecord[]>(
+    []
+  );
   const [isOnlineSuppliersOpen, setIsOnlineSuppliersOpen] = useState(true);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [notificationCandidates, setNotificationCandidates] = useState<
@@ -1251,10 +1256,32 @@ export default function SupplierPage() {
       isActive: true,
       isSelf: true,
     };
+    const fallbackRows: SupplierOperatorPresence[] = supplierPresenceRecords
+      .filter((record) => {
+        const sameCompany =
+          record.supplierId === supplierId ||
+          (!!record.companyName && record.companyName === supplierName);
+
+        return (
+          sameCompany &&
+          record.id !== supplierId &&
+          !record.id.startsWith("supplier_scope_") &&
+          record.fullName.trim().length > 0
+        );
+      })
+      .map((record) => ({
+        id: record.id,
+        fullName: record.fullName,
+        status: record.status,
+        lastSeenAt: record.lastSeenAt ?? record.lastLoginAt ?? null,
+        lastLoginAt: record.lastLoginAt ?? null,
+        isActive: true,
+        isSelf: record.id === supplierProfileId,
+      }));
 
     return Array.from(
       new Map(
-        [selfRow, ...supplierOperators]
+        [selfRow, ...fallbackRows, ...supplierOperators]
           .filter((operator) => operator.id && operator.fullName && operator.isActive !== false)
           .map((operator) => {
             const effectiveStatus = operator.isSelf
@@ -1284,7 +1311,10 @@ export default function SupplierPage() {
   }, [
     presenceNow,
     resolvedSupplierEmployeeName,
+    supplierId,
+    supplierName,
     supplierOperators,
+    supplierPresenceRecords,
     supplierProfileId,
     supplierStatus,
     supplierStatuses,
@@ -1443,6 +1473,8 @@ export default function SupplierPage() {
       try {
         const statuses = await fetchSupplierStatuses();
         setSupplierStatuses(statuses);
+        const records = await fetchSupplierStatusRecords();
+        setSupplierPresenceRecords(records);
         const nextStatus = statuses[supplierProfileId] ?? "online";
         setSupplierStatus(nextStatus);
       } catch (error) {
@@ -2489,6 +2521,17 @@ export default function SupplierPage() {
           ...currentStatuses,
           [update.profileId as string]: nextStatus,
         }));
+        setSupplierPresenceRecords((currentRecords) =>
+          currentRecords.map((record) =>
+            record.id === update.profileId
+              ? {
+                  ...record,
+                  status: nextStatus,
+                  lastSeenAt: update.presenceHeartbeatAt ?? record.lastSeenAt ?? null,
+                }
+              : record
+          )
+        );
 
         if (update.profileId === supplierProfileId) {
           setSupplierStatus(nextStatus);

@@ -1922,7 +1922,7 @@ export class TicketsService {
       }
 
       if (
-        supplierProfile.role !== 'supplier' ||
+        !['supplier', 'supplier_supervisor'].includes(supplierProfile.role) ||
         !contactName ||
         !isSpecificSupplierContactName(contactName, companyName)
       ) {

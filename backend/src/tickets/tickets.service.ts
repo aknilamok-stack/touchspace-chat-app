@@ -1907,10 +1907,15 @@ export class TicketsService {
 
       if (companyName) {
         const companyScopeKey = companyName.toLowerCase();
+        const profileSupplierScopeId = supplierProfile.supplierId?.trim();
+        const companySupplierScopeId =
+          profileSupplierScopeId?.startsWith('supplier_scope_')
+            ? profileSupplierScopeId
+            : this.buildSupplierScopeId(companyName);
 
         if (!companyScopesById.has(companyScopeKey)) {
           companyScopesById.set(companyScopeKey, {
-            supplierId: supplierProfile.id,
+            supplierId: companySupplierScopeId,
             supplierName: companyName,
           });
         }

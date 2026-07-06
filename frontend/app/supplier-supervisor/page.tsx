@@ -732,7 +732,10 @@ const fetchTicketMessagesSnapshot = async (
   return data.map(formatTicketMessage);
 };
 
-const getSupplierTicketClientLabel = (ticket: Ticket | null) =>
+const getSupplierTicketClientLabel = (
+  ticket: Ticket | null,
+  fallback = "Загружаем данные клиента..."
+) =>
   ticket?.tradePointName?.trim() ||
   ticket?.clientName?.trim() ||
   ticket?.clientId?.trim() ||
@@ -741,7 +744,7 @@ const getSupplierTicketClientLabel = (ticket: Ticket | null) =>
   ticket?.clientEmail?.trim() ||
   ticket?.currentUserEmail?.trim() ||
   ticket?.superuserEmail?.trim() ||
-  "Клиент не определён";
+  fallback;
 
 const getSupplierCardClientLabel = (ticket: Ticket | null, _request: SupplierRequest) =>
   getSupplierTicketClientLabel(ticket);

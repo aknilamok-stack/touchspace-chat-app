@@ -836,7 +836,10 @@ const fetchTicketMessagesSnapshot = async (
   return data.map(formatTicketMessage);
 };
 
-const getSupplierTicketClientLabel = (ticket: Ticket | null) =>
+const getSupplierTicketClientLabel = (
+  ticket: Ticket | null,
+  fallback = "Загружаем данные клиента..."
+) =>
   ticket?.tradePointName?.trim() ||
   ticket?.clientName?.trim() ||
   ticket?.clientId?.trim() ||
@@ -845,7 +848,7 @@ const getSupplierTicketClientLabel = (ticket: Ticket | null) =>
   ticket?.clientEmail?.trim() ||
   ticket?.currentUserEmail?.trim() ||
   ticket?.superuserEmail?.trim() ||
-  "Клиент не определён";
+  fallback;
 
 const getSupplierCardClientLabel = (ticket: Ticket | null, _request: SupplierRequest) =>
   getSupplierTicketClientLabel(ticket);
@@ -2654,16 +2657,7 @@ export default function SupplierPage() {
 
       try {
         const data = await fetchSupplierRequests();
-        syncSupplierRequests(data);
-        setIsLoadingRequests(false);
-
-        void fetchTicketsMap(supplierId)
-          .then((ticketsMap) => {
-            setTicketsById(ticketsMap);
-          })
-          .catch((error) => {
-            console.error("Ошибка фоновой загрузки тикетов поставщика:", error);
-          });
+        const ticketsMap = await fetchTicketsMap(supplierId);
 
         void fetchMessagesMapForRequests(data, supplierId)
           .then((messagesMap) => {
@@ -2674,6 +2668,10 @@ export default function SupplierPage() {
           .catch((error) => {
             console.error("Ошибка фоновой загрузки сообщений поставщика:", error);
           });
+
+        setTicketsById(ticketsMap);
+        syncSupplierRequests(data);
+        setIsLoadingRequests(false);
       } catch (error) {
         console.error("Ошибка загрузки supplier requests:", error);
         setRequestsError("Не удалось загрузить запросы поставщику");

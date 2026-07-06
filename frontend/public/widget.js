@@ -516,6 +516,16 @@
   var helpPromptText =
     cleanValue(config.helpPromptText) ||
     "👋 Нужна помощь? Я рядом. Напишите мне, если появятся вопросы!";
+  var helpPromptStorageIdentity = cleanValue(config.currentUserId) ||
+    cleanValue(config.currentUserLogin) ||
+    cleanValue(config.currentUserEmail) ||
+    cleanValue(config.userId) ||
+    cleanValue(config.userEmail) ||
+    "anonymous";
+  var helpPromptDismissedKey =
+    "touchspace-widget-help-prompt-dismissed-v1:" + helpPromptStorageIdentity;
+  var helpPromptSeenSessionKey =
+    "touchspace-widget-help-prompt-seen-v1:" + helpPromptStorageIdentity;
   var helpPromptInitialTimer = null;
   var helpPromptAutoHideTimer = null;
   var helpPromptRepeatTimer = null;
@@ -835,15 +845,40 @@
     }
   }
 
-  function scheduleHelpPromptRepeat() {
-    if (!helpPromptEnabled || HELP_PROMPT_REPEAT_INTERVAL_MS <= 0) {
-      return;
+  function getStorageValue(storage, key) {
+    try {
+      return storage.getItem(key);
+    } catch (error) {
+      return null;
     }
+  }
 
+  function setStorageValue(storage, key, value) {
+    try {
+      storage.setItem(key, value);
+    } catch (error) {
+      // Storage can be unavailable in private mode; the prompt should still work.
+    }
+  }
+
+  function isHelpPromptDismissed() {
+    return getStorageValue(window.localStorage, helpPromptDismissedKey) === "1";
+  }
+
+  function hasHelpPromptBeenSeenThisSession() {
+    return getStorageValue(window.sessionStorage, helpPromptSeenSessionKey) === "1";
+  }
+
+  function markHelpPromptSeenThisSession() {
+    setStorageValue(window.sessionStorage, helpPromptSeenSessionKey, "1");
+  }
+
+  function dismissHelpPromptPermanently() {
+    setStorageValue(window.localStorage, helpPromptDismissedKey, "1");
+  }
+
+  function scheduleHelpPromptRepeat() {
     clearHelpPromptRepeatTimer();
-    helpPromptRepeatTimer = window.setTimeout(function () {
-      showHelpPrompt();
-    }, HELP_PROMPT_REPEAT_INTERVAL_MS);
   }
 
   function hideHelpPrompt(options) {
@@ -856,21 +891,26 @@
   }
 
   function showHelpPrompt() {
-    if (!helpPromptEnabled || panel.classList.contains("is-open")) {
-      scheduleHelpPromptRepeat();
+    if (
+      !helpPromptEnabled ||
+      isHelpPromptDismissed() ||
+      hasHelpPromptBeenSeenThisSession() ||
+      panel.classList.contains("is-open")
+    ) {
       return;
     }
 
     clearHelpPromptRepeatTimer();
     clearHelpPromptAutoHideTimer();
+    markHelpPromptSeenThisSession();
     helpPrompt.classList.add("is-visible");
     helpPromptAutoHideTimer = window.setTimeout(function () {
-      hideHelpPrompt();
+      hideHelpPrompt({ repeat: false });
     }, HELP_PROMPT_AUTO_HIDE_MS);
   }
 
   function scheduleInitialHelpPrompt() {
-    if (!helpPromptEnabled) {
+    if (!helpPromptEnabled || isHelpPromptDismissed() || hasHelpPromptBeenSeenThisSession()) {
       return;
     }
 
@@ -914,7 +954,8 @@
   helpPromptClose.addEventListener("click", function (event) {
     event.preventDefault();
     event.stopPropagation();
-    hideHelpPrompt();
+    dismissHelpPromptPermanently();
+    hideHelpPrompt({ repeat: false });
   });
   iframe.addEventListener("load", postVisibilityState);
   panelClose.addEventListener("click", function (event) {

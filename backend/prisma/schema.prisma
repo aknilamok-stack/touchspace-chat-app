@@ -302,7 +302,7 @@ model SupplierRequest {
   supplierName       String
   assignedSupplierProfileId   String?
   assignedSupplierProfileName String?
-  requestText        String
+  requestText        String    @db.Text
   status             String    @default("pending")
   slaMinutes         Int?
   createdByManagerId String?

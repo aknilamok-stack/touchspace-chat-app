@@ -836,12 +836,19 @@ const fetchTicketMessagesSnapshot = async (
   return data.map(formatTicketMessage);
 };
 
-const getSupplierCardClientLabel = (ticket: Ticket | null, request: SupplierRequest) =>
+const getSupplierTicketClientLabel = (ticket: Ticket | null) =>
   ticket?.tradePointName?.trim() ||
   ticket?.clientName?.trim() ||
   ticket?.clientId?.trim() ||
   ticket?.title?.trim() ||
-  `Ticket #${request.ticketId}`;
+  ticket?.canonicalEmail?.trim() ||
+  ticket?.clientEmail?.trim() ||
+  ticket?.currentUserEmail?.trim() ||
+  ticket?.superuserEmail?.trim() ||
+  "Клиент не определён";
+
+const getSupplierCardClientLabel = (ticket: Ticket | null, _request: SupplierRequest) =>
+  getSupplierTicketClientLabel(ticket);
 
 const getSupplierCardPreview = (card: SupplierRequestCard) => {
   if (card.lastVisibleMessage) {
@@ -1936,11 +1943,7 @@ export default function SupplierPage() {
             "Во вкладке остаются только активные запросы, закреплённые за вами.",
         };
   const selectedClientLabel =
-    selectedTicket?.tradePointName?.trim() ||
-    selectedTicket?.clientName?.trim() ||
-    selectedTicket?.clientId?.trim() ||
-    selectedTicket?.title?.trim() ||
-    `Ticket #${selectedActiveRequest?.ticketId ?? selectedRequest?.ticketId ?? ""}`;
+    getSupplierTicketClientLabel(selectedTicket);
   const now = Date.now();
   const supplierPanelStatus = selectedRequest
     ? buildSupplierPanelStatus({

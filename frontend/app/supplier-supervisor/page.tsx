@@ -189,6 +189,7 @@ type Ticket = {
   title: string;
   status?: string;
   pinned?: boolean;
+  conversationMode?: string;
   clientId?: string | null;
   clientName?: string | null;
   tradePointName?: string | null;
@@ -203,9 +204,12 @@ type Ticket = {
   avatarEmoji?: string | null;
   assignedManagerId?: string | null;
   assignedManagerName?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
   lastResolvedByManagerName?: string | null;
   lastMessageAt?: string | null;
   invitedManagerNames?: string[];
+  messages?: TicketMessageApi[];
 };
 
 type SupplierQueueTab = "new" | "in_progress" | "completed";
@@ -358,6 +362,21 @@ const isSpecificManagerName = (name?: string | null) => {
   return Boolean(normalizedName && normalizedName !== "менеджер" && normalizedName !== "manager");
 };
 
+const getDirectManagerDisplayName = (
+  ticket?: Pick<Ticket, "assignedManagerName" | "messages"> | null
+) => {
+  if (isSpecificManagerName(ticket?.assignedManagerName)) {
+    return ticket?.assignedManagerName?.trim() || "Менеджер";
+  }
+
+  const lastManagerMessageName = [...(ticket?.messages ?? [])]
+    .reverse()
+    .find((message) => message.senderType === "manager" && isSpecificManagerName(message.senderName))
+    ?.senderName?.trim();
+
+  return lastManagerMessageName || ticket?.assignedManagerName?.trim() || "Менеджер";
+};
+
 const getSupplierMessageAuthorLabel = (
   message: TicketMessage,
   currentSupplierProfileId?: string,
@@ -495,6 +514,104 @@ const areMessageMapsEqual = (
   }
 
   return leftKeys.every((key) => areMessagesEqual(left[key] ?? [], right[key] ?? []));
+};
+
+const mergeMessagesById = <T extends { id: string; createdAt: string }>(
+  currentMessages: T[] = [],
+  nextMessages: T[] = []
+) => {
+  const byId = new Map<string, T>();
+
+  currentMessages.forEach((message) => {
+    byId.set(message.id, message);
+  });
+
+  nextMessages.forEach((message) => {
+    byId.set(message.id, message);
+  });
+
+  return [...byId.values()].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime();
+    const rightTime = new Date(right.createdAt).getTime();
+
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+};
+
+const mergeDirectManagerTickets = (
+  currentTickets: Ticket[],
+  nextTickets: Ticket[]
+) => {
+  const currentById = new Map(currentTickets.map((ticket) => [ticket.id, ticket]));
+
+  return nextTickets.map((ticket) => {
+    const currentTicket = currentById.get(ticket.id);
+
+    if (!currentTicket) {
+      return ticket;
+    }
+
+    const messages = mergeMessagesById(
+      currentTicket.messages ?? [],
+      ticket.messages ?? []
+    );
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt ?? currentTicket.lastMessageAt,
+    };
+  });
+};
+
+const addMessagesToDirectManagerTicket = (
+  tickets: Ticket[],
+  ticketId: string,
+  messagesToAdd: TicketMessageApi[]
+) =>
+  tickets.map((ticket) => {
+    if (ticket.id !== ticketId) {
+      return ticket;
+    }
+
+    const messages = mergeMessagesById(ticket.messages ?? [], messagesToAdd);
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt,
+    };
+  });
+
+const removeMessagesFromDirectManagerTicket = (
+  tickets: Ticket[],
+  ticketId: string,
+  messageIdsToRemove: string[]
+) => {
+  const idsToRemove = new Set(messageIdsToRemove);
+
+  return tickets.map((ticket) => {
+    if (ticket.id !== ticketId) {
+      return ticket;
+    }
+
+    const messages = (ticket.messages ?? []).filter(
+      (message) => !idsToRemove.has(message.id)
+    );
+    const latestMessageAt = messages.at(-1)?.createdAt;
+
+    return {
+      ...ticket,
+      messages,
+      lastMessageAt: latestMessageAt ?? ticket.lastMessageAt,
+    };
+  });
 };
 
 const getVisibleMessagesForTicket = (
@@ -1053,6 +1170,9 @@ export default function SupplierPage() {
   const [supplierRequests, setSupplierRequests] = useState<SupplierRequest[]>([]);
   const [pinnedRequestIds, setPinnedRequestIds] = useState<string[]>([]);
   const [ticketsById, setTicketsById] = useState<Record<string, Ticket>>({});
+  const [directManagerTickets, setDirectManagerTickets] = useState<Ticket[]>([]);
+  const [activeSupplierSection, setActiveSupplierSection] = useState<"requests" | "manager">("requests");
+  const [selectedManagerTicketId, setSelectedManagerTicketId] = useState("");
   const [activeQueueTab, setActiveQueueTab] = useState<SupplierQueueTab>("new");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [isChatPaneDismissed, setIsChatPaneDismissed] = useState(false);
@@ -1157,6 +1277,19 @@ export default function SupplierPage() {
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
+  const selectedManagerTicket =
+    directManagerTickets.find((ticket) => ticket.id === selectedManagerTicketId) ?? null;
+  const directManagerMessages = selectedManagerTicket?.messages?.map(formatTicketMessage) ?? [];
+  const managerSectionUnreadCount = directManagerTickets.reduce(
+    (total, ticket) =>
+      total +
+      (ticket.messages ?? []).filter(
+        (message) =>
+          message.senderType === "manager" &&
+          message.status !== "read"
+      ).length,
+    0
+  );
   const selectedTicket = selectedRequest ? ticketsById[selectedRequest.ticketId] ?? null : null;
   const selectedTicketRequests = selectedRequest
     ? supplierRequests
@@ -1355,8 +1488,23 @@ export default function SupplierPage() {
     : [];
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
   const supplierChatSearchMatchIds =
-    normalizedChatSearchQuery && selectedRequest
-      ? supplierTimelineItems
+    normalizedChatSearchQuery
+      ? activeSupplierSection === "manager"
+        ? directManagerMessages
+            .filter((message) =>
+              [
+                message.displayContent,
+                message.replyToContent,
+                message.senderName,
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(normalizedChatSearchQuery)
+            )
+            .map((message) => message.id)
+        : selectedRequest
+        ? supplierTimelineItems
           .filter((item) => {
             const searchableText =
               item.kind === "request"
@@ -1374,6 +1522,7 @@ export default function SupplierPage() {
           .map((item) =>
             item.kind === "request" ? `request:${item.request.id}` : item.message.id
           )
+        : []
       : [];
   const normalizedActiveChatSearchMatchIndex =
     supplierChatSearchMatchIds.length > 0
@@ -2151,6 +2300,48 @@ export default function SupplierPage() {
     return data.map(formatTicketMessage);
   };
 
+  const fetchDirectManagerTickets = async (): Promise<Ticket[]> => {
+    const directDialogSupplierId = supplierProfileId || supplierId;
+    const response = await fetch(
+      apiUrl(
+        `/tickets/supplier-manager-dialogs?supplierId=${encodeURIComponent(
+          directDialogSupplierId
+        )}`
+      ),
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить чаты с менеджерами");
+    }
+
+    return response.json();
+  };
+
+  const markDirectManagerMessagesRead = useCallback(
+    async (ticketId: string) => {
+      const directDialogSupplierId = supplierProfileId || supplierId;
+      const response = await fetch(
+        apiUrl(
+          `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
+            directDialogSupplierId
+          )}&markAsRead=true`
+        ),
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Не удалось отметить сообщения как прочитанные");
+      }
+
+      const data = (await response.json()) as TicketMessageApi[];
+      return data.map(formatTicketMessage);
+    },
+    [supplierId, supplierProfileId]
+  );
+
   const fetchTicketContacts = async (ticketId: string): Promise<ChatContactItem[]> => {
     const response = await fetch(
       apiUrl(
@@ -2298,6 +2489,43 @@ export default function SupplierPage() {
       return;
     }
 
+    let cancelled = false;
+
+    const loadDirectDialogs = async () => {
+      try {
+        const tickets = await fetchDirectManagerTickets();
+
+        if (cancelled) {
+          return;
+        }
+
+        setDirectManagerTickets((currentTickets) =>
+          mergeDirectManagerTickets(currentTickets, tickets)
+        );
+        setSelectedManagerTicketId((currentId) =>
+          currentId && tickets.some((ticket) => ticket.id === currentId)
+            ? currentId
+            : tickets[0]?.id ?? ""
+        );
+      } catch (error) {
+        console.error("Ошибка загрузки прямых чатов с менеджерами:", error);
+      }
+    };
+
+    void loadDirectDialogs();
+    const intervalId = window.setInterval(loadDirectDialogs, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [authReady, supplierId, supplierProfileId]);
+
+  useEffect(() => {
+    if (!authReady || !supplierId || !supplierProfileId) {
+      return;
+    }
+
     if (!selectedRequest) {
       setTicketMessages([]);
       setReplyText("");
@@ -2392,9 +2620,27 @@ export default function SupplierPage() {
     setSelectedFiles([]);
     setChatSearchQuery("");
     setActiveChatSearchMatchIndex(0);
-  }, [selectedRequestId]);
+  }, [selectedRequestId, selectedManagerTicketId]);
 
   useEffect(() => {
+    if (activeSupplierSection === "manager") {
+      if (!selectedManagerTicket?.id) {
+        setReplyMap({});
+        setReplyTarget(null);
+        setChatSearchQuery("");
+        setActiveChatSearchMatchIndex(0);
+        return;
+      }
+
+      setReplyMap(readReplyMap(selectedManagerTicket.id));
+      setReplyTarget(null);
+      setChatSearchQuery("");
+      setActiveChatSearchMatchIndex(0);
+      setHoveredMessageId("");
+      setHighlightedReplyMessageId("");
+      return;
+    }
+
     if (!selectedRequest?.ticketId) {
       setReplyMap({});
       setReplyTarget(null);
@@ -2409,7 +2655,58 @@ export default function SupplierPage() {
     setActiveChatSearchMatchIndex(0);
     setHoveredMessageId("");
     setHighlightedReplyMessageId("");
-  }, [selectedRequest?.ticketId]);
+  }, [activeSupplierSection, selectedManagerTicket?.id, selectedRequest?.ticketId]);
+
+  useEffect(() => {
+    if (
+      !authReady ||
+      activeSupplierSection !== "manager" ||
+      !selectedManagerTicket?.id ||
+      !supplierProfileId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDirectManagerMessages = async () => {
+      try {
+        const messages = await markDirectManagerMessagesRead(selectedManagerTicket.id);
+
+        if (cancelled) {
+          return;
+        }
+
+        setDirectManagerTickets((currentTickets) =>
+          currentTickets.map((ticket) =>
+            ticket.id === selectedManagerTicket.id
+              ? {
+                  ...ticket,
+                  messages: mergeMessagesById(ticket.messages ?? [], messages),
+                  lastMessageAt: messages.at(-1)?.createdAt ?? ticket.lastMessageAt,
+                }
+              : ticket
+          )
+        );
+        void refreshNotificationCandidates();
+      } catch (error) {
+        console.error("Ошибка загрузки прямого чата с менеджером:", error);
+      }
+    };
+
+    void loadDirectManagerMessages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authReady,
+    activeSupplierSection,
+    selectedManagerTicket?.id,
+    supplierProfileId,
+    markDirectManagerMessagesRead,
+    refreshNotificationCandidates,
+  ]);
 
   useEffect(() => {
     if (supplierChatSearchMatchIds.length === 0) {
@@ -3424,6 +3721,168 @@ export default function SupplierPage() {
   };
 
   const handleSendReply = async () => {
+    if (activeSupplierSection === "manager") {
+      const textToSend = replyText.trim();
+      const hasTextToSend = Boolean(textToSend);
+      const hasAttachmentToSend = selectedFiles.length > 0;
+
+      if (!selectedManagerTicket || (!hasTextToSend && !hasAttachmentToSend)) {
+        return;
+      }
+
+      if (!supplierSupervisorPowerEnabled) {
+        setReplyError(
+          "Молния выключена. Вы можете читать диалоги, но отправка сообщений и уведомления отключены."
+        );
+        return;
+      }
+
+      const optimisticTextMessage: TicketMessageApi | null = hasTextToSend
+        ? {
+            id: `temp-direct-${Date.now()}`,
+            ticketId: selectedManagerTicket.id,
+            content: textToSend,
+            senderType: "supplier",
+            senderProfileId: supplierProfileId,
+            senderName: resolvedSupplierEmployeeName,
+            messageType: "text",
+            transport: "chat",
+            status: "sent",
+            createdAt: new Date().toISOString(),
+          }
+        : null;
+
+      if (optimisticTextMessage) {
+        setDirectManagerTickets((currentTickets) =>
+          addMessagesToDirectManagerTicket(
+            currentTickets,
+            selectedManagerTicket.id,
+            [optimisticTextMessage]
+          )
+        );
+        setReplyText("");
+        requestAnimationFrame(() => {
+          scrollSupplierChatToBottom("smooth");
+        });
+      }
+
+      setIsSendingReply(true);
+      setReplyError("");
+
+      try {
+        const createdMessages: TicketMessage[] = [];
+
+        if (hasTextToSend) {
+          const response = await fetch(apiUrl("/messages"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ticketId: selectedManagerTicket.id,
+              content: textToSend,
+              senderType: "supplier",
+              transport: "chat",
+              senderId: supplierProfileId,
+              senderName: resolvedSupplierEmployeeName,
+              replyToMessageId: replyTarget?.id,
+              replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Не удалось отправить сообщение менеджеру");
+          }
+
+          const createdMessage = (await response.json()) as TicketMessageApi;
+          createdMessages.push(formatTicketMessage(createdMessage));
+        }
+
+        if (hasAttachmentToSend) {
+          const formData = new FormData();
+          selectedFiles.forEach((file) => {
+            formData.append("files", file);
+          });
+          formData.append("ticketId", selectedManagerTicket.id);
+          formData.append("senderType", "supplier");
+          formData.append("senderId", supplierProfileId);
+          formData.append("senderName", resolvedSupplierEmployeeName);
+          if (replyTarget?.id) {
+            formData.append("replyToMessageId", replyTarget.id);
+            formData.append("replyToContent", getReplyPreviewContent(replyTarget));
+          }
+
+          const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!attachmentResponse.ok) {
+            throw new Error("Не удалось отправить вложение менеджеру");
+          }
+
+          const createdAttachmentMessage = (await attachmentResponse.json()) as TicketMessageApi;
+          createdMessages.push(formatTicketMessage(createdAttachmentMessage));
+        }
+
+        if (replyTarget && createdMessages.length > 0) {
+          const nextReplyMap = {
+            ...replyMap,
+            [createdMessages[0].id]: {
+              replyToId: replyTarget.id,
+              replyToContent: getReplyPreviewContent(replyTarget),
+            },
+          };
+
+          setReplyMap(nextReplyMap);
+          writeReplyMap(selectedManagerTicket.id, nextReplyMap);
+        }
+
+        setReplyText("");
+        setReplyTarget(null);
+        setAttachmentName("");
+        setSelectedFiles([]);
+        if (optimisticTextMessage) {
+          setDirectManagerTickets((currentTickets) =>
+            removeMessagesFromDirectManagerTicket(
+              currentTickets,
+              selectedManagerTicket.id,
+              [optimisticTextMessage.id]
+            )
+          );
+        }
+        setDirectManagerTickets((currentTickets) =>
+          addMessagesToDirectManagerTicket(
+            currentTickets,
+            selectedManagerTicket.id,
+            createdMessages
+          )
+        );
+        const tickets = await fetchDirectManagerTickets();
+        setDirectManagerTickets((currentTickets) =>
+          mergeDirectManagerTickets(currentTickets, tickets)
+        );
+      } catch (error) {
+        if (optimisticTextMessage) {
+          setDirectManagerTickets((currentTickets) =>
+            removeMessagesFromDirectManagerTicket(
+              currentTickets,
+              selectedManagerTicket.id,
+              [optimisticTextMessage.id]
+            )
+          );
+          setReplyText(textToSend);
+        }
+        setReplyError(
+          error instanceof Error ? error.message : "Не удалось отправить сообщение менеджеру"
+        );
+      } finally {
+        setIsSendingReply(false);
+      }
+
+      return;
+    }
+
     const hasTextToSend = Boolean(replyText.trim());
     const hasAttachmentToSend = selectedFiles.length > 0;
     const isEmailMode = supplierEmailComposerEnabled && sendMode === "email";
@@ -3834,6 +4293,49 @@ export default function SupplierPage() {
           </div>
 
           <div className="mt-6 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            <div className="rounded-[16px] border border-[#E8EEF8] bg-white p-3 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#0A84FF]">
+                  Менеджеры
+                </p>
+                {managerSectionUnreadCount > 0 ? (
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
+                    {managerSectionUnreadCount > 99 ? "99+" : managerSectionUnreadCount}
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                {directManagerTickets.map((ticket) => (
+                  <DialogListCard
+                    key={ticket.id}
+                    active={
+                      activeSupplierSection === "manager" &&
+                      selectedManagerTicketId === ticket.id
+                    }
+                    onClick={() => {
+                      setActiveSupplierSection("manager");
+                      setSelectedRequestId("");
+                      setIsChatPaneDismissed(false);
+                      setSelectedManagerTicketId(ticket.id);
+                    }}
+                    title={getDirectManagerDisplayName(ticket)}
+                    identityKey={ticket.assignedManagerId || ticket.id}
+                    preview={ticket.messages?.at(-1)?.content?.trim() || "Прямой чат без клиента"}
+                    managerLabel="Прямой чат"
+                    timeLabel={formatDialogActivityLabel(ticket.lastMessageAt ?? null)}
+                    statusLabel="Менеджер"
+                    statusDotClassName="bg-[#0A84FF]"
+                    statusBadgeClassName="bg-[#EAF3FF] text-[#0A84FF]"
+                  />
+                ))}
+                {directManagerTickets.length === 0 ? (
+                  <p className="rounded-[14px] bg-[#F7F8FB] px-3 py-3 text-xs leading-5 text-[#8E8E93]">
+                    Прямые чаты с менеджерами появятся здесь.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
             <div className="rounded-[12px] bg-[#F2F2F5] p-1">
               <div className="grid grid-cols-2 gap-1">
               {supplierQueueTabs.map((tab) => {
@@ -3945,6 +4447,8 @@ export default function SupplierPage() {
                       Boolean(card.request.claimMissedAt || card.request.returnedToQueueAt)
                     }
                     onClick={() => {
+                      setActiveSupplierSection("requests");
+                      setSelectedManagerTicketId("");
                       setIsChatPaneDismissed(false);
                       setSelectedRequestId(card.request.id);
                     }}
@@ -3991,7 +4495,197 @@ export default function SupplierPage() {
         </aside>
 
         <section className="relative flex min-w-0 flex-1 overflow-hidden bg-[#F7F7FA]">
-          {selectedRequest ? (
+          {activeSupplierSection === "manager" && selectedManagerTicket ? (
+            <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
+                <div className="min-w-0">
+                  <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
+                    {getDirectManagerDisplayName(selectedManagerTicket)}
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="rounded-full bg-[#EAF3FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
+                      Менеджер
+                    </span>
+                    <p className="text-[13px] text-[#8E8E93]">
+                      Прямой чат без клиента
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSupplierSection("requests");
+                    setSelectedManagerTicketId("");
+                    setReplyTarget(null);
+                    setReplyError("");
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E5E5EA] bg-white text-[#8E8E93] transition duration-200 hover:bg-[#F7F8FB] hover:text-[#1E1E1E]"
+                  aria-label="Свернуть прямой чат"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                ref={messagesViewportRef}
+                onScroll={updateSupplierScrollState}
+                className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+              >
+                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
+                  {directManagerMessages.map((message, index) => {
+                    const previousMessage = directManagerMessages[index - 1];
+                    const shouldShowDateSeparator =
+                      !previousMessage ||
+                      getMessageDayKey(previousMessage.createdAt) !==
+                        getMessageDayKey(message.createdAt);
+                    const isSearchMatched = supplierChatSearchMatchIdSet.has(message.id);
+                    const isCurrentSearchMatch =
+                      currentSupplierChatSearchMatchId === message.id;
+                    const isOutgoing = message.senderType === "supplier";
+                    const authorLabel = getSupplierMessageAuthorLabel(
+                      message,
+                      supplierProfileId,
+                      supplierEmployeeName
+                    );
+
+                    return (
+                      <div
+                        key={message.id}
+                        ref={(element) => {
+                          messageElementsRef.current[message.id] = element;
+                        }}
+                        className={`rounded-[26px] px-2 py-1 transition-all duration-500 ${
+                          highlightedReplyMessageId === message.id
+                            ? "bg-[#EAF3FF] shadow-[0_10px_24px_rgba(10,132,255,0.10)]"
+                            : isCurrentSearchMatch
+                              ? "bg-[#FFF4D6] shadow-[0_10px_24px_rgba(255,193,7,0.18)]"
+                              : isSearchMatched
+                                ? "bg-[#FFF9EA]"
+                                : "bg-transparent"
+                        }`}
+                      >
+                        {shouldShowDateSeparator ? (
+                          <div className="flex justify-center py-1">
+                            <div className="rounded-full bg-[#F2F2F7] px-4 py-1.5 text-xs font-medium text-[#8E8E93]">
+                              {formatMessageDayLabel(message.createdAt)}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
+                          <div className="group relative inline-block w-fit max-w-[calc(88%+40px)]">
+                            <div
+                              className={`relative inline-block min-h-[44px] min-w-[84px] max-w-full rounded-[22px] px-4 pb-[10px] pt-3 align-top text-[15px] leading-[21px] shadow-sm transition ${
+                                isOutgoing
+                                  ? "bg-[#0A84FF] text-white shadow-[0_10px_24px_rgba(10,132,255,0.24)]"
+                                  : "bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
+                              }`}
+                            >
+                              {authorLabel ? (
+                                <p
+                                  className={`mb-1 text-[11px] font-semibold ${
+                                    isOutgoing ? "text-white/78" : "text-[#7A8BA0]"
+                                  }`}
+                                >
+                                  {authorLabel}
+                                </p>
+                              ) : null}
+                              {message.attachments && message.attachments.length > 0 ? (
+                                <ChatAttachmentList
+                                  attachments={message.attachments}
+                                  tone={isOutgoing ? "outgoing" : "incoming"}
+                                />
+                              ) : (
+                                <p className="min-w-0 max-w-full whitespace-pre-wrap pr-[76px] [overflow-wrap:break-word] [word-break:normal]">
+                                  {renderHighlightedText(
+                                    message.displayContent || message.content,
+                                    chatSearchQuery
+                                  )}
+                                </p>
+                              )}
+                              <div
+                                className={`absolute bottom-[10px] right-4 inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-none ${
+                                  isOutgoing ? "text-white/65" : "text-[#8E8E93]"
+                                }`}
+                              >
+                                <span>{formatTimeLabel(message.createdAt)}</span>
+                                {isOutgoing ? (
+                                  <MessageStatusChecks status={message.status} />
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {directManagerMessages.length === 0 ? (
+                    <p className="text-sm text-[#8E8E93]">Сообщений пока нет.</p>
+                  ) : null}
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+
+              <div className="border-t border-[#E5E5EA] bg-white px-6 py-5">
+                <div className="mx-auto w-full max-w-3xl">
+                  {replyError ? (
+                    <p className="mb-3 rounded-[16px] bg-[#FFF4F4] px-4 py-3 text-sm text-[#D64545]">
+                      {replyError}
+                    </p>
+                  ) : null}
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full bg-[#0A84FF] px-3 py-1.5 text-sm font-medium text-white shadow-[0_8px_16px_rgba(10,132,255,0.18)]"
+                    >
+                      Чат
+                    </button>
+                    <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-2">
+                      <div className="relative min-w-[220px] flex-1">
+                        <input
+                          value={chatSearchQuery}
+                          onChange={(event) => {
+                            setChatSearchQuery(event.target.value);
+                            setActiveChatSearchMatchIndex(0);
+                          }}
+                          placeholder="Поиск по чату"
+                          className="w-full rounded-full border border-[#E3E5EA] bg-white py-2 pl-4 pr-4 text-sm text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+                    <textarea
+                      ref={composerTextareaRef}
+                      value={replyText}
+                      onChange={(event) => setReplyText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleSendReply();
+                        }
+                      }}
+                      rows={1}
+                      className="min-h-[40px] max-h-[132px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-[15px] leading-6 text-[#1E1E1E] outline-none placeholder:text-[#8E8E93]"
+                      placeholder="Напишите сообщение менеджеру..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSendReply()}
+                      disabled={
+                        isSendingReply ||
+                        (!replyText.trim() && selectedFiles.length === 0)
+                      }
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0A84FF] text-white shadow-[0_12px_28px_rgba(10,132,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[#0077F2] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                      aria-label="Отправить сообщение"
+                    >
+                      ➤
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : selectedRequest ? (
             <>
               <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F7F7FA]">
                 {!isDesktopShell() ? (

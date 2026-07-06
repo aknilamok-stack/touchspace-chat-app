@@ -1940,6 +1940,18 @@ export class TicketsService {
       ...contactScopesById.values(),
     ];
 
+    for (const supplier of companyScopesById.values()) {
+      await this.profilesService.ensureProfile({
+        id: supplier.supplierId,
+        fullName: supplier.supplierName,
+        role: 'supplier',
+        supplierId: supplier.supplierId,
+        isActive: true,
+        approvalStatus: 'approved',
+        chatAccessEnabled: false,
+      });
+    }
+
     const supplierIds = supplierScopes.map((supplier) => supplier.supplierId);
     const existingSupplierDialogs =
       supplierIds.length > 0

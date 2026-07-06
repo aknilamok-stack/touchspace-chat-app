@@ -1646,14 +1646,19 @@ export class AdminService {
               },
             }
           : {}),
-        NOT: {
-          AND: [
-            { role: 'supplier' },
-            { id: { startsWith: 'supplier_scope_' } },
-            { email: null },
-            { authLogin: null },
-          ],
-        },
+        AND: [
+          {
+            OR: [{ email: { not: null } }, { authLogin: { not: null } }],
+          },
+          {
+            NOT: {
+              AND: [
+                { role: 'supplier' },
+                { id: { startsWith: 'supplier_scope_' } },
+              ],
+            },
+          },
+        ],
       },
       include: {
         clientTickets: {

@@ -839,6 +839,8 @@ export class NotificationsService {
                 },
               },
               status: true,
+              deliveryStatus: true,
+              readAt: true,
               createdAt: true,
             },
           },
@@ -1164,6 +1166,15 @@ export class NotificationsService {
           (!ticket.lastManagerReplyAt ||
             latestUnreadMessage.createdAt > ticket.lastManagerReplyAt)
         ) {
+          const latestMessageWasRead =
+            latestUnreadMessage.status === 'read' ||
+            latestUnreadMessage.deliveryStatus === 'read' ||
+            Boolean(latestUnreadMessage.readAt);
+
+          if (latestMessageWasRead) {
+            return null;
+          }
+
           return {
             ...candidate,
             scopeStatus: 'owned_active',

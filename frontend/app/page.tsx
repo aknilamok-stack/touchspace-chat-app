@@ -1312,6 +1312,31 @@ export default function Home() {
   const chatSearchMatchIdSet = new Set(chatSearchMatchIds);
   const isActiveDirectSupplierDialog =
     activeChat?.conversationMode === "direct_supplier";
+  const activeDirectSupplierCompanyMembers =
+    activeChat && isActiveDirectSupplierDialog && isDirectSupplierCompanyChat(activeChat)
+      ? supplierPresenceRecords
+          .filter((record) => {
+            const companyName = getDirectSupplierCompanyName(activeChat).trim().toLowerCase();
+            const recordCompanyName = record.companyName?.trim().toLowerCase();
+            const recordName = record.fullName.trim().toLowerCase();
+
+            return (
+              recordCompanyName === companyName &&
+              recordName !== companyName &&
+              !record.id.startsWith("supplier_scope_")
+            );
+          })
+          .sort((left, right) => {
+            const statusRank: Record<ManagerPresence, number> = {
+              online: 0,
+              break: 1,
+              offline: 2,
+            };
+            const statusDiff = statusRank[left.status] - statusRank[right.status];
+
+            return statusDiff || left.fullName.localeCompare(right.fullName, "ru");
+          })
+      : [];
   const activeSupplierRequest =
     activeChat?.supplierRequests.find(
       (request) => !["closed", "cancelled", "resolved"].includes(request.status)
@@ -6850,14 +6875,55 @@ export default function Home() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
-                    Сотрудник
-                  </p>
-                  <p className="mt-1 text-base font-semibold text-[#1E1E1E]">
-                    {getDirectSupplierContactName(activeChat) ||
-                      getSupplierPresenceContactName(activeChat) ||
-                      "Имя пока не указано"}
-                  </p>
+                  {isDirectSupplierCompanyChat(activeChat) ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                          Сотрудники
+                        </p>
+                        <span className="rounded-full bg-[#F2F2F7] px-2 py-0.5 text-[11px] font-semibold text-[#6C6C70]">
+                          {activeDirectSupplierCompanyMembers.length}
+                        </span>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {activeDirectSupplierCompanyMembers.length > 0 ? (
+                          activeDirectSupplierCompanyMembers.map((supplier) => (
+                            <div
+                              key={supplier.id}
+                              className="flex min-w-0 items-center gap-2 rounded-[12px] bg-[#F7F8FB] px-3 py-2"
+                            >
+                              <span
+                                className={`h-2.5 w-2.5 shrink-0 rounded-full ${managerStatusDots[supplier.status]}`}
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-[13px] font-semibold text-[#1E1E1E]">
+                                  {supplier.fullName}
+                                </p>
+                                <p className="text-[11px] text-[#8E8E93]">
+                                  {managerStatusLabels[supplier.status]}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="rounded-[12px] bg-[#F7F8FB] px-3 py-2 text-[13px] text-[#8E8E93]">
+                            Сотрудники пока не найдены
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                        Сотрудник
+                      </p>
+                      <p className="mt-1 text-base font-semibold text-[#1E1E1E]">
+                        {getDirectSupplierContactName(activeChat) ||
+                          getSupplierPresenceContactName(activeChat) ||
+                          "Имя пока не указано"}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

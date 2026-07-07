@@ -1171,6 +1171,8 @@ export default function Home() {
   const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompanyOption[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [supplierRequestText, setSupplierRequestText] = useState("");
+  const [supplierRequestFiles, setSupplierRequestFiles] = useState<File[]>([]);
+  const [supplierRequestAttachmentName, setSupplierRequestAttachmentName] = useState("");
   const [supplierFollowUpText, setSupplierFollowUpText] = useState("");
   const [isLoadingSupplierRequests, setIsLoadingSupplierRequests] = useState(false);
   const [supplierRequestsError, setSupplierRequestsError] = useState("");
@@ -1245,6 +1247,7 @@ export default function Home() {
   const managerSuggestionsRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const supplierRequestFileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -2182,6 +2185,23 @@ export default function Home() {
     },
     []
   );
+
+  const attachSupplierRequestFiles = useCallback((files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+
+    const validationMessage = validateChatAttachmentFiles(files);
+
+    if (validationMessage) {
+      setCreateSupplierRequestError(validationMessage);
+      return;
+    }
+
+    setSupplierRequestFiles(files);
+    setSupplierRequestAttachmentName(getChatAttachmentSelectionSummary(files));
+    setCreateSupplierRequestError("");
+  }, []);
 
   const handleComposerDragEvent = (event: DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files") || !canAttachToActiveChat) {
@@ -4215,6 +4235,33 @@ export default function Home() {
         throw new Error("Не удалось создать запрос поставщику");
       }
 
+      if (supplierRequestFiles.length > 0) {
+        const formData = new FormData();
+        supplierRequestFiles.forEach((file) => {
+          formData.append("files", file);
+        });
+        formData.append("ticketId", activeChatId);
+        formData.append("senderType", "manager");
+        formData.append("managerId", currentManagerId);
+        formData.append("managerName", currentManagerName);
+        formData.append("caption", "Вложения к запросу поставщику");
+        formData.append("isInternal", "true");
+
+        const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!attachmentResponse.ok) {
+          throw new Error(
+            await extractApiErrorMessage(
+              attachmentResponse,
+              "Запрос создан, но вложение не удалось прикрепить"
+            )
+          );
+        }
+      }
+
       setChatData((prevChats) =>
         prevChats.map((chat) =>
           chat.id === activeChatId
@@ -4237,6 +4284,8 @@ export default function Home() {
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
 
       setSupplierRequestText("");
+      setSupplierRequestFiles([]);
+      setSupplierRequestAttachmentName("");
       setSupplierFollowUpText("");
       setSupplierFollowUpError("");
       setSelectedSupplier(supplierCompanies[0]?.companyName ?? "");
@@ -6966,6 +7015,65 @@ export default function Home() {
                         className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: подтвердите наличие и срок поставки по заказу..."
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <input
+                        ref={supplierRequestFileInputRef}
+                        type="file"
+                        multiple
+                        accept={CHAT_ATTACHMENT_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+
+                          if (files.length === 0) {
+                            setSupplierRequestFiles([]);
+                            setSupplierRequestAttachmentName("");
+                            event.target.value = "";
+                            return;
+                          }
+
+                          attachSupplierRequestFiles(files);
+                          event.target.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => supplierRequestFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-2 text-sm font-medium text-[#0A84FF] transition hover:bg-[#ECF4FF]"
+                      >
+                        <Image
+                          src="/icons/skrepka.svg"
+                          alt=""
+                          width={16}
+                          height={16}
+                          className="h-4 w-4"
+                          style={{
+                            filter:
+                              "brightness(0) saturate(100%) invert(38%) sepia(98%) saturate(2437%) hue-rotate(204deg) brightness(102%) contrast(101%)",
+                          }}
+                        />
+                        Прикрепить файл
+                      </button>
+                      {supplierRequestAttachmentName ? (
+                        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
+                          <span className="truncate max-w-[220px]">
+                            {supplierRequestAttachmentName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSupplierRequestFiles([]);
+                              setSupplierRequestAttachmentName("");
+                            }}
+                            className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                            aria-label="Убрать вложения"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
 
                     <button

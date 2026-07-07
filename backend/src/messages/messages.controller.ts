@@ -162,6 +162,7 @@ export class MessagesController {
       caption?: string;
       replyToMessageId?: string;
       replyToContent?: string;
+      isInternal?: boolean | string;
     },
   ) {
     if (!files?.length) {
@@ -194,6 +195,7 @@ export class MessagesController {
       body.caption,
       body.replyToMessageId,
       body.replyToContent,
+      body.isInternal,
     );
   }
 

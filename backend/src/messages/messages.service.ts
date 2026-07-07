@@ -1439,6 +1439,7 @@ export class MessagesService {
     caption?: string,
     replyToMessageId?: string,
     replyToContent?: string,
+    isInternal?: boolean | string,
   ) {
     if (!files?.length) {
       throw new NotFoundException('Attachment file is required');
@@ -1478,6 +1479,9 @@ export class MessagesService {
     });
 
     const trimmedCaption = caption?.trim() || '';
+    const isInternalAttachment =
+      isInternal === true ||
+      (typeof isInternal === 'string' && isInternal.toLowerCase() === 'true');
     const attachments = files.map((file) => ({
       name: decodeUploadedFileName(file.originalname),
       url: `/uploads/${file.filename}`,
@@ -1531,7 +1535,7 @@ export class MessagesService {
           status: 'sent',
           deliveryStatus: 'sent',
           messageType: 'attachment',
-          isInternal: false,
+          isInternal: isInternalAttachment,
         },
       });
 

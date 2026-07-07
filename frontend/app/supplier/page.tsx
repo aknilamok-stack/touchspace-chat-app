@@ -2553,6 +2553,30 @@ export default function SupplierPage() {
     [supplierId]
   );
 
+  const markDirectManagerMessagesRead = useCallback(
+    async (ticketId: string) => {
+      const directDialogSupplierId = supplierProfileId || supplierId;
+      const response = await fetch(
+        apiUrl(
+          `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
+            directDialogSupplierId
+          )}&markAsRead=true`
+        ),
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Не удалось отметить сообщения как прочитанные");
+      }
+
+      const data = (await response.json()) as TicketMessageApi[];
+      return data.map(formatTicketMessage);
+    },
+    [supplierId, supplierProfileId]
+  );
+
   const fetchTicketContacts = async (ticketId: string): Promise<ChatContactItem[]> => {
     const response = await fetch(
       apiUrl(
@@ -2894,7 +2918,7 @@ export default function SupplierPage() {
 
     const loadDirectManagerMessages = async () => {
       try {
-        const messages = await markTicketMessagesRead(selectedManagerTicket.id);
+        const messages = await markDirectManagerMessagesRead(selectedManagerTicket.id);
 
         if (cancelled) {
           return;
@@ -2927,7 +2951,7 @@ export default function SupplierPage() {
     activeSupplierSection,
     selectedManagerTicket?.id,
     supplierId,
-    markTicketMessagesRead,
+    markDirectManagerMessagesRead,
     refreshNotificationCandidates,
   ]);
 
@@ -3796,7 +3820,7 @@ export default function SupplierPage() {
     lastMarkedIncomingMessageIdRef.current[selectedManagerTicket.id] =
       latestUnreadDirectManagerMessage.id;
 
-    markTicketMessagesRead(selectedManagerTicket.id)
+    markDirectManagerMessagesRead(selectedManagerTicket.id)
       .then((messages) => {
         setDirectManagerTickets((currentTickets) =>
           currentTickets.map((ticket) =>
@@ -3818,7 +3842,7 @@ export default function SupplierPage() {
     activeSupplierSection,
     authReady,
     latestUnreadDirectManagerMessage,
-    markTicketMessagesRead,
+    markDirectManagerMessagesRead,
     refreshNotificationCandidates,
     selectedManagerTicket?.id,
   ]);

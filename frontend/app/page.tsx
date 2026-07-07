@@ -748,8 +748,20 @@ const getManagerMessageAuthorLabel = (
   currentManagerName: string,
   chat?: ChatItem | null,
 ) => {
-  if (message.isInternal || message.from === "ai" || message.from === "supplier") {
+  if (message.isInternal || message.from === "ai") {
     return "";
+  }
+
+  if (message.from === "supplier") {
+    const supplierAuthorName =
+      message.senderName?.trim() ||
+      chat?.supplierCompanyName?.trim() ||
+      chat?.supplierName?.trim() ||
+      chat?.tradePointName?.trim() ||
+      chat?.clientName?.trim() ||
+      "Поставщик";
+
+    return `Поставщик: ${supplierAuthorName}`;
   }
 
   if (message.from === "manager") {
@@ -6028,11 +6040,9 @@ export default function Home() {
                                 {authorLabel}
                               </p>
                             ) : null}
-                            {message.from === "ai" || message.from === "supplier" || message.isInternal ? (
+                            {message.from === "ai" || message.isInternal ? (
                               <p className="mb-0.5 text-[11px] opacity-60">
                                 {message.from === "ai" && "AI-помощник"}
-                                {message.from === "supplier" &&
-                                  `Поставщик: ${getDirectSupplierMessageDisplayNameForChat(activeChat, message.senderName)}`}
                                 {message.isInternal && "Внутренний комментарий поставщику"}
                               </p>
                             ) : null}

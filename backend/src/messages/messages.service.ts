@@ -184,10 +184,20 @@ export class MessagesService {
       supplierId?: string | null;
     } | null;
     ticket?: {
+      conversationMode?: string | null;
       supplierName?: string | null;
     } | null;
   }) {
     if (message.senderType === 'supplier') {
+      if (message.ticket?.conversationMode === 'direct_supplier') {
+        return (
+          message.senderProfile?.fullName?.trim() ||
+          message.ticket?.supplierName?.trim() ||
+          message.senderProfile?.companyName?.trim() ||
+          null
+        );
+      }
+
       return (
         message.senderProfile?.companyName?.trim() ||
         message.ticket?.supplierName?.trim() ||
@@ -1660,6 +1670,7 @@ export class MessagesService {
         },
         ticket: {
           select: {
+            conversationMode: true,
             supplierName: true,
           },
         },

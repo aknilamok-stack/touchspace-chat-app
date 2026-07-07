@@ -1823,7 +1823,7 @@ export class TicketsService {
       });
     }
 
-    return this.prisma.ticket.findMany({
+    const tickets = await this.prisma.ticket.findMany({
       where: ticketWhere,
       take: 200,
       include: {
@@ -1833,6 +1833,13 @@ export class TicketsService {
             id: true,
             content: true,
             senderType: true,
+            senderProfileId: true,
+            senderProfile: {
+              select: {
+                fullName: true,
+                companyName: true,
+              },
+            },
             replyToMessageId: true,
             replyToContent: true,
             messageType: true,
@@ -1848,6 +1855,20 @@ export class TicketsService {
         { updatedAt: 'desc' },
       ],
     });
+
+    return tickets.map((ticket) => ({
+      ...ticket,
+      messages: ticket.messages.map(({ senderProfile, ...message }) => ({
+        ...message,
+        senderName:
+          ticket.conversationMode === 'direct_supplier' &&
+          message.senderType === 'supplier'
+            ? senderProfile?.fullName?.trim() || null
+            : senderProfile?.companyName?.trim() ||
+              senderProfile?.fullName?.trim() ||
+              null,
+      })),
+    }));
   }
 
   async findOrCreateManagerSupplierDialogs(

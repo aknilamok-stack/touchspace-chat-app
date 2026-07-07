@@ -5507,7 +5507,7 @@ export default function Home() {
               secondaryLabel: "Позже",
               informational: candidate.scopeStatus === "claimed_by_other_recently",
               autoCloseMs:
-                candidate.scopeStatus === "claimed_by_other_recently" ? 10000 : undefined,
+                candidate.scopeStatus === "claimed_by_other_recently" ? 3000 : undefined,
             }))}
             onClose={dismissFloatingNotification}
             onSecondary={dismissFloatingNotification}

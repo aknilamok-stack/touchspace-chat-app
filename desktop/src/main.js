@@ -353,7 +353,7 @@ function buildManagerNotificationPayload(candidate) {
     primaryLabel,
     secondaryLabel: "Позже",
     informational: isClaimedByOther,
-    autoCloseMs: isClaimedByOther ? 10000 : 0,
+    autoCloseMs: isClaimedByOther ? 3000 : 0,
     header: "Входящее сообщение",
     ticketId: candidate?.ticketId,
     scopeStatus: candidate?.scopeStatus,

@@ -4293,29 +4293,52 @@ export default function SupplierPage() {
           </div>
 
           <div className="mt-6 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            <div className="rounded-[16px] border border-[#E8EEF8] bg-white p-3 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#0A84FF]">
-                  Менеджеры
-                </p>
-                {managerSectionUnreadCount > 0 ? (
-                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
-                    {managerSectionUnreadCount > 99 ? "99+" : managerSectionUnreadCount}
-                  </span>
-                ) : null}
+            <div className="rounded-[12px] bg-[#F2F2F5] p-1">
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSupplierSection("requests");
+                    setSelectedManagerTicketId("");
+                  }}
+                  className={`relative inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                    activeSupplierSection === "requests"
+                      ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
+                      : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  <span>Клиенты</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSupplierSection("manager");
+                    setSelectedRequestId("");
+                    setIsChatPaneDismissed(false);
+                  }}
+                  className={`relative inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+                    activeSupplierSection === "manager"
+                      ? "bg-white text-[#1E1E1E] shadow-[0_2px_6px_rgba(15,23,42,0.06)]"
+                      : "bg-transparent text-[#6C6C70] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  <span>Менеджеры</span>
+                  {managerSectionUnreadCount > 0 ? (
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0A84FF] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-[0_6px_12px_rgba(10,132,255,0.24)]">
+                      {managerSectionUnreadCount > 99 ? "99+" : managerSectionUnreadCount}
+                    </span>
+                  ) : null}
+                </button>
               </div>
-              <div className="space-y-2">
+            </div>
+
+            {activeSupplierSection === "manager" ? (
+              <>
                 {directManagerTickets.map((ticket) => (
                   <DialogListCard
                     key={ticket.id}
-                    active={
-                      activeSupplierSection === "manager" &&
-                      selectedManagerTicketId === ticket.id
-                    }
+                    active={selectedManagerTicketId === ticket.id}
                     onClick={() => {
-                      setActiveSupplierSection("manager");
-                      setSelectedRequestId("");
-                      setIsChatPaneDismissed(false);
                       setSelectedManagerTicketId(ticket.id);
                     }}
                     title={getDirectManagerDisplayName(ticket)}
@@ -4333,9 +4356,9 @@ export default function SupplierPage() {
                     Прямые чаты с менеджерами появятся здесь.
                   </p>
                 ) : null}
-              </div>
-            </div>
-
+              </>
+            ) : (
+              <>
             <div className="rounded-[12px] bg-[#F2F2F5] p-1">
               <div className="grid grid-cols-2 gap-1">
               {supplierQueueTabs.map((tab) => {
@@ -4491,6 +4514,8 @@ export default function SupplierPage() {
                   Для этого поставщика пока нет назначенных запросов.
                 </p>
               )}
+              </>
+            )}
           </div>
         </aside>
 

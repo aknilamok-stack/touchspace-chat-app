@@ -57,6 +57,7 @@ export class ProfilesService {
       }
     | null = null;
   private readonly presenceStatusesCacheTtlMs = 5_000;
+  private readonly presenceHeartbeatTtlMs = 45_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -86,9 +87,15 @@ export class ProfilesService {
 
   private resolvePresenceStatus(
     presenceStatus: string | null,
-    _heartbeatAt: Date | null,
+    heartbeatAt: Date | null,
   ) {
     if (!presenceStatus || presenceStatus === 'offline') {
+      return 'offline';
+    }
+
+    const heartbeatTime = heartbeatAt?.getTime() ?? 0;
+
+    if (!heartbeatTime || Date.now() - heartbeatTime > this.presenceHeartbeatTtlMs) {
       return 'offline';
     }
 

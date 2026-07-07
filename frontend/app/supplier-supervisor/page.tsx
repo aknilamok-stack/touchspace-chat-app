@@ -206,6 +206,8 @@ type Ticket = {
   assignedManagerName?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   lastResolvedByManagerName?: string | null;
   lastMessageAt?: string | null;
   invitedManagerNames?: string[];
@@ -375,6 +377,22 @@ const getDirectManagerDisplayName = (
     ?.senderName?.trim();
 
   return lastManagerMessageName || ticket?.assignedManagerName?.trim() || "Менеджер";
+};
+
+const getDirectManagerDialogTitle = (ticket: Ticket) => {
+  const managerName = getDirectManagerDisplayName(ticket);
+  const supplierCompanyName =
+    ticket.supplierCompanyName?.trim() || ticket.supplierName?.trim() || "";
+  const supplierContactName = ticket.supplierContactName?.trim() || "";
+  const isCompanyDialog =
+    Boolean(ticket.supplierId?.startsWith("supplier_scope_")) ||
+    Boolean(supplierCompanyName && !supplierContactName);
+
+  if (isCompanyDialog) {
+    return `${managerName} / общий чат`;
+  }
+
+  return supplierContactName ? `${managerName} / ${supplierContactName}` : managerName;
 };
 
 const getSupplierMessageAuthorLabel = (
@@ -4341,7 +4359,7 @@ export default function SupplierPage() {
                     onClick={() => {
                       setSelectedManagerTicketId(ticket.id);
                     }}
-                    title={getDirectManagerDisplayName(ticket)}
+                    title={getDirectManagerDialogTitle(ticket)}
                     identityKey={ticket.assignedManagerId || ticket.id}
                     preview={ticket.messages?.at(-1)?.content?.trim() || "Прямой чат без клиента"}
                     managerLabel="Прямой чат"
@@ -4525,7 +4543,7 @@ export default function SupplierPage() {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                 <div className="min-w-0">
                   <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                    {getDirectManagerDisplayName(selectedManagerTicket)}
+                    {getDirectManagerDialogTitle(selectedManagerTicket)}
                   </p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="rounded-full bg-[#EAF3FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">

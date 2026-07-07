@@ -227,7 +227,10 @@ type Ticket = {
   lastResolvedByManagerName?: string | null;
   lastMessageAt?: string | null;
   conversationMode?: string;
+  supplierId?: string | null;
   supplierName?: string | null;
+  supplierCompanyName?: string | null;
+  supplierContactName?: string | null;
   messages?: TicketMessageApi[];
   invitedManagerNames?: string[];
 };
@@ -360,6 +363,22 @@ const getDirectManagerDisplayName = (
     ?.senderName?.trim();
 
   return lastManagerMessageName || ticket?.assignedManagerName?.trim() || "Менеджер";
+};
+
+const getDirectManagerDialogTitle = (ticket: Ticket) => {
+  const managerName = getDirectManagerDisplayName(ticket);
+  const supplierCompanyName =
+    ticket.supplierCompanyName?.trim() || ticket.supplierName?.trim() || "";
+  const supplierContactName = ticket.supplierContactName?.trim() || "";
+  const isCompanyDialog =
+    Boolean(ticket.supplierId?.startsWith("supplier_scope_")) ||
+    Boolean(supplierCompanyName && !supplierContactName);
+
+  if (isCompanyDialog) {
+    return `${managerName} / общий чат`;
+  }
+
+  return supplierContactName ? `${managerName} / ${supplierContactName}` : managerName;
 };
 
 const isSameLocalDay = (left: Date, right: Date) =>
@@ -1664,12 +1683,12 @@ export default function SupplierPage() {
           notificationKey: `supplier-direct:${ticket.id}:${latestManagerMessage.id}`,
           ticketId: ticket.id,
           requestId: null,
-          title: getDirectManagerDisplayName(ticket),
+          title: getDirectManagerDialogTitle(ticket),
           messageId: latestManagerMessage.id,
           messageText: latestManagerMessage.content,
           createdAt: latestManagerMessage.createdAt,
           senderType: "manager",
-          tradePointName: getDirectManagerDisplayName(ticket),
+          tradePointName: getDirectManagerDialogTitle(ticket),
           avatarColor: ticket.avatarColor ?? null,
           avatarEmoji: ticket.avatarEmoji ?? null,
           scopeStatus: "owned_active",
@@ -5032,7 +5051,7 @@ export default function SupplierPage() {
                     key={ticket.id}
                     active={selectedManagerTicketId === ticket.id}
                     onClick={() => setSelectedManagerTicketId(ticket.id)}
-                    title={getDirectManagerDisplayName(ticket)}
+                    title={getDirectManagerDialogTitle(ticket)}
                     identityKey={ticket.assignedManagerId || ticket.id}
                     preview={ticket.messages?.at(-1)?.content?.trim() || "Прямой чат без клиента"}
                     managerLabel="Прямой чат"
@@ -5240,7 +5259,7 @@ export default function SupplierPage() {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-5">
                 <div className="min-w-0">
                   <p className="truncate text-[18px] font-semibold text-[#1E1E1E]">
-                    {getDirectManagerDisplayName(selectedManagerTicket)}
+                    {getDirectManagerDialogTitle(selectedManagerTicket)}
                   </p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="rounded-full bg-[#EAF3FF] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0A84FF]">
@@ -5269,6 +5288,11 @@ export default function SupplierPage() {
                     const isCurrentSearchMatch =
                       currentSupplierChatSearchMatchId === message.id;
                     const isOutgoing = message.senderType === "supplier";
+                    const authorLabel = getSupplierMessageAuthorLabel(
+                      message,
+                      supplierProfileId,
+                      supplierEmployeeName
+                    );
 
                     return (
                       <div
@@ -5350,6 +5374,15 @@ export default function SupplierPage() {
                                   : "bg-white text-[#1E1E1E] shadow-[0_16px_36px_rgba(15,23,42,0.08)]"
                               }`}
                             >
+                              {authorLabel ? (
+                                <p
+                                  className={`mb-1 text-[11px] font-semibold ${
+                                    isOutgoing ? "text-white/78" : "text-[#7A8BA0]"
+                                  }`}
+                                >
+                                  {authorLabel}
+                                </p>
+                              ) : null}
                               {message.replyToContent || replyMap[message.id] ? (
                                 <button
                                   type="button"

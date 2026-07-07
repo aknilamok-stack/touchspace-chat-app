@@ -2343,6 +2343,7 @@ export class TicketsService {
         approvalStatus: {
           not: 'rejected',
         },
+        OR: [{ email: { not: null } }, { authLogin: { not: null } }],
       },
       orderBy: {
         fullName: 'asc',
@@ -2650,6 +2651,18 @@ export class TicketsService {
         conversationMode: 'direct_supplier',
         ...baseWhere,
         ...(supplierIds?.length ? { supplierId: { in: supplierIds } } : {}),
+        assignedManagerProfile: {
+          is: {
+            isActive: true,
+            approvalStatus: {
+              not: 'rejected',
+            },
+            role: {
+              in: ['manager', 'manager_supervisor'],
+            },
+            OR: [{ email: { not: null } }, { authLogin: { not: null } }],
+          },
+        },
       },
       include: {
         messages: {

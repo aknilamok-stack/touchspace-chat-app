@@ -2682,7 +2682,10 @@ export default function Home() {
         setManagerStatuses(remoteStatuses);
         setManagerPresenceRecords(remoteManagerRecords);
         setSupplierPresenceRecords(supplierStatuses);
-        setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
+        const remoteCurrentManagerStatus = remoteStatuses[currentManagerId];
+        if (remoteCurrentManagerStatus && remoteCurrentManagerStatus !== "offline") {
+          setCurrentManagerStatus(remoteCurrentManagerStatus);
+        }
         setNotificationCandidates(candidates);
         setSupplierCompanies(nextSupplierCompanies);
         setSupplierCompaniesError("");
@@ -2778,7 +2781,10 @@ export default function Home() {
           setSupplierPresenceRecords(supplierStatuses);
           setNotificationCandidates(candidates);
           if (currentManagerId) {
-            setCurrentManagerStatus(remoteStatuses[currentManagerId] ?? "online");
+            const remoteCurrentManagerStatus = remoteStatuses[currentManagerId];
+            if (remoteCurrentManagerStatus && remoteCurrentManagerStatus !== "offline") {
+              setCurrentManagerStatus(remoteCurrentManagerStatus);
+            }
           }
           syncTickets(tickets);
 

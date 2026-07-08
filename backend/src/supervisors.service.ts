@@ -27,7 +27,7 @@ type AnalyticsRangeInput = {
 
 @Injectable()
 export class SupervisorsService {
-  private readonly presenceHeartbeatTtlMs = 45_000;
+  private readonly presenceHeartbeatTtlMs = 3 * 60_000;
 
   constructor(
     private readonly prisma: PrismaService,

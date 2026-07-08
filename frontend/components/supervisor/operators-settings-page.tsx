@@ -88,7 +88,7 @@ const operatorStatusTone: Record<OperatorStatus, string> = {
   offline: "bg-[#C7C7CC]",
 };
 
-const presenceHeartbeatTtlMs = 45_000;
+const presenceHeartbeatTtlMs = 3 * 60_000;
 
 const isOperatorStatus = (value: unknown): value is OperatorStatus =>
   value === "online" || value === "break" || value === "offline";

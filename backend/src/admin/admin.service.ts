@@ -65,6 +65,8 @@ type AdminActorContext = {
 
 @Injectable()
 export class AdminService {
+  private readonly presenceHeartbeatTtlMs = 3 * 60_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly profilesService: ProfilesService,
@@ -410,9 +412,15 @@ export class AdminService {
 
   private resolveManagerPresenceStatus(
     managerStatus?: string | null,
-    _heartbeatAt?: Date | null,
+    heartbeatAt?: Date | null,
   ) {
     if (!managerStatus || managerStatus === 'offline') {
+      return 'offline';
+    }
+
+    const heartbeatTime = heartbeatAt?.getTime() ?? 0;
+
+    if (!heartbeatTime || Date.now() - heartbeatTime > this.presenceHeartbeatTtlMs) {
       return 'offline';
     }
 

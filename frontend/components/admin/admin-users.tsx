@@ -84,7 +84,7 @@ const roleNeedsName = (_role?: string | null) => true;
 const getInviteCount = (items: any[]) =>
   items.filter((item) => item.status === "pending_approval" || !item.lastLoginAt).length;
 
-const presenceHeartbeatTtlMs = 3 * 60_000;
+const presenceHeartbeatTtlMs = 4 * 60 * 60_000;
 
 const presenceLabels: Record<PresenceStatus, string> = {
   online: "Онлайн",

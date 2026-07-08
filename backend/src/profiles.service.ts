@@ -57,7 +57,7 @@ export class ProfilesService {
       }
     | null = null;
   private readonly presenceStatusesCacheTtlMs = 5_000;
-  private readonly presenceHeartbeatTtlMs = 3 * 60_000;
+  private readonly presenceHeartbeatTtlMs = 4 * 60 * 60_000;
 
   constructor(
     private readonly prisma: PrismaService,

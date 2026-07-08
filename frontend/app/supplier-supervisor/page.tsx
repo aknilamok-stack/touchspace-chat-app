@@ -69,7 +69,7 @@ const QUICK_REPLIES = [
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 40_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
-const presenceHeartbeatTtlMs = 3 * 60_000;
+const presenceHeartbeatTtlMs = 4 * 60 * 60_000;
 
 type SupplierRequest = {
   id: string;

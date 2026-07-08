@@ -182,6 +182,60 @@ export const getChatAttachmentSelectionSummary = (files: File[]) => {
   return `${files.length} файлов`;
 };
 
+const getClipboardFileExtension = (mimeType: string) => {
+  if (mimeType === "image/png") {
+    return "png";
+  }
+
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+
+  if (mimeType === "image/gif") {
+    return "gif";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "file";
+};
+
+const normalizeClipboardFile = (file: File, index: number) => {
+  if (file.name && file.name.trim()) {
+    return file;
+  }
+
+  const extension = getClipboardFileExtension(file.type);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+  return new File([file], `clipboard-${timestamp}-${index + 1}.${extension}`, {
+    type: file.type || "application/octet-stream",
+    lastModified: file.lastModified || Date.now(),
+  });
+};
+
+export const getChatAttachmentFilesFromClipboard = (
+  clipboardData: DataTransfer | null
+) => {
+  if (!clipboardData) {
+    return [];
+  }
+
+  const files = Array.from(clipboardData.files ?? []);
+
+  if (files.length > 0) {
+    return files.map(normalizeClipboardFile);
+  }
+
+  return Array.from(clipboardData.items ?? [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file))
+    .map(normalizeClipboardFile);
+};
+
 export const validateChatAttachmentFiles = (files: File[]) => {
   if (files.length === 0) {
     return "";

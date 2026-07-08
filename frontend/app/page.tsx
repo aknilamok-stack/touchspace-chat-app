@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, type DragEvent } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type ClipboardEvent,
+  type DragEvent,
+} from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
@@ -24,6 +32,7 @@ import {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   type ChatAttachmentPayload,
+  getChatAttachmentFilesFromClipboard,
   getChatAttachmentSelectionSummary,
   parseChatAttachmentPayloads,
   validateChatAttachmentFiles,
@@ -2221,6 +2230,24 @@ export default function Home() {
       requestAnimationFrame(() => composerTextareaRef.current?.focus());
     },
     []
+  );
+
+  const handleComposerPaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = getChatAttachmentFilesFromClipboard(event.clipboardData);
+
+      if (files.length === 0) {
+        return;
+      }
+
+      if (!canAttachToActiveChat) {
+        return;
+      }
+
+      event.preventDefault();
+      attachComposerFiles(files);
+    },
+    [attachComposerFiles, canAttachToActiveChat]
   );
 
   const attachSupplierRequestFiles = useCallback((files: File[]) => {
@@ -6566,6 +6593,7 @@ export default function Home() {
 
                     <textarea
                       ref={composerTextareaRef}
+                      onPaste={handleComposerPaste}
                       value={messageText}
                       onBlur={() => {
                         window.setTimeout(() => {

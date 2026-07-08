@@ -2,7 +2,15 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+} from "react";
 import { apiUrl } from "@/lib/api";
 import { ChatAttachmentList } from "@/components/chat/attachment-card";
 import { DialogListCard } from "@/components/chat/dialog-list-card";
@@ -23,6 +31,7 @@ import {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   type ChatAttachmentPayload,
+  getChatAttachmentFilesFromClipboard,
   getChatAttachmentSelectionSummary,
   parseChatAttachmentPayloads,
   validateChatAttachmentFiles,
@@ -2035,6 +2044,20 @@ export default function SupplierPage() {
       requestAnimationFrame(() => composerTextareaRef.current?.focus());
     },
     []
+  );
+
+  const handleComposerPaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = getChatAttachmentFilesFromClipboard(event.clipboardData);
+
+      if (files.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      attachComposerFiles(files);
+    },
+    [attachComposerFiles]
   );
 
   const handleComposerDragEvent = (event: DragEvent<HTMLDivElement>) => {
@@ -5585,6 +5608,7 @@ export default function SupplierPage() {
                   <div className="flex items-end gap-3 rounded-[28px] border border-[#E3E5EA] bg-white px-5 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                     <textarea
                       ref={composerTextareaRef}
+                      onPaste={handleComposerPaste}
                       value={replyText}
                       onChange={(event) => setReplyText(event.target.value)}
                       onKeyDown={(event) => {
@@ -6568,6 +6592,7 @@ export default function SupplierPage() {
                       <div className="min-w-0 flex-1">
                         <textarea
                           ref={composerTextareaRef}
+                          onPaste={handleComposerPaste}
                           value={replyText}
                           onChange={(event) => setReplyText(event.target.value)}
                           onKeyDown={(event) => {

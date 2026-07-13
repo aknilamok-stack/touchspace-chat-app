@@ -67,6 +67,22 @@ const supplierStatusDots: Record<ManagerPresence, string> = {
   break: "bg-[#FFB340]",
   offline: "bg-[#C7C7CC]",
 };
+const getEffectiveSupplierPresenceStatus = (
+  supplier: SupplierPresenceRecord,
+  nowMs: number,
+): ManagerPresence => {
+  if (supplier.status === "offline") {
+    return "offline";
+  }
+
+  const lastSeenMs = supplier.lastSeenAt ? new Date(supplier.lastSeenAt).getTime() : 0;
+  const hasFreshHeartbeat =
+    Number.isFinite(lastSeenMs) &&
+    lastSeenMs > 0 &&
+    nowMs - lastSeenMs <= presenceHeartbeatTtlMs;
+
+  return hasFreshHeartbeat ? supplier.status : "offline";
+};
 const QUICK_REPLIES = [
   "Добрый день! Чем могу помочь?",
   "Минуту, уточню ваш запрос",
@@ -77,6 +93,7 @@ const QUICK_REPLIES = [
 const EMOJI_REACTIONS = ["🙂", "😊", "😉", "🤝", "👍", "✅", "🔥", "❤️", "😂", "🙏"];
 const REPEATED_NOTIFICATION_INTERVAL_MS = 60_000;
 const CLIENT_ON_SITE_ACTIVITY_TTL_MS = 90_000;
+const presenceHeartbeatTtlMs = 4 * 60 * 60_000;
 const COMPLETED_SUPPLIER_REQUEST_STATUSES = new Set(["closed", "cancelled", "resolved"]);
 
 type SupplierRequest = {
@@ -1511,6 +1528,10 @@ export default function SupplierPage() {
         Boolean(recordCompanyName && recordCompanyName === normalizedSupplierCompanyName)
       );
     })
+    .map((supplier) => ({
+      ...supplier,
+      status: getEffectiveSupplierPresenceStatus(supplier, currentTimeMs ?? Date.now()),
+    }))
     .sort((left, right) => left.fullName.localeCompare(right.fullName, "ru"));
   const firstOnlineSupplierColleagueId =
     availableSupplierColleagues.find((supplier) => supplier.status === "online")?.id ??

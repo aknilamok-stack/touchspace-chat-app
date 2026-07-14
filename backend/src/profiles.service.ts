@@ -484,18 +484,38 @@ export class ProfilesService {
       return null;
     }
 
+    const existingProfile = await this.prisma.profile.findUnique({
+      where: { id },
+      select: {
+        role: true,
+        _count: {
+          select: {
+            supervisedProfiles: true,
+          },
+        },
+      },
+    });
+
+    const effectiveRole =
+      existingProfile?.role === 'supplier_supervisor' ||
+      existingProfile?._count.supervisedProfiles
+        ? 'supplier_supervisor'
+        : role;
+
     const fullNameForCreate =
       input.fullName?.trim() ||
-      (role === 'client' ? 'Клиент' : getDefaultFullNameForRole(role));
+      (effectiveRole === 'client'
+        ? 'Клиент'
+        : getDefaultFullNameForRole(effectiveRole));
     const fullNameForUpdate =
-      role === 'client' ? input.fullName?.trim() || undefined : undefined;
+      effectiveRole === 'client' ? input.fullName?.trim() || undefined : undefined;
 
     return this.prisma.profile.upsert({
       where: { id },
       create: {
         id,
         fullName: fullNameForCreate,
-        role,
+        role: effectiveRole,
         email: input.email?.trim() || null,
         phone: input.phone?.trim() || null,
         authLogin: input.authLogin?.trim() || null,
@@ -526,7 +546,7 @@ export class ProfilesService {
       },
       update: {
         fullName: fullNameForUpdate,
-        role,
+        role: effectiveRole,
         email: input.email?.trim() || undefined,
         phone: input.phone?.trim() || undefined,
         authLogin: input.authLogin?.trim() || undefined,

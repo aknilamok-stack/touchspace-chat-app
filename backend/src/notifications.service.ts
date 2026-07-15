@@ -445,6 +445,22 @@ export class NotificationsService {
       }
 
       const latestClientMessage = ticket.messages[0] ?? null;
+      const rescueCountdownStartedAt = [
+        latestClientMessage?.createdAt,
+        ticket.lastClientMessageAt,
+        ticket.claimedAt,
+        ticket.handedToManagerAt,
+      ]
+        .filter((value): value is Date => Boolean(value))
+        .sort((left, right) => right.getTime() - left.getTime())[0];
+
+      if (
+        rescueCountdownStartedAt &&
+        rescueCountdownStartedAt > rescueThreshold
+      ) {
+        continue;
+      }
+
       const latestClientMessageWasRead =
         latestClientMessage?.status === 'read' ||
         latestClientMessage?.deliveryStatus === 'read';

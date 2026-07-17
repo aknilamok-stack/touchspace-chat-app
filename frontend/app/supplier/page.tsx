@@ -2826,32 +2826,46 @@ export default function SupplierPage() {
       areMessagesEqual(currentMessages, cachedMessages) ? currentMessages : cachedMessages
     );
 
+    let cancelled = false;
+    const selectedTicketId = selectedRequest.ticketId;
+
     const loadMessages = async () => {
       setIsLoadingMessages(true);
       setMessagesError("");
 
       try {
-        const data = await fetchTicketMessages(selectedRequest.ticketId);
+        const data = await fetchTicketMessages(selectedTicketId);
+        if (cancelled) {
+          return;
+        }
         setTicketMessages((currentMessages) =>
           areMessagesEqual(currentMessages, data) ? currentMessages : data
         );
         setTicketMessagesByTicketId((currentMap) => {
           const nextMap = {
             ...currentMap,
-            [selectedRequest.ticketId]: data,
+            [selectedTicketId]: data,
           };
 
           return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
         });
       } catch (error) {
         console.error("Ошибка загрузки контекста тикета:", error);
-        setMessagesError("Не удалось загрузить сообщения тикета");
+        if (!cancelled) {
+          setMessagesError("Не удалось загрузить сообщения тикета");
+        }
       } finally {
-        setIsLoadingMessages(false);
+        if (!cancelled) {
+          setIsLoadingMessages(false);
+        }
       }
     };
 
     void loadMessages();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authReady, selectedRequest]);
 
   useEffect(() => {
@@ -3044,6 +3058,7 @@ export default function SupplierPage() {
       return;
     }
 
+    let cancelled = false;
     const source = new EventSource(
       apiUrl(
         `/live/events?viewerType=supplier&viewerId=${encodeURIComponent(
@@ -3099,12 +3114,19 @@ export default function SupplierPage() {
           nextRequestCards[0]?.request ??
           null;
 
+        if (cancelled) {
+          return;
+        }
+
         if (!freshSelectedRequest) {
           setTicketMessages([]);
           return;
         }
 
         const messages = await fetchTicketMessages(freshSelectedRequest.ticketId);
+        if (cancelled) {
+          return;
+        }
         setTicketMessages((currentMessages) =>
           areMessagesEqual(currentMessages, messages) ? currentMessages : messages
         );
@@ -3134,6 +3156,7 @@ export default function SupplierPage() {
     };
 
     return () => {
+      cancelled = true;
       if (supplierLiveRefreshTimeoutRef.current) {
         window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
         supplierLiveRefreshTimeoutRef.current = null;
@@ -3149,6 +3172,7 @@ export default function SupplierPage() {
       return;
     }
 
+    let cancelled = false;
     const intervalId = window.setInterval(() => {
       const refreshSupplierWorkspace = async () => {
         try {
@@ -3185,12 +3209,19 @@ export default function SupplierPage() {
             nextRequestCards[0]?.request ??
             null;
 
+          if (cancelled) {
+            return;
+          }
+
           if (!freshSelectedRequest) {
             setTicketMessages([]);
             return;
           }
 
           const messages = await fetchTicketMessages(freshSelectedRequest.ticketId);
+          if (cancelled) {
+            return;
+          }
           setTicketMessages((currentMessages) =>
             areMessagesEqual(currentMessages, messages) ? currentMessages : messages
           );
@@ -3202,7 +3233,10 @@ export default function SupplierPage() {
       void refreshSupplierWorkspace();
     }, 15000);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
 
   useEffect(() => {

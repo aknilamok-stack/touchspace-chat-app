@@ -1285,6 +1285,8 @@ export default function Home() {
   const appliedDeepLinkTicketIdRef = useRef("");
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
   const liveRefreshTimeoutRef = useRef<number | null>(null);
+  const activeChatIdRef = useRef("");
+  const activeMessagesRequestIdRef = useRef(0);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
@@ -1777,31 +1779,6 @@ export default function Home() {
     }
   }, [currentManagerId, currentManagerName, managerPresenceRecords]);
 
-  const syncMessagesForTickets = useCallback(
-    async (ticketIds: string[]) => {
-      const messageResults = await Promise.all(
-        ticketIds.map(async (ticketId) => {
-          try {
-            const messages = await fetchMessages(ticketId, false);
-            return { ticketId, messages };
-          } catch (error) {
-            console.error(`Ошибка загрузки сообщений тикета ${ticketId}:`, error);
-            return null;
-          }
-        })
-      );
-
-      messageResults.forEach((result) => {
-        if (!result) {
-          return;
-        }
-
-        applyMessagesToTicket(result.ticketId, result.messages);
-      });
-    },
-    [currentManagerId]
-  );
-
   const syncTickets = (tickets: ApiTicket[]) => {
     const formattedChats = tickets.map(formatTicket);
 
@@ -1927,7 +1904,7 @@ export default function Home() {
             syncTickets(tickets);
             await refreshNotificationCandidates();
 
-            if (ticketId && ticketId === activeChatId) {
+            if (ticketId && ticketId === activeChatIdRef.current) {
               const [messages, supplierRequests] = await Promise.all([
                 fetchMessages(ticketId, true),
                 fetchSupplierRequests(ticketId).catch(
@@ -1942,7 +1919,7 @@ export default function Home() {
             console.error("Ошибка live-обновления менеджера:", error);
           }
         })();
-      }, 500);
+      }, 1500);
     };
 
     const handleTicketChanged = (event: MessageEvent) => {
@@ -1969,7 +1946,6 @@ export default function Home() {
       }
     };
   }, [
-    activeChatId,
     authReady,
     currentManagerId,
     currentManagerName,
@@ -2727,25 +2703,6 @@ export default function Home() {
           return nextSupplierCompanies[0]?.companyName ?? "";
         });
         syncTickets(data);
-        const initialTicketId =
-          (!isChatPaneDismissed &&
-            (data.some((ticket) => ticket.id === deepLinkTicketId)
-              ? deepLinkTicketId
-              : data[0]?.id)) ||
-          "";
-
-        if (initialTicketId) {
-          try {
-            const messages = await fetchMessages(initialTicketId, true);
-            applyMessagesToTicket(initialTicketId, messages);
-          } catch (error) {
-            console.error(`Ошибка загрузки сообщений активного тикета ${initialTicketId}:`, error);
-          }
-        }
-
-        void syncMessagesForTickets(
-          data.map((ticket) => ticket.id).filter((ticketId) => ticketId !== initialTicketId)
-        );
       } catch (error) {
         console.error("Ошибка загрузки тикетов:", error);
       }
@@ -2756,9 +2713,6 @@ export default function Home() {
     authReady,
     currentManagerId,
     currentManagerName,
-    deepLinkTicketId,
-    isChatPaneDismissed,
-    syncMessagesForTickets,
   ]);
 
   useEffect(() => {
@@ -2936,12 +2890,24 @@ export default function Home() {
   }, [authReady, currentManagerId, currentManagerName, currentManagerStatus]);
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+    activeMessagesRequestIdRef.current += 1;
+
     if (!activeChatId) return;
+
+    const selectedTicketId = activeChatId;
+    const requestId = activeMessagesRequestIdRef.current;
 
     const loadCurrentMessages = async () => {
       try {
-        const messages = await fetchMessages(activeChatId, true);
-        applyMessagesToTicket(activeChatId, messages);
+        const messages = await fetchMessages(selectedTicketId, true);
+        if (
+          activeChatIdRef.current !== selectedTicketId ||
+          activeMessagesRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+        applyMessagesToTicket(selectedTicketId, messages);
       } catch (err) {
         console.error("Ошибка загрузки сообщений:", err);
       }

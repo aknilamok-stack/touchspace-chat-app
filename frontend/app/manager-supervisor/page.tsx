@@ -1249,6 +1249,7 @@ export default function Home() {
   const replyHoverTimeoutRef = useRef<number | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const managerSuggestionRequestIdRef = useRef(0);
+  const appliedManagerSuggestionQueryRef = useRef("");
   const lastNotificationAtRef = useRef<Record<string, number>>({});
   const lastNotificationMessageIdRef = useRef<Record<string, string>>({});
   const titleFlashIntervalRef = useRef<number | null>(null);
@@ -1454,6 +1455,8 @@ export default function Home() {
     !showEmojiPicker;
 
   const applyManagerSuggestion = useCallback((text: string) => {
+    appliedManagerSuggestionQueryRef.current = text.replace(/\s+/g, " ").trim();
+    managerSuggestionRequestIdRef.current += 1;
     setMessageText(text);
     setManagerSuggestions([]);
     setActiveManagerSuggestionIndex(-1);
@@ -3493,6 +3496,8 @@ export default function Home() {
   }, [messageText]);
 
   useEffect(() => {
+    appliedManagerSuggestionQueryRef.current = "";
+    managerSuggestionRequestIdRef.current += 1;
     setManagerSuggestions([]);
     setActiveManagerSuggestionIndex(-1);
   }, [activeChatId]);
@@ -3507,11 +3512,20 @@ export default function Home() {
       showQuickReplies ||
       showEmojiPicker
     ) {
+      appliedManagerSuggestionQueryRef.current = "";
+      managerSuggestionRequestIdRef.current += 1;
       setManagerSuggestions([]);
       setActiveManagerSuggestionIndex(-1);
       return;
     }
 
+    if (appliedManagerSuggestionQueryRef.current === normalizedQuery) {
+      setManagerSuggestions([]);
+      setActiveManagerSuggestionIndex(-1);
+      return;
+    }
+
+    appliedManagerSuggestionQueryRef.current = "";
     const requestId = managerSuggestionRequestIdRef.current + 1;
     managerSuggestionRequestIdRef.current = requestId;
 

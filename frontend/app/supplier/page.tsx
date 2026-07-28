@@ -1005,21 +1005,6 @@ const getSupplierCardTone = (
   };
 };
 
-const fetchMessagesMapForRequests = async (
-  requests: SupplierRequest[],
-  supplierId: string
-) => {
-  const uniqueTicketIds = [...new Set(requests.map((request) => request.ticketId))];
-  const ticketEntries = await Promise.all(
-    uniqueTicketIds.map(async (ticketId) => [
-      ticketId,
-      await fetchTicketMessagesSnapshot(ticketId, supplierId),
-    ] as const)
-  );
-
-  return Object.fromEntries(ticketEntries);
-};
-
 const fetchTicketsMap = async (supplierId: string) => {
   const response = await fetch(
     apiUrl(`/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`)
@@ -1362,6 +1347,13 @@ export default function SupplierPage() {
   const defaultDocumentTitleRef = useRef("");
   const titleFlashIntervalRef = useRef<number | null>(null);
   const supplierLiveRefreshTimeoutRef = useRef<number | null>(null);
+  const supplierLiveConnectedRef = useRef(false);
+  const supplierRequestsRef = useRef<SupplierRequest[]>([]);
+  const directManagerTicketsRef = useRef<Ticket[]>([]);
+  const selectedRequestIdRef = useRef("");
+  const selectedRequestTicketIdRef = useRef("");
+  const pinnedRequestIdsRef = useRef<string[]>([]);
+  const ticketMessagesByTicketIdRef = useRef<Record<string, TicketMessage[]>>({});
   const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
   const supplierNotificationBaselineReadyRef = useRef(false);
   const lastSeenSupplierRequestByTicketRef = useRef<Record<string, string>>({});
@@ -1373,6 +1365,13 @@ export default function SupplierPage() {
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
   const selectedManagerTicket =
     directManagerTickets.find((ticket) => ticket.id === selectedManagerTicketId) ?? null;
+
+  supplierRequestsRef.current = supplierRequests;
+  directManagerTicketsRef.current = directManagerTickets;
+  selectedRequestIdRef.current = selectedRequestId;
+  selectedRequestTicketIdRef.current = selectedRequest?.ticketId ?? "";
+  pinnedRequestIdsRef.current = pinnedRequestIds;
+  ticketMessagesByTicketIdRef.current = ticketMessagesByTicketId;
   const directManagerMessages = selectedManagerTicket?.messages?.map(formatTicketMessage) ?? [];
   const latestUnreadDirectManagerMessage =
     [...directManagerMessages]
@@ -2746,16 +2745,6 @@ export default function SupplierPage() {
         const data = await fetchSupplierRequests();
         const ticketsMap = await fetchTicketsMap(supplierId);
 
-        void fetchMessagesMapForRequests(data, supplierId)
-          .then((messagesMap) => {
-            setTicketMessagesByTicketId((currentMap) =>
-              areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-            );
-          })
-          .catch((error) => {
-            console.error("Ошибка фоновой загрузки сообщений поставщика:", error);
-          });
-
         setTicketsById(ticketsMap);
         syncSupplierRequests(data);
         setIsLoadingRequests(false);
@@ -3059,6 +3048,8 @@ export default function SupplierPage() {
     }
 
     let cancelled = false;
+    const pendingTicketIds = new Set<string>();
+    let refreshRunning = false;
     const source = new EventSource(
       apiUrl(
         `/live/events?viewerType=supplier&viewerId=${encodeURIComponent(
@@ -3067,50 +3058,26 @@ export default function SupplierPage() {
       )
     );
 
-    const refreshSupplierWorkspace = async () => {
+    const refreshSupplierWorkspace = async (changedTicketIds: string[]) => {
       try {
-        const requests = await fetchSupplierRequests();
+        const [requests, ticketsMap] = await Promise.all([
+          fetchSupplierRequests(),
+          fetchTicketsMap(supplierId),
+        ]);
         const nextRequestCards = buildSupplierRequestCards(
           requests,
-          ticketMessagesByTicketId,
-          pinnedRequestIds,
-          ticketsById
+          ticketMessagesByTicketIdRef.current,
+          pinnedRequestIdsRef.current,
+          ticketsMap
         );
         syncSupplierRequests(requests);
-
-        void fetchTicketsMap(supplierId)
-          .then((ticketsMap) => {
-            setTicketsById(ticketsMap);
-          })
-          .catch((error) => {
-            console.error("Ошибка live-обновления тикетов поставщика:", error);
-          });
-
-        void fetchMessagesMapForRequests(requests, supplierId)
-          .then((messagesMap) => {
-            setTicketMessagesByTicketId((currentMap) =>
-              areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-            );
-          })
-          .catch((error) => {
-            console.error("Ошибка live-обновления сообщений поставщика:", error);
-          });
-
-        void fetchDirectManagerTickets()
-          .then((tickets) => {
-            setDirectManagerTickets((currentTickets) =>
-              mergeDirectManagerTickets(currentTickets, tickets)
-            );
-          })
-          .catch((error) => {
-            console.error("Ошибка live-обновления прямых чатов поставщика:", error);
-          });
-
-        void refreshNotificationCandidates();
+        setTicketsById(ticketsMap);
 
         const freshSelectedRequest =
-          requests.find((request) => request.id === selectedRequestId) ??
-          requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
+          requests.find((request) => request.id === selectedRequestIdRef.current) ??
+          requests.find(
+            (request) => request.ticketId === selectedRequestTicketIdRef.current
+          ) ??
           nextRequestCards[0]?.request ??
           null;
 
@@ -3118,45 +3085,118 @@ export default function SupplierPage() {
           return;
         }
 
-        if (!freshSelectedRequest) {
-          setTicketMessages([]);
-          return;
+        const changedRequestTicketIds = changedTicketIds.filter((ticketId) =>
+          requests.some((request) => request.ticketId === ticketId)
+        );
+        if (changedRequestTicketIds.length > 0) {
+          const changedMessageEntries = await Promise.all(
+            changedRequestTicketIds.map(async (ticketId) => [
+              ticketId,
+              await fetchTicketMessagesSnapshot(ticketId, supplierId),
+            ] as const)
+          );
+          if (cancelled) {
+            return;
+          }
+          setTicketMessagesByTicketId((currentMap) => {
+            const nextMap = {
+              ...currentMap,
+              ...Object.fromEntries(changedMessageEntries),
+            };
+            return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
+          });
+          const selectedMessages = changedMessageEntries.find(
+            ([ticketId]) => ticketId === freshSelectedRequest?.ticketId
+          )?.[1];
+          if (selectedMessages) {
+            setTicketMessages((currentMessages) =>
+              areMessagesEqual(currentMessages, selectedMessages)
+                ? currentMessages
+                : selectedMessages
+            );
+          }
         }
 
-        const messages = await fetchTicketMessages(freshSelectedRequest.ticketId);
-        if (cancelled) {
-          return;
-        }
-        setTicketMessages((currentMessages) =>
-          areMessagesEqual(currentMessages, messages) ? currentMessages : messages
+        const directTicketChanged = changedTicketIds.some((ticketId) =>
+          directManagerTicketsRef.current.some((ticket) => ticket.id === ticketId)
         );
+        if (directTicketChanged) {
+          const directTickets = await fetchDirectManagerTickets();
+          if (!cancelled) {
+            setDirectManagerTickets((currentTickets) =>
+              mergeDirectManagerTickets(currentTickets, directTickets)
+            );
+          }
+        }
       } catch (error) {
         console.error("Ошибка live-обновления supplier page:", error);
       }
     };
 
-    const scheduleRefresh = () => {
+    const drainRefreshQueue = async () => {
+      if (refreshRunning || cancelled) {
+        return;
+      }
+
+      refreshRunning = true;
+      try {
+        while (!cancelled && pendingTicketIds.size > 0) {
+          const ticketIdsToRefresh = [...pendingTicketIds];
+          pendingTicketIds.clear();
+          await refreshSupplierWorkspace(ticketIdsToRefresh);
+        }
+      } finally {
+        refreshRunning = false;
+      }
+    };
+
+    const scheduleRefresh = (ticketId: string) => {
+      pendingTicketIds.add(ticketId);
       if (supplierLiveRefreshTimeoutRef.current) {
         window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
       }
 
       supplierLiveRefreshTimeoutRef.current = window.setTimeout(() => {
         supplierLiveRefreshTimeoutRef.current = null;
-        void refreshSupplierWorkspace();
+        void drainRefreshQueue();
       }, 500);
     };
 
-    const handleTicketChanged = () => {
-      scheduleRefresh();
+    const handleTicketChanged = (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as { ticketId?: string };
+        const changedTicketId = update.ticketId?.trim();
+        if (!changedTicketId) {
+          return;
+        }
+
+        const isKnownTicket =
+          supplierRequestsRef.current.some(
+            (request) => request.ticketId === changedTicketId
+          ) ||
+          directManagerTicketsRef.current.some(
+            (ticket) => ticket.id === changedTicketId
+          );
+        if (isKnownTicket) {
+          scheduleRefresh(changedTicketId);
+        }
+      } catch (eventError) {
+        console.warn("Не удалось разобрать live-событие поставщика:", eventError);
+      }
     };
 
+    source.onopen = () => {
+      supplierLiveConnectedRef.current = true;
+    };
     source.addEventListener("ticket.changed", handleTicketChanged);
     source.onerror = () => {
+      supplierLiveConnectedRef.current = false;
       console.warn("Live-обновления поставщика временно недоступны, polling остается резервом");
     };
 
     return () => {
       cancelled = true;
+      supplierLiveConnectedRef.current = false;
       if (supplierLiveRefreshTimeoutRef.current) {
         window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
         supplierLiveRefreshTimeoutRef.current = null;
@@ -3165,7 +3205,7 @@ export default function SupplierPage() {
       source.removeEventListener("ticket.changed", handleTicketChanged);
       source.close();
     };
-  }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
+  }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady) {
@@ -3174,38 +3214,30 @@ export default function SupplierPage() {
 
     let cancelled = false;
     const intervalId = window.setInterval(() => {
+      if (supplierLiveConnectedRef.current) {
+        return;
+      }
+
       const refreshSupplierWorkspace = async () => {
         try {
-          const requests = await fetchSupplierRequests();
+          const [requests, ticketsMap] = await Promise.all([
+            fetchSupplierRequests(),
+            fetchTicketsMap(supplierId),
+          ]);
           const nextRequestCards = buildSupplierRequestCards(
             requests,
             ticketMessagesByTicketId,
             pinnedRequestIds,
-            ticketsById
+            ticketsMap
           );
           syncSupplierRequests(requests);
-
-          void fetchTicketsMap(supplierId)
-            .then((ticketsMap) => {
-              setTicketsById(ticketsMap);
-            })
-            .catch((error) => {
-              console.error("Ошибка фонового обновления тикетов поставщика:", error);
-            });
-
-          void fetchMessagesMapForRequests(requests, supplierId)
-            .then((messagesMap) => {
-              setTicketMessagesByTicketId((currentMap) =>
-                areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-              );
-            })
-            .catch((error) => {
-              console.error("Ошибка фонового обновления сообщений поставщика:", error);
-            });
+          setTicketsById(ticketsMap);
 
           const freshSelectedRequest =
-            requests.find((request) => request.id === selectedRequestId) ??
-            requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
+            requests.find((request) => request.id === selectedRequestIdRef.current) ??
+            requests.find(
+              (request) => request.ticketId === selectedRequestTicketIdRef.current
+            ) ??
             nextRequestCards[0]?.request ??
             null;
 

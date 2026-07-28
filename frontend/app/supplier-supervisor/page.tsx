@@ -957,21 +957,6 @@ const getSupplierCardTone = (
   };
 };
 
-const fetchMessagesMapForRequests = async (
-  requests: SupplierRequest[],
-  supplierId: string
-) => {
-  const uniqueTicketIds = [...new Set(requests.map((request) => request.ticketId))];
-  const ticketEntries = await Promise.all(
-    uniqueTicketIds.map(async (ticketId) => [
-      ticketId,
-      await fetchTicketMessagesSnapshot(ticketId, supplierId),
-    ] as const)
-  );
-
-  return Object.fromEntries(ticketEntries);
-};
-
 const fetchTicketsMap = async (supplierId: string) => {
   const response = await fetch(
     apiUrl(`/tickets?viewerType=supplier&viewerId=${encodeURIComponent(supplierId)}`)
@@ -1296,11 +1281,25 @@ export default function SupplierPage() {
   const visibleNotificationRequestIdsRef = useRef<Set<string>>(new Set());
   const titleFlashIntervalRef = useRef<number | null>(null);
   const supplierLiveRefreshTimeoutRef = useRef<number | null>(null);
+  const supplierLiveConnectedRef = useRef(false);
+  const supplierRequestsRef = useRef<SupplierRequest[]>([]);
+  const directManagerTicketsRef = useRef<Ticket[]>([]);
+  const selectedRequestIdRef = useRef("");
+  const selectedRequestTicketIdRef = useRef("");
+  const pinnedRequestIdsRef = useRef<string[]>([]);
+  const ticketMessagesByTicketIdRef = useRef<Record<string, TicketMessage[]>>({});
 
   const selectedRequest =
     supplierRequests.find((request) => request.id === selectedRequestId) ?? null;
   const selectedManagerTicket =
     directManagerTickets.find((ticket) => ticket.id === selectedManagerTicketId) ?? null;
+
+  supplierRequestsRef.current = supplierRequests;
+  directManagerTicketsRef.current = directManagerTickets;
+  selectedRequestIdRef.current = selectedRequestId;
+  selectedRequestTicketIdRef.current = selectedRequest?.ticketId ?? "";
+  pinnedRequestIdsRef.current = pinnedRequestIds;
+  ticketMessagesByTicketIdRef.current = ticketMessagesByTicketId;
   const directManagerMessages = selectedManagerTicket?.messages?.map(formatTicketMessage) ?? [];
   const managerSectionUnreadCount = directManagerTickets.reduce(
     (total, ticket) =>
@@ -2478,12 +2477,8 @@ export default function SupplierPage() {
       try {
         const data = await fetchSupplierRequests();
         const ticketsMap = await fetchTicketsMap(supplierId);
-        const messagesMap = await fetchMessagesMapForRequests(data, supplierId);
         syncSupplierRequests(data);
         setTicketsById(ticketsMap);
-        setTicketMessagesByTicketId((currentMap) =>
-          areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-        );
       } catch (error) {
         console.error("Ошибка загрузки supplier requests:", error);
         setRequestsError("Не удалось загрузить запросы поставщику");
@@ -2779,6 +2774,8 @@ export default function SupplierPage() {
     }
 
     let cancelled = false;
+    const pendingTicketIds = new Set<string>();
+    let refreshRunning = false;
     const source = new EventSource(
       apiUrl(
         `/live/events?viewerType=supplier&viewerId=${encodeURIComponent(
@@ -2787,27 +2784,26 @@ export default function SupplierPage() {
       )
     );
 
-    const refreshSupplierWorkspace = async () => {
+    const refreshSupplierWorkspace = async (changedTicketIds: string[]) => {
       try {
-        const requests = await fetchSupplierRequests();
-        const ticketsMap = await fetchTicketsMap(supplierId);
-        const messagesMap = await fetchMessagesMapForRequests(requests, supplierId);
+        const [requests, ticketsMap] = await Promise.all([
+          fetchSupplierRequests(),
+          fetchTicketsMap(supplierId),
+        ]);
         const nextRequestCards = buildSupplierRequestCards(
           requests,
-          messagesMap,
-          pinnedRequestIds,
+          ticketMessagesByTicketIdRef.current,
+          pinnedRequestIdsRef.current,
           ticketsMap
         );
         syncSupplierRequests(requests);
         setTicketsById(ticketsMap);
-        setTicketMessagesByTicketId((currentMap) =>
-          areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-        );
-        void refreshNotificationCandidates();
 
         const freshSelectedRequest =
-          requests.find((request) => request.id === selectedRequestId) ??
-          requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
+          requests.find((request) => request.id === selectedRequestIdRef.current) ??
+          requests.find(
+            (request) => request.ticketId === selectedRequestTicketIdRef.current
+          ) ??
           nextRequestCards[0]?.request ??
           null;
 
@@ -2815,36 +2811,104 @@ export default function SupplierPage() {
           return;
         }
 
-        if (!freshSelectedRequest) {
-          setTicketMessages([]);
-          return;
+        const changedRequestTicketIds = changedTicketIds.filter((ticketId) =>
+          requests.some((request) => request.ticketId === ticketId)
+        );
+        if (changedRequestTicketIds.length > 0) {
+          const changedMessageEntries = await Promise.all(
+            changedRequestTicketIds.map(async (ticketId) => [
+              ticketId,
+              await fetchTicketMessagesSnapshot(ticketId, supplierId),
+            ] as const)
+          );
+          if (cancelled) {
+            return;
+          }
+          setTicketMessagesByTicketId((currentMap) => {
+            const nextMap = {
+              ...currentMap,
+              ...Object.fromEntries(changedMessageEntries),
+            };
+            return areMessageMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
+          });
+          const selectedMessages = changedMessageEntries.find(
+            ([ticketId]) => ticketId === freshSelectedRequest?.ticketId
+          )?.[1];
+          if (selectedMessages) {
+            setTicketMessages((currentMessages) =>
+              areMessagesEqual(currentMessages, selectedMessages)
+                ? currentMessages
+                : selectedMessages
+            );
+          }
         }
 
-        const messages = await fetchTicketMessages(freshSelectedRequest.ticketId);
-        if (cancelled) {
-          return;
-        }
-        setTicketMessages((currentMessages) =>
-          areMessagesEqual(currentMessages, messages) ? currentMessages : messages
+        const directTicketChanged = changedTicketIds.some((ticketId) =>
+          directManagerTicketsRef.current.some((ticket) => ticket.id === ticketId)
         );
+        if (directTicketChanged) {
+          const directTickets = await fetchDirectManagerTickets();
+          if (!cancelled) {
+            setDirectManagerTickets((currentTickets) =>
+              mergeDirectManagerTickets(currentTickets, directTickets)
+            );
+          }
+        }
       } catch (error) {
         console.error("Ошибка live-обновления supplier supervisor page:", error);
       }
     };
 
-    const scheduleRefresh = () => {
+    const drainRefreshQueue = async () => {
+      if (refreshRunning || cancelled) {
+        return;
+      }
+
+      refreshRunning = true;
+      try {
+        while (!cancelled && pendingTicketIds.size > 0) {
+          const ticketIdsToRefresh = [...pendingTicketIds];
+          pendingTicketIds.clear();
+          await refreshSupplierWorkspace(ticketIdsToRefresh);
+        }
+      } finally {
+        refreshRunning = false;
+      }
+    };
+
+    const scheduleRefresh = (ticketId: string) => {
+      pendingTicketIds.add(ticketId);
       if (supplierLiveRefreshTimeoutRef.current) {
         window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
       }
 
       supplierLiveRefreshTimeoutRef.current = window.setTimeout(() => {
         supplierLiveRefreshTimeoutRef.current = null;
-        void refreshSupplierWorkspace();
+        void drainRefreshQueue();
       }, 500);
     };
 
-    const handleTicketChanged = () => {
-      scheduleRefresh();
+    const handleTicketChanged = (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as { ticketId?: string };
+        const changedTicketId = update.ticketId?.trim();
+        if (!changedTicketId) {
+          return;
+        }
+
+        const isKnownTicket =
+          supplierRequestsRef.current.some(
+            (request) => request.ticketId === changedTicketId
+          ) ||
+          directManagerTicketsRef.current.some(
+            (ticket) => ticket.id === changedTicketId
+          );
+        if (isKnownTicket) {
+          scheduleRefresh(changedTicketId);
+        }
+      } catch (eventError) {
+        console.warn("Не удалось разобрать live-событие руководителя поставщика:", eventError);
+      }
     };
 
     const handlePresenceChanged = (event: MessageEvent) => {
@@ -2903,10 +2967,14 @@ export default function SupplierPage() {
       setPresenceNow(Date.now());
     };
 
+    source.onopen = () => {
+      supplierLiveConnectedRef.current = true;
+    };
     source.addEventListener("ticket.changed", handleTicketChanged);
     source.addEventListener("profile.presence.changed", handlePresenceChanged);
     source.addEventListener("heartbeat", handleHeartbeat);
     source.onerror = () => {
+      supplierLiveConnectedRef.current = false;
       console.warn(
         "Live-обновления поставщика-управленца временно недоступны, polling остается резервом"
       );
@@ -2914,6 +2982,7 @@ export default function SupplierPage() {
 
     return () => {
       cancelled = true;
+      supplierLiveConnectedRef.current = false;
       if (supplierLiveRefreshTimeoutRef.current) {
         window.clearTimeout(supplierLiveRefreshTimeoutRef.current);
         supplierLiveRefreshTimeoutRef.current = null;
@@ -2924,7 +2993,7 @@ export default function SupplierPage() {
       source.removeEventListener("heartbeat", handleHeartbeat);
       source.close();
     };
-  }, [authReady, pinnedRequestIds, selectedRequest?.ticketId, selectedRequestId, supplierId, supplierProfileId]);
+  }, [authReady, supplierId, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady) {
@@ -2933,26 +3002,30 @@ export default function SupplierPage() {
 
     let cancelled = false;
     const intervalId = window.setInterval(() => {
+      if (supplierLiveConnectedRef.current) {
+        return;
+      }
+
       const refreshSupplierWorkspace = async () => {
         try {
-          const requests = await fetchSupplierRequests();
-          const ticketsMap = await fetchTicketsMap(supplierId);
-          const messagesMap = await fetchMessagesMapForRequests(requests, supplierId);
+          const [requests, ticketsMap] = await Promise.all([
+            fetchSupplierRequests(),
+            fetchTicketsMap(supplierId),
+          ]);
           const nextRequestCards = buildSupplierRequestCards(
             requests,
-            messagesMap,
+            ticketMessagesByTicketId,
             pinnedRequestIds,
             ticketsMap
           );
           syncSupplierRequests(requests);
           setTicketsById(ticketsMap);
-          setTicketMessagesByTicketId((currentMap) =>
-            areMessageMapsEqual(currentMap, messagesMap) ? currentMap : messagesMap
-          );
 
           const freshSelectedRequest =
-            requests.find((request) => request.id === selectedRequestId) ??
-            requests.find((request) => request.ticketId === selectedRequest?.ticketId) ??
+            requests.find((request) => request.id === selectedRequestIdRef.current) ??
+            requests.find(
+              (request) => request.ticketId === selectedRequestTicketIdRef.current
+            ) ??
             nextRequestCards[0]?.request ??
             null;
 

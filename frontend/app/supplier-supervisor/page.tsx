@@ -2786,6 +2786,15 @@ export default function SupplierPage() {
 
     const refreshSupplierWorkspace = async (changedTicketIds: string[]) => {
       try {
+        const hasUnknownChangedTicket = changedTicketIds.some(
+          (ticketId) =>
+            !supplierRequestsRef.current.some(
+              (request) => request.ticketId === ticketId
+            ) &&
+            !directManagerTicketsRef.current.some(
+              (ticket) => ticket.id === ticketId
+            )
+        );
         const [requests, ticketsMap] = await Promise.all([
           fetchSupplierRequests(),
           fetchTicketsMap(supplierId),
@@ -2843,9 +2852,11 @@ export default function SupplierPage() {
           }
         }
 
-        const directTicketChanged = changedTicketIds.some((ticketId) =>
-          directManagerTicketsRef.current.some((ticket) => ticket.id === ticketId)
-        );
+        const directTicketChanged =
+          hasUnknownChangedTicket ||
+          changedTicketIds.some((ticketId) =>
+            directManagerTicketsRef.current.some((ticket) => ticket.id === ticketId)
+          );
         if (directTicketChanged) {
           const directTickets = await fetchDirectManagerTickets();
           if (!cancelled) {
@@ -2854,6 +2865,7 @@ export default function SupplierPage() {
             );
           }
         }
+        void refreshNotificationCandidates();
       } catch (error) {
         console.error("Ошибка live-обновления supplier supervisor page:", error);
       }
@@ -2890,7 +2902,10 @@ export default function SupplierPage() {
 
     const handleTicketChanged = (event: MessageEvent) => {
       try {
-        const update = JSON.parse(event.data) as { ticketId?: string };
+        const update = JSON.parse(event.data) as {
+          ticketId?: string;
+          targetProfileIds?: string[];
+        };
         const changedTicketId = update.ticketId?.trim();
         if (!changedTicketId) {
           return;
@@ -2903,7 +2918,14 @@ export default function SupplierPage() {
           directManagerTicketsRef.current.some(
             (ticket) => ticket.id === changedTicketId
           );
-        if (isKnownTicket) {
+        const isAddressedToCurrentSupplier =
+          Array.isArray(update.targetProfileIds) &&
+          update.targetProfileIds.some(
+            (profileId) =>
+              profileId === supplierId ||
+              (Boolean(supplierProfileId) && profileId === supplierProfileId)
+          );
+        if (isKnownTicket || isAddressedToCurrentSupplier) {
           scheduleRefresh(changedTicketId);
         }
       } catch (eventError) {
@@ -2993,7 +3015,7 @@ export default function SupplierPage() {
       source.removeEventListener("heartbeat", handleHeartbeat);
       source.close();
     };
-  }, [authReady, supplierId, supplierProfileId]);
+  }, [authReady, refreshNotificationCandidates, supplierId, supplierProfileId]);
 
   useEffect(() => {
     if (!authReady) {

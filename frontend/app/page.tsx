@@ -1286,8 +1286,10 @@ export default function Home() {
   const appliedDeepLinkTicketIdRef = useRef("");
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
   const liveRefreshTimeoutRef = useRef<number | null>(null);
+  const pendingLiveTicketIdsRef = useRef<Set<string>>(new Set());
   const activeChatIdRef = useRef("");
   const activeMessagesRequestIdRef = useRef(0);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
@@ -1785,8 +1787,8 @@ export default function Home() {
   const syncTickets = (tickets: ApiTicket[]) => {
     const formattedChats = tickets.map(formatTicket);
 
-    setChatData((prevChats) =>
-      formattedChats.map((formattedChat) => {
+    setChatData((prevChats) => {
+      const nextChats = formattedChats.map((formattedChat) => {
         const existingChat = prevChats.find((chat) => chat.id === formattedChat.id);
 
         if (!existingChat) {
@@ -1798,11 +1800,21 @@ export default function Home() {
           messages: existingChat.messages,
           supplierRequests: existingChat.supplierRequests,
         };
-      })
-    );
+      });
+      const activeChatMissingFromRefresh =
+        activeChatIdRef.current &&
+        !nextChats.some((chat) => chat.id === activeChatIdRef.current);
+      const existingActiveChat = activeChatMissingFromRefresh
+        ? prevChats.find((chat) => chat.id === activeChatIdRef.current)
+        : undefined;
+
+      return existingActiveChat ? [existingActiveChat, ...nextChats] : nextChats;
+    });
 
     if (formattedChats.length === 0) {
-      setActiveChatId("");
+      if (!activeChatIdRef.current) {
+        setActiveChatId("");
+      }
       return;
     }
 
@@ -1818,7 +1830,7 @@ export default function Home() {
         return "";
       }
 
-      return formattedChats[0].id;
+      return currentActiveChatId || formattedChats[0].id;
     });
   };
 
@@ -1885,6 +1897,7 @@ export default function Home() {
       return;
     }
 
+    const pendingLiveTicketIds = pendingLiveTicketIdsRef.current;
     const source = new EventSource(
       apiUrl(
         `/live/events?viewerType=manager&viewerId=${encodeURIComponent(
@@ -1894,12 +1907,18 @@ export default function Home() {
     );
 
     const scheduleLiveRefresh = (ticketId?: string) => {
+      if (ticketId) {
+        pendingLiveTicketIds.add(ticketId);
+      }
+
       if (liveRefreshTimeoutRef.current !== null) {
-        window.clearTimeout(liveRefreshTimeoutRef.current);
+        return;
       }
 
       liveRefreshTimeoutRef.current = window.setTimeout(() => {
         liveRefreshTimeoutRef.current = null;
+        const changedTicketIds = new Set(pendingLiveTicketIds);
+        pendingLiveTicketIds.clear();
 
         void (async () => {
           try {
@@ -1907,16 +1926,17 @@ export default function Home() {
             syncTickets(tickets);
             await refreshNotificationCandidates();
 
-            if (ticketId && ticketId === activeChatIdRef.current) {
+            const activeTicketId = activeChatIdRef.current;
+            if (activeTicketId && changedTicketIds.has(activeTicketId)) {
               const [messages, supplierRequests] = await Promise.all([
-                fetchMessages(ticketId, true),
-                fetchSupplierRequests(ticketId).catch(
+                fetchMessages(activeTicketId, true),
+                fetchSupplierRequests(activeTicketId).catch(
                   (): ApiSupplierRequest[] => []
                 ),
               ]);
 
-              applyMessagesToTicket(ticketId, messages);
-              applySupplierRequestsToTicket(ticketId, supplierRequests);
+              applyMessagesToTicket(activeTicketId, messages);
+              applySupplierRequestsToTicket(activeTicketId, supplierRequests);
             }
           } catch (error) {
             console.error("Ошибка live-обновления менеджера:", error);
@@ -1935,13 +1955,19 @@ export default function Home() {
     };
 
     source.addEventListener("ticket.changed", handleTicketChanged);
+    source.onopen = () => {
+      setIsLiveConnected(true);
+    };
     source.onerror = () => {
+      setIsLiveConnected(false);
       console.warn("Live-канал менеджера временно недоступен, остаётся fallback polling");
     };
 
     return () => {
       source.removeEventListener("ticket.changed", handleTicketChanged);
       source.close();
+      setIsLiveConnected(false);
+      pendingLiveTicketIds.clear();
 
       if (liveRefreshTimeoutRef.current !== null) {
         window.clearTimeout(liveRefreshTimeoutRef.current);
@@ -2742,6 +2768,22 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       const refreshManagerData = async () => {
         try {
+          if (isLiveConnected) {
+            const [remoteStatuses, remoteManagerRecords, supplierStatuses] =
+              await Promise.all([
+                fetchManagerStatuses().catch(
+                  (): Record<string, ManagerPresence> => ({})
+                ),
+                fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
+                fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
+              ]);
+
+            setManagerStatuses(remoteStatuses);
+            setManagerPresenceRecords(remoteManagerRecords);
+            setSupplierPresenceRecords(supplierStatuses);
+            return;
+          }
+
           const [tickets, remoteStatuses, remoteManagerRecords, supplierStatuses] =
             await Promise.all([
             fetchTickets(),
@@ -2787,7 +2829,7 @@ export default function Home() {
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [authReady, activeChatId, currentManagerId, currentManagerName]);
+  }, [authReady, activeChatId, currentManagerId, currentManagerName, isLiveConnected]);
 
   useEffect(() => {
     if (!authReady || !currentManagerId || !currentManagerName) {
@@ -2983,7 +3025,7 @@ export default function Home() {
   }, [authReady, activeChatId, currentManagerId]);
 
   useEffect(() => {
-    if (!activeChatId) {
+    if (!activeChatId || isLiveConnected) {
       return;
     }
 
@@ -2998,7 +3040,7 @@ export default function Home() {
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeChatId]);
+  }, [activeChatId, isLiveConnected]);
 
   useEffect(() => {
     if (!authReady || !activeChatId || !currentManagerId) {
@@ -4117,23 +4159,42 @@ export default function Home() {
         return;
       }
 
-      const [tickets, messages, supplierRequests] = await Promise.all([
-        fetchTickets(),
-        fetchMessages(ticketId, true),
-        fetchSupplierRequests(ticketId),
-      ]);
-
       setActiveChatId(ticketId);
       setIsChatPaneDismissed(false);
-      syncTickets(tickets);
-      await refreshNotificationCandidates();
-      applyMessagesToTicket(ticketId, messages);
-      applySupplierRequestsToTicket(ticketId, supplierRequests);
+      setChatData((prevChats) =>
+        prevChats.map((chat) =>
+          chat.id === ticketId
+            ? {
+                ...chat,
+                rawStatus: "in_progress",
+                status: getStatusLabel("in_progress"),
+                headerStatus: getStatusLabel("in_progress"),
+                assignedManagerId: currentManagerId,
+                assignedManagerName: currentManagerName,
+              }
+            : chat
+        )
+      );
       setFilter("in_progress");
       setToast({
         message: "Диалог взят в работу",
         tone: "success",
       });
+
+      void Promise.all([
+        fetchTickets(),
+        fetchMessages(ticketId, true),
+        fetchSupplierRequests(ticketId).catch((): ApiSupplierRequest[] => []),
+      ])
+        .then(([tickets, messages, supplierRequests]) => {
+          syncTickets(tickets);
+          applyMessagesToTicket(ticketId, messages);
+          applySupplierRequestsToTicket(ticketId, supplierRequests);
+        })
+        .catch((error) => {
+          console.error("Ошибка фонового обновления взятого диалога:", error);
+        });
+      void refreshNotificationCandidates();
     } catch (error) {
       console.error("Ошибка взятия диалога в работу:", error);
       setToast({

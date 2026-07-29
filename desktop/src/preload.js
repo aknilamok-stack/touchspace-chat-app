@@ -132,28 +132,6 @@ function installEditingShortcutFallback() {
     true,
   );
 
-  window.addEventListener(
-    "contextmenu",
-    (event) => {
-      const target = getEditableTarget(event.target);
-
-      if (!target) {
-        return;
-      }
-
-      event.preventDefault();
-      const hasSelection = isTextInput(target)
-        ? (target.selectionStart ?? 0) !== (target.selectionEnd ?? 0)
-        : Boolean(window.getSelection()?.toString());
-
-      void ipcRenderer.invoke("desktop:show-edit-context-menu", {
-        x: event.clientX,
-        y: event.clientY,
-        hasSelection,
-      });
-    },
-    true,
-  );
 }
 
 if (document.readyState === "loading") {

@@ -6708,6 +6708,8 @@ export default function Home() {
 
                     <textarea
                       ref={composerTextareaRef}
+                      lang="ru"
+                      spellCheck
                       onPaste={handleComposerPaste}
                       value={messageText}
                       onBlur={() => {
@@ -7178,6 +7180,8 @@ export default function Home() {
                       </label>
                       <textarea
                         value={supplierFollowUpText}
+                        lang="ru"
+                        spellCheck
                         onChange={(e) => setSupplierFollowUpText(e.target.value)}
                         onPaste={(event) => handleSupplierPaste(event, "follow-up")}
                         className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
@@ -7289,6 +7293,8 @@ export default function Home() {
                       </label>
                       <textarea
                         value={supplierRequestText}
+                        lang="ru"
+                        spellCheck
                         onChange={(e) => setSupplierRequestText(e.target.value)}
                         onPaste={(event) => handleSupplierPaste(event, "request")}
                         className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
@@ -7960,6 +7966,8 @@ export default function Home() {
 
             <textarea
               value={newQuickReplyText}
+              lang="ru"
+              spellCheck
               onChange={(event) => setNewQuickReplyText(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

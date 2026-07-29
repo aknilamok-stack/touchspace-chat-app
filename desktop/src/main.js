@@ -700,17 +700,36 @@ function createMenu() {
 }
 
 function createEditableContextMenu(window, params, popupOptions = {}) {
+  const editFlags = params.editFlags || {};
+  const spellingSuggestions =
+    typeof params.misspelledWord === "string" && params.misspelledWord.trim()
+      ? (params.dictionarySuggestions || []).slice(0, 5)
+      : [];
+  const spellingTemplate = spellingSuggestions.map((suggestion) => ({
+    label: suggestion,
+    click: () => window.webContents.replaceMisspelling(suggestion),
+  }));
+
+  if (params.misspelledWord && spellingSuggestions.length === 0) {
+    spellingTemplate.push({
+      label: "Нет вариантов исправления",
+      enabled: false,
+    });
+  }
+
   const menu = Menu.buildFromTemplate([
-    { role: "undo", label: "Отменить", enabled: params.editFlags.canUndo },
-    { role: "redo", label: "Повторить", enabled: params.editFlags.canRedo },
+    ...spellingTemplate,
+    ...(spellingTemplate.length > 0 ? [{ type: "separator" }] : []),
+    { role: "undo", label: "Отменить", enabled: editFlags.canUndo },
+    { role: "redo", label: "Повторить", enabled: editFlags.canRedo },
     { type: "separator" },
-    { role: "cut", label: "Вырезать", enabled: params.editFlags.canCut },
-    { role: "copy", label: "Копировать", enabled: params.editFlags.canCopy },
-    { role: "paste", label: "Вставить", enabled: params.editFlags.canPaste },
+    { role: "cut", label: "Вырезать", enabled: editFlags.canCut },
+    { role: "copy", label: "Копировать", enabled: editFlags.canCopy },
+    { role: "paste", label: "Вставить", enabled: editFlags.canPaste },
     {
       role: "pasteAndMatchStyle",
       label: "Вставить без форматирования",
-      enabled: params.editFlags.canPaste,
+      enabled: editFlags.canPaste,
     },
     { role: "delete", label: "Удалить" },
     { type: "separator" },
@@ -1107,6 +1126,18 @@ function createWindow() {
       partition: desktopSessionPartition,
     },
   });
+
+  const availableSpellCheckerLanguages =
+    mainWindow.webContents.session.availableSpellCheckerLanguages || [];
+  const preferredSpellCheckerLanguages = ["ru-RU", "en-US"].filter((language) =>
+    availableSpellCheckerLanguages.includes(language)
+  );
+
+  if (preferredSpellCheckerLanguages.length > 0) {
+    mainWindow.webContents.session.setSpellCheckerLanguages(
+      preferredSpellCheckerLanguages
+    );
+  }
 
   Menu.setApplicationMenu(createMenu());
   keepMainWindowInTaskbar();

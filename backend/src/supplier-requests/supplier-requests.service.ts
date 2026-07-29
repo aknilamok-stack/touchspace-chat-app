@@ -244,22 +244,33 @@ export class SupplierRequestsService {
       supplierId: createSupplierRequestDto.supplierId ?? null,
     });
 
+    const createdByManagerId =
+      createSupplierRequestDto.createdByManagerId?.trim() || null;
+    const existingManager = createdByManagerId
+      ? await this.prisma.profile.findUnique({
+          where: { id: createdByManagerId },
+          select: { fullName: true },
+        })
+      : null;
+    const createdByManagerName =
+      createSupplierRequestDto.createdByManagerName?.trim() ||
+      existingManager?.fullName?.trim() ||
+      createdByManagerId;
+
     await this.profilesService.ensureProfile({
-      id: createSupplierRequestDto.createdByManagerId,
+      id: createdByManagerId,
       fullName:
-        createSupplierRequestDto.createdByManagerName ??
-        createSupplierRequestDto.createdByManagerId ??
+        createdByManagerName ??
         undefined,
-      role: createSupplierRequestDto.createdByManagerId ? 'manager' : null,
+      role: createdByManagerId ? 'manager' : null,
     });
 
     const systemMessage = `Запрошен поставщик: ${createSupplierRequestDto.supplierName}. Комментарий: ${createSupplierRequestDto.requestText}`;
 
     const supplierRequest = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
-      const managerId = createSupplierRequestDto.createdByManagerId?.trim();
-      const managerName =
-        createSupplierRequestDto.createdByManagerName?.trim() || managerId;
+      const managerId = createdByManagerId;
+      const managerName = createdByManagerName;
 
       if (managerId && managerName && !ticket.assignedManagerId) {
         const claimResult = await tx.ticket.updateMany({

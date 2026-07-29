@@ -380,6 +380,13 @@ export class NotificationsService {
           status: {
             notIn: ['resolved', 'closed'],
           },
+          supplierRequests: {
+            none: {
+              status: {
+                notIn: ['closed', 'cancelled', 'resolved'],
+              },
+            },
+          },
           lastClientMessageAt: {
             lte: rescueThreshold,
           },
@@ -485,6 +492,13 @@ export class NotificationsService {
             assignedManagerId: ticket.assignedManagerId,
             status: {
               notIn: ['resolved', 'closed'],
+            },
+            supplierRequests: {
+              none: {
+                status: {
+                  notIn: ['closed', 'cancelled', 'resolved'],
+                },
+              },
             },
           },
           data: {

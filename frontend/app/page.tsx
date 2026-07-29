@@ -1195,6 +1195,8 @@ export default function Home() {
   const [supplierRequestFiles, setSupplierRequestFiles] = useState<File[]>([]);
   const [supplierRequestAttachmentName, setSupplierRequestAttachmentName] = useState("");
   const [supplierFollowUpText, setSupplierFollowUpText] = useState("");
+  const [supplierFollowUpFiles, setSupplierFollowUpFiles] = useState<File[]>([]);
+  const [supplierFollowUpAttachmentName, setSupplierFollowUpAttachmentName] = useState("");
   const [isLoadingSupplierRequests, setIsLoadingSupplierRequests] = useState(false);
   const [supplierRequestsError, setSupplierRequestsError] = useState("");
   const [isCreatingSupplierRequest, setIsCreatingSupplierRequest] = useState(false);
@@ -1269,6 +1271,7 @@ export default function Home() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierRequestFileInputRef = useRef<HTMLInputElement | null>(null);
+  const supplierFollowUpFileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
   const replyHoverTimeoutRef = useRef<number | null>(null);
@@ -2255,22 +2258,52 @@ export default function Home() {
     [attachComposerFiles, canAttachToActiveChat]
   );
 
-  const attachSupplierRequestFiles = useCallback((files: File[]) => {
-    if (files.length === 0) {
-      return;
-    }
+  const attachSupplierFiles = useCallback(
+    (files: File[], target: "request" | "follow-up") => {
+      if (files.length === 0) {
+        return;
+      }
 
-    const validationMessage = validateChatAttachmentFiles(files);
+      const validationMessage = validateChatAttachmentFiles(files);
 
-    if (validationMessage) {
-      setCreateSupplierRequestError(validationMessage);
-      return;
-    }
+      if (validationMessage) {
+        if (target === "request") {
+          setCreateSupplierRequestError(validationMessage);
+        } else {
+          setSupplierFollowUpError(validationMessage);
+        }
+        return;
+      }
 
-    setSupplierRequestFiles(files);
-    setSupplierRequestAttachmentName(getChatAttachmentSelectionSummary(files));
-    setCreateSupplierRequestError("");
-  }, []);
+      if (target === "request") {
+        setSupplierRequestFiles(files);
+        setSupplierRequestAttachmentName(getChatAttachmentSelectionSummary(files));
+        setCreateSupplierRequestError("");
+      } else {
+        setSupplierFollowUpFiles(files);
+        setSupplierFollowUpAttachmentName(getChatAttachmentSelectionSummary(files));
+        setSupplierFollowUpError("");
+      }
+    },
+    []
+  );
+
+  const handleSupplierPaste = useCallback(
+    (
+      event: ClipboardEvent<HTMLTextAreaElement>,
+      target: "request" | "follow-up"
+    ) => {
+      const files = getChatAttachmentFilesFromClipboard(event.clipboardData);
+
+      if (files.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      attachSupplierFiles(files, target);
+    },
+    [attachSupplierFiles]
+  );
 
   const handleComposerDragEvent = (event: DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files") || !canAttachToActiveChat) {
@@ -4355,7 +4388,7 @@ export default function Home() {
         formData.append("senderType", "manager");
         formData.append("managerId", currentManagerId);
         formData.append("managerName", currentManagerName);
-        formData.append("caption", "Вложения к запросу поставщику");
+        formData.append("caption", supplierRequestText.trim());
         formData.append("isInternal", "true");
 
         const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
@@ -4398,6 +4431,8 @@ export default function Home() {
       setSupplierRequestFiles([]);
       setSupplierRequestAttachmentName("");
       setSupplierFollowUpText("");
+      setSupplierFollowUpFiles([]);
+      setSupplierFollowUpAttachmentName("");
       setSupplierFollowUpError("");
       setSelectedSupplier(supplierCompanies[0]?.companyName ?? "");
       setIsSupplierFormOpen(false);
@@ -4416,7 +4451,11 @@ export default function Home() {
   };
 
   const handleSendSupplierFollowUp = async () => {
-    if (!activeChatId || !activeSupplierRequest || !supplierFollowUpText.trim()) {
+    if (
+      !activeChatId ||
+      !activeSupplierRequest ||
+      (!supplierFollowUpText.trim() && supplierFollowUpFiles.length === 0)
+    ) {
       return;
     }
 
@@ -4434,28 +4473,61 @@ export default function Home() {
     setSupplierFollowUpError("");
 
     try {
-      const response = await fetch(apiUrl("/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketId: activeChatId,
-          content: supplierFollowUpText.trim(),
-          senderType: "manager",
-          managerId: currentManagerId,
-          managerName: currentManagerName,
-          isInternal: true,
-        }),
-      });
+      const followUpText = supplierFollowUpText.trim();
 
-      if (!response.ok) {
-        throw new Error(
-          await extractApiErrorMessage(
-            response,
-            "Не удалось отправить внутренний комментарий поставщику"
-          )
-        );
+      if (followUpText && supplierFollowUpFiles.length === 0) {
+        const response = await fetch(apiUrl("/messages"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticketId: activeChatId,
+            content: followUpText,
+            senderType: "manager",
+            managerId: currentManagerId,
+            managerName: currentManagerName,
+            isInternal: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            await extractApiErrorMessage(
+              response,
+              "Не удалось отправить внутренний комментарий поставщику"
+            )
+          );
+        }
+      }
+
+      if (supplierFollowUpFiles.length > 0) {
+        const formData = new FormData();
+        supplierFollowUpFiles.forEach((file) => {
+          formData.append("files", file);
+        });
+        formData.append("ticketId", activeChatId);
+        formData.append("senderType", "manager");
+        formData.append("managerId", currentManagerId);
+        formData.append("managerName", currentManagerName);
+        formData.append("caption", followUpText || "Вложение к комментарию поставщику");
+        formData.append("isInternal", "true");
+
+        const attachmentResponse = await fetch(apiUrl("/messages/attachment"), {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!attachmentResponse.ok) {
+          throw new Error(
+            await extractApiErrorMessage(
+              attachmentResponse,
+              followUpText
+                ? "Комментарий отправлен, но вложение не удалось прикрепить"
+                : "Не удалось отправить вложение поставщику"
+            )
+          );
+        }
       }
 
       const [messages, supplierRequests] = await Promise.all([
@@ -4466,6 +4538,8 @@ export default function Home() {
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
       setSupplierFollowUpText("");
+      setSupplierFollowUpFiles([]);
+      setSupplierFollowUpAttachmentName("");
       setToast({
         message: "Комментарий отправлен поставщику и скрыт от клиента",
         tone: "info",
@@ -7105,17 +7179,70 @@ export default function Home() {
                       <textarea
                         value={supplierFollowUpText}
                         onChange={(e) => setSupplierFollowUpText(e.target.value)}
+                        onPaste={(event) => handleSupplierPaste(event, "follow-up")}
                         className="min-h-[96px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: клиент ждёт ответ сегодня до 16:00. Это сообщение увидит только поставщик."
                       />
                       <p className="mt-2 text-xs text-[#8E8E93]">
-                        Это внутренний комментарий. Клиент его не увидит.
+                        Это внутренний комментарий. Клиент его не увидит. Скриншот можно вставить из буфера обмена.
                       </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <input
+                        ref={supplierFollowUpFileInputRef}
+                        type="file"
+                        multiple
+                        accept={CHAT_ATTACHMENT_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          attachSupplierFiles(
+                            Array.from(event.target.files ?? []),
+                            "follow-up"
+                          );
+                          event.target.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => supplierFollowUpFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-[#DCE7FF] bg-[#F5F9FF] px-3 py-2 text-sm font-medium text-[#0A84FF] transition hover:bg-[#ECF4FF]"
+                      >
+                        <Image
+                          src="/icons/skrepka.svg"
+                          alt=""
+                          width={16}
+                          height={16}
+                          className="h-4 w-4"
+                        />
+                        Прикрепить файл
+                      </button>
+                      {supplierFollowUpAttachmentName ? (
+                        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#D8D8DE] bg-[#F7F7FA] px-3 py-1.5 text-sm text-[#1E1E1E]">
+                          <span className="max-w-[220px] truncate">
+                            {supplierFollowUpAttachmentName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSupplierFollowUpFiles([]);
+                              setSupplierFollowUpAttachmentName("");
+                            }}
+                            className="text-[#8E8E93] transition hover:text-[#1E1E1E]"
+                            aria-label="Убрать вложения"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
 
                     <button
                       onClick={handleSendSupplierFollowUp}
-                      disabled={isSendingSupplierFollowUp}
+                      disabled={
+                        isSendingSupplierFollowUp ||
+                        (!supplierFollowUpText.trim() && supplierFollowUpFiles.length === 0)
+                      }
                       className="w-full rounded-xl bg-[#C1812B] py-3 font-medium text-white"
                     >
                       {isSendingSupplierFollowUp
@@ -7163,9 +7290,13 @@ export default function Home() {
                       <textarea
                         value={supplierRequestText}
                         onChange={(e) => setSupplierRequestText(e.target.value)}
+                        onPaste={(event) => handleSupplierPaste(event, "request")}
                         className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: подтвердите наличие и срок поставки по заказу..."
                       />
+                      <p className="mt-2 text-xs text-[#8E8E93]">
+                        Скриншот можно вставить прямо в это поле из буфера обмена.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -7185,7 +7316,7 @@ export default function Home() {
                             return;
                           }
 
-                          attachSupplierRequestFiles(files);
+                          attachSupplierFiles(files, "request");
                           event.target.value = "";
                         }}
                       />

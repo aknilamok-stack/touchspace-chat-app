@@ -4166,11 +4166,17 @@ export default function Home() {
           requestText: supplierRequestText,
           slaMinutes: 240,
           createdByManagerId: currentManagerId,
+          createdByManagerName: currentManagerName,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось создать запрос поставщику");
+        throw new Error(
+          await extractApiErrorMessage(
+            response,
+            "Не удалось создать запрос поставщику"
+          )
+        );
       }
 
       if (supplierRequestFiles.length > 0) {

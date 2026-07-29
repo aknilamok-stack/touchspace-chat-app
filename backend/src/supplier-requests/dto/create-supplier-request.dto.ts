@@ -46,6 +46,10 @@ export class CreateSupplierRequestDto {
 
   @IsOptional()
   @IsString()
+  createdByManagerName?: string | null;
+
+  @IsOptional()
+  @IsString()
   @IsIn(supplierRequestStatuses)
   status?: (typeof supplierRequestStatuses)[number];
 }

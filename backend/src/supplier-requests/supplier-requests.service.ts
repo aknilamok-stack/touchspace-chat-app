@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -223,7 +224,11 @@ export class SupplierRequestsService {
   async create(createSupplierRequestDto: CreateSupplierRequestDto) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: createSupplierRequestDto.ticketId },
-      select: { id: true },
+      select: {
+        id: true,
+        assignedManagerId: true,
+        assignedManagerName: true,
+      },
     });
 
     if (!ticket) {
@@ -241,7 +246,10 @@ export class SupplierRequestsService {
 
     await this.profilesService.ensureProfile({
       id: createSupplierRequestDto.createdByManagerId,
-      fullName: createSupplierRequestDto.createdByManagerId ?? undefined,
+      fullName:
+        createSupplierRequestDto.createdByManagerName ??
+        createSupplierRequestDto.createdByManagerId ??
+        undefined,
       role: createSupplierRequestDto.createdByManagerId ? 'manager' : null,
     });
 
@@ -249,6 +257,71 @@ export class SupplierRequestsService {
 
     const supplierRequest = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
+      const managerId = createSupplierRequestDto.createdByManagerId?.trim();
+      const managerName =
+        createSupplierRequestDto.createdByManagerName?.trim() || managerId;
+
+      if (managerId && managerName && !ticket.assignedManagerId) {
+        const claimResult = await tx.ticket.updateMany({
+          where: {
+            id: createSupplierRequestDto.ticketId,
+            assignedManagerId: null,
+            aiEnabled: false,
+            status: {
+              notIn: ['resolved', 'closed'],
+            },
+          },
+          data: {
+            assignedManagerId: managerId,
+            assignedManagerName: managerName,
+            status: 'in_progress',
+            conversationMode: 'manager',
+            currentHandlerType: 'manager',
+            claimedAt: now,
+            claimRequiredAt: null,
+            claimMissedAt: null,
+            rescueQueuedAt: null,
+            returnedToQueueAt: null,
+            handedToManagerAt: now,
+          },
+        });
+
+        if (claimResult.count === 0) {
+          const latestTicket = await tx.ticket.findUnique({
+            where: { id: createSupplierRequestDto.ticketId },
+            select: {
+              assignedManagerId: true,
+              assignedManagerName: true,
+            },
+          });
+
+          if (latestTicket?.assignedManagerId !== managerId) {
+            throw new ConflictException(
+              `Диалог уже взят в работу менеджером ${latestTicket?.assignedManagerName ?? 'другим менеджером'}`,
+            );
+          }
+        } else {
+          await tx.message.create({
+            data: {
+              ticketId: createSupplierRequestDto.ticketId,
+              content: `Диалог взят в работу менеджером ${managerName}`,
+              senderType: 'system',
+              senderRole: 'system',
+              status: 'sent',
+              deliveryStatus: 'sent',
+              messageType: 'system',
+            },
+          });
+        }
+      } else if (
+        managerId &&
+        ticket.assignedManagerId &&
+        ticket.assignedManagerId !== managerId
+      ) {
+        throw new ConflictException(
+          `Диалог уже взят в работу менеджером ${ticket.assignedManagerName ?? 'другим менеджером'}`,
+        );
+      }
 
       const createdSupplierRequest = await tx.supplierRequest.create({
         data: {

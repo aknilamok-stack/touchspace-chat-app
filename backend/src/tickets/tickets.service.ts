@@ -1561,6 +1561,8 @@ export class TicketsService {
             canonicalEmail: true,
             canonicalEmailSource: true,
             lockedBySuperuser: true,
+            requestCount: true,
+            lastClientMessageAt: true,
           },
         });
 
@@ -1620,6 +1622,17 @@ export class TicketsService {
             messageType: 'text',
           },
         });
+
+        if (isReopened || !existingTicket.lastClientMessageAt) {
+          await tx.ticketRequestEvent.create({
+            data: {
+              ticketId: existingTicket.id,
+              sequence: isReopened ? existingTicket.requestCount + 1 : 1,
+              eventType: isReopened ? 'reopened' : 'initial',
+              createdAt: message.createdAt,
+            },
+          });
+        }
 
         const mergedClientContext = resolveTicketClientContext(
           {
@@ -1743,6 +1756,17 @@ export class TicketsService {
           messageType: 'text',
         },
       });
+
+      if (isClientStart) {
+        await tx.ticketRequestEvent.create({
+          data: {
+            ticketId: ticket.id,
+            sequence: 1,
+            eventType: 'initial',
+            createdAt: message.createdAt,
+          },
+        });
+      }
 
       if (aiEnabled) {
         await this.createSystemMessage(

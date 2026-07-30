@@ -682,6 +682,7 @@ export class AdminService {
     const [
       allTickets,
       allSupplierRequests,
+      allRequestEvents,
       allProfiles,
       claimMessages,
       registrationsPending,
@@ -748,6 +749,12 @@ export class AdminService {
           supplierId: true,
           createdAt: true,
           updatedAt: true,
+        },
+      }),
+      this.prisma.ticketRequestEvent.findMany({
+        select: {
+          ticketId: true,
+          createdAt: true,
         },
       }),
       this.prisma.profile.findMany({
@@ -885,6 +892,9 @@ export class AdminService {
         includedTicketIds.has(request.ticketId) &&
         !isExcludedAnalyticsSupplier(request),
     );
+    const requestEvents = allRequestEvents.filter((event) =>
+      includedTicketIds.has(event.ticketId),
+    );
     const profiles = allProfiles.filter((profile) =>
       profile.role === 'manager'
         ? isIncludedAnalyticsManager(profile.id)
@@ -900,6 +910,10 @@ export class AdminService {
     const supplierRequestsInRange = supplierRequests.filter(
       (request) =>
         request.createdAt >= range.from && request.createdAt <= range.to,
+    );
+    const requestEventsInRange = requestEvents.filter(
+      (event) =>
+        event.createdAt >= range.from && event.createdAt <= range.to,
     );
     const newDialogs = tickets.filter(
       (ticket) => ticket.status === 'new',
@@ -955,7 +969,13 @@ export class AdminService {
     const managerRiskMap = new Map<string, number>();
     const activeTradePointKeys = new Set<string>();
 
-    for (const ticket of ticketsInRange) {
+    const requestTicketIdsInRange = new Set(
+      requestEventsInRange.map((event) => event.ticketId),
+    );
+
+    for (const ticket of tickets.filter((item) =>
+      requestTicketIdsInRange.has(item.id),
+    )) {
       const tradePointKey =
         ticket.tradePointExternalId?.trim() ||
         ticket.tradePointName?.trim() ||
@@ -1255,11 +1275,12 @@ export class AdminService {
       },
     ];
 
-    const dialogsByDay = this.buildTimeSeries(ticketsInRange, from, range.to);
-    const totalChatRequests = ticketsInRange.reduce(
-      (total, ticket) => total + (ticket.requestCount ?? 1),
-      0,
+    const dialogsByDay = this.buildTimeSeries(
+      requestEventsInRange,
+      from,
+      range.to,
     );
+    const totalChatRequests = requestEventsInRange.length;
     const avgDialogsPerDay =
       dialogsByDay.length > 0
         ? Math.round(
@@ -1397,7 +1418,7 @@ export class AdminService {
         waitingSupplierDialogs,
         waitingClientDialogs,
         resolvedDialogs,
-        dialogsInPeriod: ticketsInRange.length,
+        requestsInPeriod: requestEventsInRange.length,
         resolvedInPeriod: resolvedTicketsInRange.length,
         avgFirstResponseMs: this.average(
           ticketsInRange.map((ticket) => ticket.firstResponseTime),

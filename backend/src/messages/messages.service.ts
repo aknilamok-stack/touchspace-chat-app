@@ -691,6 +691,8 @@ export class MessagesService {
             lockedBySuperuser: true,
             supplierId: true,
             supplierName: true,
+            requestCount: true,
+            lastClientMessageAt: true,
           },
         });
 
@@ -790,6 +792,24 @@ export class MessagesService {
             isInternal,
           },
         });
+
+        if (
+          senderType === 'client' &&
+          (isClientReopeningResolvedDialog || !ticket.lastClientMessageAt)
+        ) {
+          await tx.ticketRequestEvent.create({
+            data: {
+              ticketId,
+              sequence: isClientReopeningResolvedDialog
+                ? ticket.requestCount + 1
+                : 1,
+              eventType: isClientReopeningResolvedDialog
+                ? 'reopened'
+                : 'initial',
+              createdAt: message.createdAt,
+            },
+          });
+        }
 
         const managerMessagesCount = await tx.message.count({
           where: {

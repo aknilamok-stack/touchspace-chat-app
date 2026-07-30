@@ -153,9 +153,9 @@ export function AdminOverview() {
   const periodKpis = useMemo(
     () => [
       {
-        label: "Диалогов создано",
-        value: formatNumber(data?.metrics?.dialogsInPeriod),
-        hint: "за выбранный период",
+        label: "Новых обращений",
+        value: formatNumber(data?.metrics?.requestsInPeriod),
+        hint: "первичные и повторные обращения",
         tone: "default",
       },
       {
@@ -189,13 +189,8 @@ export function AdminOverview() {
       hint: "за выбранный период",
     },
     {
-      label: "Обращений в чат",
-      value: formatNumber(data?.metrics?.totalChatRequests),
-      hint: "в диалогах, созданных за период",
-    },
-    {
-      label: "Диалогов создано",
-      value: formatNumber(data?.metrics?.totalDialogs),
+      label: "Среднее обращений в день",
+      value: formatNumber(data?.metrics?.avgDialogsPerDay),
       hint: "за выбранный период",
     },
     {
@@ -322,7 +317,7 @@ export function AdminOverview() {
       </AdminPanel>
 
       <AdminPanel title="Охват за выбранный период">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3">
           {activityMetrics.map((item) => (
             <div key={item.label} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
               <p className="text-sm font-medium text-slate-600">{item.label}</p>

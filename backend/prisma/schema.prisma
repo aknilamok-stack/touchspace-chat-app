@@ -192,6 +192,7 @@ model Ticket {
   supplierProfile         Profile?          @relation("TicketSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
   resolvedByManagerProfile Profile?         @relation("TicketResolvedByManager", fields: [lastResolvedByManagerId], references: [id], onDelete: SetNull)
   messages                Message[]
+  requestEvents           TicketRequestEvent[]
   supplierRequests        SupplierRequest[]
   contacts                TicketContact[]
   pageViews               TicketPageView[]
@@ -200,6 +201,20 @@ model Ticket {
   @@index([conversationMode, supplierId, lastMessageAt], map: "Ticket_mode_supplier_lastMessage_idx")
   @@index([status, assignedManagerId, lastMessageAt], map: "Ticket_status_manager_lastMessage_idx")
   @@index([clientId, conversationMode, lastMessageAt], map: "Ticket_client_mode_lastMessage_idx")
+}
+
+model TicketRequestEvent {
+  id        String   @id @default(cuid())
+  ticketId  String
+  sequence  Int
+  eventType String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, sequence])
+  @@index([createdAt])
+  @@index([ticketId, createdAt])
 }
 
 model ClientVisualIdentity {

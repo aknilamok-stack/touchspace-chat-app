@@ -6,6 +6,10 @@ import {
 import { Prisma } from '@prisma/client';
 import { AiTextClient } from '../ai-text-client';
 import { PrismaService } from '../prisma.service';
+import {
+  isExcludedAnalyticsSupplier,
+  isExcludedAnalyticsTicket,
+} from './admin-analytics-exclusions';
 
 type AiAnalysisPayload = {
   topicCategory: string;
@@ -449,7 +453,7 @@ ${transcript}
               1000,
         );
 
-    const tickets = await this.prisma.ticket.findMany({
+    const allTickets = await this.prisma.ticket.findMany({
       where: {
         createdAt: {
           gte: from,
@@ -475,6 +479,9 @@ ${transcript}
       },
       take: 80,
     });
+    const tickets = allTickets.filter(
+      (ticket) => !isExcludedAnalyticsTicket(ticket),
+    );
 
     const compactTickets = tickets.map((ticket) => ({
       id: ticket.id,
@@ -538,7 +545,7 @@ ${JSON.stringify(compactTickets)}
 
   async generateReasonsSummary(input?: DateRangeInput) {
     const range = this.normalizeDateRange(input);
-    const tickets = await this.prisma.ticket.findMany({
+    const allTickets = await this.prisma.ticket.findMany({
       where: {
         conversationMode: {
           not: 'direct_supplier',
@@ -583,6 +590,14 @@ ${JSON.stringify(compactTickets)}
       },
       take: 120,
     });
+    const tickets = allTickets
+      .filter((ticket) => !isExcludedAnalyticsTicket(ticket))
+      .map((ticket) => ({
+        ...ticket,
+        supplierRequests: ticket.supplierRequests.filter(
+          (request) => !isExcludedAnalyticsSupplier(request),
+        ),
+      }));
 
     const compactTickets = tickets.map((ticket) => ({
       title: ticket.title,
@@ -659,8 +674,12 @@ ${JSON.stringify(compactTickets)}
       throw new NotFoundException(`Dialog with id "${id}" not found`);
     }
 
+    if (isExcludedAnalyticsTicket(dialog)) {
+      throw new NotFoundException(`Dialog with id "${id}" not found`);
+    }
+
     const range = this.normalizeDateRange(input);
-    const tickets = await this.prisma.ticket.findMany({
+    const allTickets = await this.prisma.ticket.findMany({
       where: {
         AND: [
           this.buildClientDialogWhere(dialog),
@@ -705,6 +724,14 @@ ${JSON.stringify(compactTickets)}
       },
       take: 40,
     });
+    const tickets = allTickets
+      .filter((ticket) => !isExcludedAnalyticsTicket(ticket))
+      .map((ticket) => ({
+        ...ticket,
+        supplierRequests: ticket.supplierRequests.filter(
+          (request) => !isExcludedAnalyticsSupplier(request),
+        ),
+      }));
 
     const compactTickets = tickets.map((ticket) => ({
       title: ticket.title,

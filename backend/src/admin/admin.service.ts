@@ -9,6 +9,12 @@ import { ProfilesService } from '../profiles.service';
 import { PrismaService } from '../prisma.service';
 import { readJsonStringArray } from '../prisma-json.util';
 import { isManagerRole, isSupplierRole } from '../role.utils';
+import {
+  analyticsIncludedManagerIds,
+  isExcludedAnalyticsSupplier,
+  isExcludedAnalyticsTicket,
+  isIncludedAnalyticsManager,
+} from './admin-analytics-exclusions';
 
 type DateRangeInput = {
   preset?: string;
@@ -716,9 +722,9 @@ export class AdminService {
 
   async getOverview(input?: DateRangeInput) {
     const [
-      tickets,
-      supplierRequests,
-      profiles,
+      allTickets,
+      allSupplierRequests,
+      allProfiles,
       claimMessages,
       registrationsPending,
       recentRegistrations,
@@ -823,8 +829,12 @@ export class AdminService {
           ticket: {
             select: {
               title: true,
+              clientId: true,
+              clientName: true,
+              tradePointName: true,
               assignedManagerId: true,
               assignedManagerName: true,
+              lastResolvedByManagerId: true,
             },
           },
         },
@@ -861,6 +871,11 @@ export class AdminService {
           ticket: {
             select: {
               title: true,
+              clientId: true,
+              clientName: true,
+              tradePointName: true,
+              assignedManagerId: true,
+              lastResolvedByManagerId: true,
             },
           },
         },
@@ -900,6 +915,21 @@ export class AdminService {
         },
       }),
     ]);
+
+    const tickets = allTickets.filter(
+      (ticket) => !isExcludedAnalyticsTicket(ticket),
+    );
+    const includedTicketIds = new Set(tickets.map((ticket) => ticket.id));
+    const supplierRequests = allSupplierRequests.filter(
+      (request) =>
+        includedTicketIds.has(request.ticketId) &&
+        !isExcludedAnalyticsSupplier(request),
+    );
+    const profiles = allProfiles.filter((profile) =>
+      profile.role === 'manager'
+        ? isIncludedAnalyticsManager(profile.id)
+        : !isExcludedAnalyticsSupplier(profile),
+    );
 
     const now = new Date();
     const range = this.normalizeDateRange(input);
@@ -1103,15 +1133,20 @@ export class AdminService {
       });
 
     const recentEvents = [
-      ...claimMessages.map((message) => ({
-        id: `claim_${message.id}`,
-        type: 'dialog_claim',
-        title: message.ticket?.assignedManagerName
-          ? `${message.ticket.assignedManagerName} взял диалог в работу`
-          : 'Диалог взят в работу',
-        description: message.ticket?.title ?? 'Диалог TouchSpace',
-        createdAt: message.createdAt,
-      })),
+      ...claimMessages
+        .filter(
+          (message) =>
+            !message.ticket || !isExcludedAnalyticsTicket(message.ticket),
+        )
+        .map((message) => ({
+          id: `claim_${message.id}`,
+          type: 'dialog_claim',
+          title: message.ticket?.assignedManagerName
+            ? `${message.ticket.assignedManagerName} взял диалог в работу`
+            : 'Диалог взят в работу',
+          description: message.ticket?.title ?? 'Диалог TouchSpace',
+          createdAt: message.createdAt,
+        })),
       ...recentRegistrations.map((item) => ({
         id: `registration_${item.id}`,
         type: 'registration',
@@ -1124,13 +1159,18 @@ export class AdminService {
         description: `${item.fullName} • ${this.buildStatusLabel(item.status)}`,
         createdAt: item.reviewedAt ?? item.createdAt,
       })),
-      ...recentSystemMessages.map((message) => ({
-        id: `system_${message.id}`,
-        type: 'system',
-        title: message.content,
-        description: message.ticket?.title ?? 'Системное событие',
-        createdAt: message.createdAt,
-      })),
+      ...recentSystemMessages
+        .filter(
+          (message) =>
+            !message.ticket || !isExcludedAnalyticsTicket(message.ticket),
+        )
+        .map((message) => ({
+          id: `system_${message.id}`,
+          type: 'system',
+          title: message.content,
+          description: message.ticket?.title ?? 'Системное событие',
+          createdAt: message.createdAt,
+        })),
       ...recentAdminEvents.map((event) => ({
         id: `admin_${event.id}`,
         type: event.type,
@@ -2375,7 +2415,7 @@ export class AdminService {
 
   async getAnalyticsOverview(input?: DateRangeInput) {
     const range = this.normalizeDateRange(input);
-    const tickets = await this.prisma.ticket.findMany({
+    const allTickets = await this.prisma.ticket.findMany({
       where: {
         createdAt: {
           gte: range.from,
@@ -2399,6 +2439,14 @@ export class AdminService {
         createdAt: 'asc',
       },
     });
+    const tickets = allTickets
+      .filter((ticket) => !isExcludedAnalyticsTicket(ticket))
+      .map((ticket) => ({
+        ...ticket,
+        supplierRequests: ticket.supplierRequests.filter(
+          (request) => !isExcludedAnalyticsSupplier(request),
+        ),
+      }));
 
     return {
       period: range,
@@ -2452,7 +2500,7 @@ export class AdminService {
 
   async getInsightsAnalytics(input?: DateRangeInput) {
     const range = this.normalizeDateRange(input);
-    const tickets = await this.prisma.ticket.findMany({
+    const allTickets = await this.prisma.ticket.findMany({
       where: {
         createdAt: {
           gte: range.from,
@@ -2475,6 +2523,9 @@ export class AdminService {
         createdAt: 'asc',
       },
     });
+    const tickets = allTickets.filter(
+      (ticket) => !isExcludedAnalyticsTicket(ticket),
+    );
 
     const weekdayDistribution = this.buildWeekdayDistribution(tickets);
     const hourDistribution = this.buildHourDistribution(tickets);
@@ -2530,6 +2581,9 @@ export class AdminService {
       this.prisma.profile.findMany({
         where: {
           role: 'manager',
+          id: {
+            in: analyticsIncludedManagerIds,
+          },
         },
         select: {
           id: true,
@@ -2557,8 +2611,11 @@ export class AdminService {
       }),
     ]);
 
+    const includedTickets = tickets.filter(
+      (ticket) => !isExcludedAnalyticsTicket(ticket),
+    );
     const items = managers.map((manager) => {
-      const relatedTickets = tickets.filter(
+      const relatedTickets = includedTickets.filter(
         (ticket) =>
           ticket.assignedManagerId === manager.id ||
           ticket.lastResolvedByManagerId === manager.id,
@@ -2627,7 +2684,12 @@ export class AdminService {
       throw new NotFoundException(`Manager with id "${id}" not found`);
     }
 
-    const tickets = await this.prisma.ticket.findMany({
+    if (!isIncludedAnalyticsManager(id)) {
+      throw new NotFoundException(`Manager with id "${id}" not found`);
+    }
+
+    const tickets = (
+      await this.prisma.ticket.findMany({
       where: {
         createdAt: {
           gte: range.from,
@@ -2638,7 +2700,8 @@ export class AdminService {
       orderBy: {
         createdAt: 'desc',
       },
-    });
+      })
+    ).filter((ticket) => !isExcludedAnalyticsTicket(ticket));
 
     return {
       manager: {
@@ -2706,6 +2769,11 @@ export class AdminService {
               id: true,
               title: true,
               topicCategory: true,
+              clientId: true,
+              clientName: true,
+              tradePointName: true,
+              assignedManagerId: true,
+              lastResolvedByManagerId: true,
               messages: {
                 where: {
                   senderType: 'supplier',
@@ -2721,20 +2789,28 @@ export class AdminService {
       }),
     ]);
 
+    const includedSupplierProfiles = supplierProfiles.filter(
+      (profile) => !isExcludedAnalyticsSupplier(profile),
+    );
+    const includedRequests = requests.filter(
+      (request) =>
+        !isExcludedAnalyticsSupplier(request) &&
+        !isExcludedAnalyticsTicket(request.ticket),
+    );
     const companies = [
       ...new Set(
         [
-          ...supplierProfiles
+          ...includedSupplierProfiles
             .map((profile) => this.normalizeCompanyName(profile.companyName))
             .filter((companyName): companyName is string => Boolean(companyName)),
-          ...requests
+          ...includedRequests
             .map((request) => this.normalizeCompanyName(request.supplierName))
             .filter((companyName): companyName is string => Boolean(companyName)),
         ].sort((left, right) => left.localeCompare(right, 'ru')),
       ),
     ];
 
-    const suppliers = supplierProfiles.filter((profile) => {
+    const suppliers = includedSupplierProfiles.filter((profile) => {
       if (profile.role !== 'supplier') {
         return false;
       }
@@ -2751,7 +2827,7 @@ export class AdminService {
     });
 
     const items = suppliers.map((supplier) => {
-      const supplierRequests = requests.filter(
+      const supplierRequests = includedRequests.filter(
         (request) => this.supplierRequestBelongsToProfile(request, supplier),
       );
 
@@ -2803,6 +2879,10 @@ export class AdminService {
       throw new NotFoundException(`Supplier with id "${id}" not found`);
     }
 
+    if (isExcludedAnalyticsSupplier(supplier)) {
+      throw new NotFoundException(`Supplier with id "${id}" not found`);
+    }
+
     const supplierScopeId = this.getSupplierProfileScope(supplier);
     const requestCandidates = await this.prisma.supplierRequest.findMany({
       where: {
@@ -2835,8 +2915,11 @@ export class AdminService {
         createdAt: 'desc',
       },
     });
-    const requests = requestCandidates.filter((request) =>
-      this.supplierRequestBelongsToProfile(request, supplier),
+    const requests = requestCandidates.filter(
+      (request) =>
+        this.supplierRequestBelongsToProfile(request, supplier) &&
+        !isExcludedAnalyticsSupplier(request) &&
+        !isExcludedAnalyticsTicket(request.ticket),
     );
 
     return {
@@ -2870,7 +2953,7 @@ export class AdminService {
     const from = this.toDate(input?.dateFrom);
     const to = this.toDate(input?.dateTo);
 
-    const dialogs = await this.prisma.ticket.findMany({
+    const allDialogs = await this.prisma.ticket.findMany({
       where: {
         ...(from || to
           ? {
@@ -2896,6 +2979,14 @@ export class AdminService {
         createdAt: 'desc',
       },
     });
+    const dialogs = allDialogs
+      .filter((dialog) => !isExcludedAnalyticsTicket(dialog))
+      .map((dialog) => ({
+        ...dialog,
+        supplierRequests: dialog.supplierRequests.filter(
+          (request) => !isExcludedAnalyticsSupplier(request),
+        ),
+      }));
 
     const breachedDialogs = dialogs.filter(
       (dialog) =>

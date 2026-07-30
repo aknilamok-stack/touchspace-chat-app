@@ -209,11 +209,13 @@ model TicketRequestEvent {
   sequence  Int
   eventType String
   createdAt DateTime @default(now())
+  resolvedAt DateTime?
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@unique([ticketId, sequence])
   @@index([createdAt])
+  @@index([resolvedAt])
   @@index([ticketId, createdAt])
 }
 

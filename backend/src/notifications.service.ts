@@ -516,6 +516,16 @@ export class NotificationsService {
         });
 
         if (updateResult.count > 0) {
+          await this.prisma.ticketRequestEvent.updateMany({
+            where: {
+              ticketId: ticket.id,
+              resolvedAt: null,
+            },
+            data: {
+              resolvedAt,
+            },
+          });
+
           await this.prisma.message.create({
             data: {
               ticketId: ticket.id,

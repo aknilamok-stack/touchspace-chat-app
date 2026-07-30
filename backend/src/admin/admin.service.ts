@@ -755,6 +755,7 @@ export class AdminService {
         select: {
           ticketId: true,
           createdAt: true,
+          resolvedAt: true,
         },
       }),
       this.prisma.profile.findMany({
@@ -914,6 +915,19 @@ export class AdminService {
     const requestEventsInRange = requestEvents.filter(
       (event) =>
         event.createdAt >= range.from && event.createdAt <= range.to,
+    );
+    const resolvedIncomingRequests = requestEventsInRange.filter(
+      (event) => Boolean(event.resolvedAt),
+    );
+    const unresolvedIncomingRequests = requestEventsInRange.filter(
+      (event) => !event.resolvedAt,
+    );
+    const resolvedOldBacklogInRange = requestEvents.filter(
+      (event) =>
+        event.createdAt < range.from &&
+        Boolean(event.resolvedAt) &&
+        event.resolvedAt! >= range.from &&
+        event.resolvedAt! <= range.to,
     );
     const newDialogs = tickets.filter(
       (ticket) => ticket.status === 'new',
@@ -1419,6 +1433,9 @@ export class AdminService {
         waitingClientDialogs,
         resolvedDialogs,
         requestsInPeriod: requestEventsInRange.length,
+        resolvedIncomingRequests: resolvedIncomingRequests.length,
+        unresolvedIncomingRequests: unresolvedIncomingRequests.length,
+        resolvedOldBacklogInPeriod: resolvedOldBacklogInRange.length,
         resolvedInPeriod: resolvedTicketsInRange.length,
         avgFirstResponseMs: this.average(
           ticketsInRange.map((ticket) => ticket.firstResponseTime),

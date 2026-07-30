@@ -3074,6 +3074,16 @@ export class TicketsService {
         },
       });
 
+      await tx.ticketRequestEvent.updateMany({
+        where: {
+          ticketId: id,
+          resolvedAt: null,
+        },
+        data: {
+          resolvedAt: now,
+        },
+      });
+
       await tx.ticket.update({
         where: { id },
         data: {

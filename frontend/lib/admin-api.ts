@@ -128,6 +128,10 @@ export const adminApi = {
     adminRequest<any>(`/admin/supplier-api/keys/${id}/revoke`, {
       method: "PATCH",
     }),
+  deleteSupplierApiKey: (id: string) =>
+    adminRequest<any>(`/admin/supplier-api/keys/${id}`, {
+      method: "DELETE",
+    }),
   getDesktopAppUpdate: () =>
     adminRequest<any>("/admin/app-updates/desktop"),
   updateDesktopAppUpdate: (payload: Record<string, unknown>) =>

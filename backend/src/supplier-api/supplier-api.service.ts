@@ -319,6 +319,28 @@ export class SupplierApiService {
     });
   }
 
+  async deleteRevokedKey(id: string) {
+    const key = await this.prisma.supplierApiKey.findUnique({
+      where: { id },
+    });
+
+    if (!key) {
+      throw new NotFoundException('API-ключ не найден');
+    }
+
+    if (key.isActive) {
+      throw new BadRequestException(
+        'Сначала отключите API-ключ, затем его можно будет удалить',
+      );
+    }
+
+    await this.prisma.supplierApiKey.delete({
+      where: { id },
+    });
+
+    return { deleted: true, id };
+  }
+
   private async getEmployeesForContext(context: SupplierApiContext) {
     return this.prisma.profile.findMany({
       where: {

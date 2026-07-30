@@ -74,6 +74,7 @@ export function AdminSupplierApiKeys() {
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadKeys = async () => {
     try {
@@ -157,6 +158,30 @@ export function AdminSupplierApiKeys() {
       setError(requestError instanceof Error ? requestError.message : "Не удалось отключить ключ");
     } finally {
       setRevokingId(null);
+    }
+  };
+
+  const handleDelete = async (key: SupplierApiKey) => {
+    const confirmed = window.confirm(
+      `Удалить заблокированный API-ключ «${key.name}» для поставщика «${key.supplierCompanyName}»?\n\nЭто действие нельзя отменить.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(key.id);
+    setMessage(null);
+    setError(null);
+
+    try {
+      await adminApi.deleteSupplierApiKey(key.id);
+      setMessage("Заблокированный API-ключ удалён");
+      await loadKeys();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось удалить API-ключ");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -328,7 +353,14 @@ export function AdminSupplierApiKeys() {
                   {revokingId === row.id ? "Отключаю..." : "Отключить"}
                 </AdminButton>
               ) : (
-                "Отключён"
+                <AdminButton
+                  type="button"
+                  tone="danger"
+                  disabled={deletingId === row.id}
+                  onClick={() => void handleDelete(row)}
+                >
+                  {deletingId === row.id ? "Удаляю..." : "Удалить"}
+                </AdminButton>
               );
             }
 

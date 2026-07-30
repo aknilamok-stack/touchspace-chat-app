@@ -189,6 +189,11 @@ export class AdminController {
     return this.supplierApiService.revokeKey(id);
   }
 
+  @Delete('supplier-api/keys/:id')
+  deleteSupplierApiKey(@Param('id') id: string) {
+    return this.supplierApiService.deleteRevokedKey(id);
+  }
+
   @Get('app-updates/desktop')
   getDesktopAppUpdate() {
     return this.appUpdatesService.getDesktopUpdateForAdmin();

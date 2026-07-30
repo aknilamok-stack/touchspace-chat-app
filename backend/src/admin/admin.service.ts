@@ -16,6 +16,11 @@ import {
   isIncludedAnalyticsManager,
   resolveAnalyticsWaitingParty,
 } from './admin-analytics-exclusions';
+import {
+  formatMoscowDayKey,
+  normalizeAdminDateRange,
+  startOfMoscowDay,
+} from './admin-date-range';
 
 type DateRangeInput = {
   preset?: string;
@@ -90,58 +95,11 @@ export class AdminService {
   }
 
   private normalizeDateRange(input?: DateRangeInput) {
-    const now = new Date();
-    const explicitFrom = this.toDate(input?.dateFrom);
-    const explicitTo = this.toDate(input?.dateTo);
-
-    if (explicitFrom || explicitTo) {
-      const to = explicitTo ?? now;
-
-      if (input?.dateTo && !input.dateTo.includes('T')) {
-        to.setHours(23, 59, 59, 999);
-      }
-
-      return {
-        from:
-          explicitFrom ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
-        to,
-      };
-    }
-
-    const preset = input?.preset ?? 'week';
-
-    if (preset === 'today' || preset === 'day') {
-      const from = new Date(now);
-      from.setHours(0, 0, 0, 0);
-
-      return { from, to: now };
-    }
-
-    if (preset === 'yesterday') {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 1);
-      from.setHours(0, 0, 0, 0);
-
-      const to = new Date(from);
-      to.setHours(23, 59, 59, 999);
-
-      return { from, to };
-    }
-
-    const durationByPreset: Record<string, number> = {
-      week: 7,
-      month: 30,
-    };
-    const days = durationByPreset[preset] ?? 7;
-
-    return {
-      from: new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000),
-      to: now,
-    };
+    return normalizeAdminDateRange(input);
   }
 
   private formatDayKey(date: Date) {
-    return date.toISOString().slice(0, 10);
+    return formatMoscowDayKey(date);
   }
 
   private toBooleanFlag(value?: string) {
@@ -937,8 +895,7 @@ export class AdminService {
     const now = new Date();
     const range = this.normalizeDateRange(input);
     const from = range.from;
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfMoscowDay(now);
     const ticketsInRange = tickets.filter(
       (ticket) => ticket.createdAt >= range.from && ticket.createdAt <= range.to,
     );

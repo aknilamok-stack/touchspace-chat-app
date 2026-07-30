@@ -16,6 +16,7 @@ import {
   isIncludedAnalyticsManager,
   resolveAnalyticsWaitingParty,
 } from './admin-analytics-exclusions';
+import { calculateAnalyticsOverview } from './admin-analytics-overview';
 import {
   formatMoscowDayKey,
   normalizeAdminDateRange,
@@ -2641,85 +2642,90 @@ export class AdminService {
 
   async getAnalyticsOverview(input?: DateRangeInput) {
     const range = this.normalizeDateRange(input);
-    const allTickets = await this.prisma.ticket.findMany({
-      where: {
-        createdAt: {
-          gte: range.from,
-          lte: range.to,
+    const now = new Date();
+    const [allEvents, allSupplierRequests] = await Promise.all([
+      this.prisma.ticketRequestEvent.findMany({
+        where: {
+          OR: [
+            {
+              createdAt: {
+                gte: range.from,
+                lte: range.to,
+              },
+            },
+            {
+              createdAt: {
+                lt: range.from,
+              },
+              resolvedAt: {
+                gte: range.from,
+                lte: range.to,
+              },
+            },
+          ],
         },
-      },
-      include: {
-        messages: {
-          select: {
-            id: true,
+        include: {
+          ticket: {
+            select: {
+              id: true,
+              clientId: true,
+              clientName: true,
+              tradePointName: true,
+              assignedManagerId: true,
+              lastResolvedByManagerId: true,
+              topicCategory: true,
+            },
           },
         },
-        supplierRequests: {
-          select: {
-            id: true,
-            responseBreached: true,
+        orderBy: {
+          createdAt: 'asc',
+        },
+      }),
+      this.prisma.supplierRequest.findMany({
+        where: {
+          createdAt: {
+            gte: range.from,
+            lte: now,
           },
         },
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
+        select: {
+          ticketId: true,
+          createdAt: true,
+          responseBreached: true,
+          id: true,
+          supplierId: true,
+          supplierName: true,
+          assignedSupplierProfileId: true,
+          assignedSupplierProfileName: true,
+        },
+      }),
+    ]);
+    const events = allEvents.filter(
+      (event) => !isExcludedAnalyticsTicket(event.ticket),
+    );
+    const includedTicketIds = new Set(
+      events.map((event) => event.ticketId),
+    );
+    const supplierRequests = allSupplierRequests.filter(
+      (request) =>
+        includedTicketIds.has(request.ticketId) &&
+        !isExcludedAnalyticsSupplier(request),
+    );
+    const overview = calculateAnalyticsOverview({
+      events,
+      supplierRequests,
+      range,
+      now,
+      formatDayKey: (date) => this.formatDayKey(date),
     });
-    const tickets = allTickets
-      .filter((ticket) => !isExcludedAnalyticsTicket(ticket))
-      .map((ticket) => ({
-        ...ticket,
-        supplierRequests: ticket.supplierRequests.filter(
-          (request) => !isExcludedAnalyticsSupplier(request),
-        ),
-      }));
 
     return {
       period: range,
-      metrics: {
-        dialogs: tickets.length,
-        newDialogs: tickets.filter((ticket) => ticket.status === 'new').length,
-        resolvedDialogs: tickets.filter(
-          (ticket) =>
-            ticket.status === 'resolved' || ticket.status === 'closed',
-        ).length,
-        overdueDialogs: tickets.filter(
-          (ticket) =>
-            ticket.slaBreached ||
-            ticket.firstResponseBreached ||
-            ticket.supplierRequests.some((request) => request.responseBreached),
-        ).length,
-        avgFirstResponseMs: this.average(
-          tickets.map((ticket) => ticket.firstResponseTime),
-        ),
-        avgCloseTimeMs: this.average(
-          tickets.map((ticket) => ticket.resolutionTime),
-        ),
-        escalatedShare: tickets.length
-          ? Number(
-              (
-                tickets.filter(
-                  (ticket) =>
-                    Boolean(ticket.supplierEscalatedAt) ||
-                    ticket.supplierRequests.length > 0,
-                ).length / tickets.length
-              ).toFixed(2),
-            )
-          : 0,
-        avgMessagesPerDialog: tickets.length
-          ? Number(
-              (
-                tickets.reduce(
-                  (total, ticket) => total + ticket.messages.length,
-                  0,
-                ) / tickets.length
-              ).toFixed(1),
-            )
-          : 0,
-      },
+      generatedAt: now,
+      metrics: overview.metrics,
       charts: {
-        dialogsByDay: this.buildTimeSeries(tickets, range.from, range.to),
-        topTopics: this.buildTopicBuckets(tickets),
+        ...overview.charts,
+        dialogsByDay: overview.charts.requestsByDay,
       },
     };
   }

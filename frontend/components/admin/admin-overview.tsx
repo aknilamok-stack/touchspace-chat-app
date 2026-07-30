@@ -550,35 +550,51 @@ export function AdminOverview() {
         </AdminPanel>
       </section>
 
-      <AdminPanel title="Динамика обращений за выбранный период">
+      <AdminPanel title="Когда поступали обращения">
         {chartPoints.length > 0 ? (
-          <div className="grid gap-5">
-            <div className="grid h-[210px] grid-cols-7 items-end gap-3">
-              {chartPoints.map((item: any) => {
-                const barHeight = Math.max((item.count / maxChartValue) * 100, item.count > 0 ? 10 : 4);
-
-                return (
-                  <div key={item.date} className="flex h-full flex-col justify-end gap-3">
-                    <div className="flex-1 rounded-[18px] bg-slate-100 p-2">
-                      <div
-                        className="w-full rounded-[14px] bg-[linear-gradient(180deg,#0A84FF_0%,#38BDF8_100%)]"
-                        style={{ height: `${barHeight}%`, minHeight: item.count > 0 ? "18px" : "6px" }}
-                      />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-base font-semibold text-slate-950">{item.count}</p>
-                      <p className="text-xs text-slate-500">{item.date.slice(5).replace("-", ".")}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-sm text-slate-500">
-              Короткий обзор тренда по входящим диалогам. Детальная аналитика вынесена в отдельные вкладки.
+          <div className="grid gap-4">
+            <p className="text-sm text-slate-600">
+              Количество первичных и повторных обращений{" "}
+              {chartPoints[0]?.granularity === "hour" ? "по часам" : "по дням"}.
             </p>
+            <div className="overflow-x-auto pb-2">
+              <div
+                className="grid h-[230px] items-end gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${chartPoints.length}, minmax(48px, 1fr))`,
+                  minWidth: `${Math.max(chartPoints.length * 56, 320)}px`,
+                }}
+              >
+                {chartPoints.map((item: any) => {
+                  const barHeight = Math.max((item.count / maxChartValue) * 100, item.count > 0 ? 10 : 3);
+
+                  return (
+                    <div
+                      key={item.date}
+                      className="flex h-full min-w-0 flex-col justify-end gap-2"
+                      title={`${item.label}: ${item.count}`}
+                    >
+                      <div className="flex min-h-0 flex-1 items-end rounded-xl bg-slate-100 px-1.5 pt-6">
+                        <div
+                          className="relative w-full rounded-t-lg bg-[#0A84FF]"
+                          style={{ height: `${barHeight}%`, minHeight: item.count > 0 ? "16px" : "4px" }}
+                        >
+                          <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold text-slate-900">
+                            {item.count}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <p className="truncate text-[11px] text-slate-600">{item.shortLabel}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         ) : (
-          compactEmpty("За выбранный период пока нет движения по диалогам.")
+          compactEmpty("За выбранный период обращения не поступали.")
         )}
       </AdminPanel>
     </section>

@@ -415,6 +415,40 @@ export class AdminService {
     from: Date,
     to: Date,
   ) {
+    const useHourlyBuckets = to.getTime() - from.getTime() <= 24 * 60 * 60_000;
+
+    if (useHourlyBuckets) {
+      const buckets = new Map<string, number>();
+      const cursor = new Date(from);
+      cursor.setUTCMinutes(0, 0, 0);
+
+      while (cursor <= to) {
+        const moscowDate = new Date(cursor.getTime() + 3 * 60 * 60_000);
+        const date = moscowDate.toISOString().slice(0, 10);
+        const hour = String(moscowDate.getUTCHours()).padStart(2, '0');
+        buckets.set(`${date}T${hour}`, 0);
+        cursor.setUTCHours(cursor.getUTCHours() + 1);
+      }
+
+      for (const ticket of tickets) {
+        const moscowDate = new Date(
+          ticket.createdAt.getTime() + 3 * 60 * 60_000,
+        );
+        const date = moscowDate.toISOString().slice(0, 10);
+        const hour = String(moscowDate.getUTCHours()).padStart(2, '0');
+        const key = `${date}T${hour}`;
+        buckets.set(key, (buckets.get(key) ?? 0) + 1);
+      }
+
+      return [...buckets.entries()].map(([date, count]) => ({
+        date,
+        count,
+        label: `${date.slice(8, 10)}.${date.slice(5, 7)}, ${date.slice(11)}:00`,
+        shortLabel: `${date.slice(11)}:00`,
+        granularity: 'hour',
+      }));
+    }
+
     const buckets = new Map<string, number>();
     const cursor = new Date(from);
 
@@ -428,7 +462,13 @@ export class AdminService {
       buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }
 
-    return [...buckets.entries()].map(([date, count]) => ({ date, count }));
+    return [...buckets.entries()].map(([date, count]) => ({
+      date,
+      count,
+      label: `${date.slice(8, 10)}.${date.slice(5, 7)}`,
+      shortLabel: `${date.slice(8, 10)}.${date.slice(5, 7)}`,
+      granularity: 'day',
+    }));
   }
 
   private buildStatusLabel(status: string | null | undefined) {

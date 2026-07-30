@@ -26,18 +26,6 @@ const attentionCards = [
     detail: "превышен SLA",
     tone: "bg-amber-50 border-amber-200 text-amber-900",
   },
-  {
-    key: "pendingRegistrations",
-    label: "Регистрации",
-    detail: "ждут проверки",
-    tone: "bg-sky-50 border-sky-200 text-sky-900",
-  },
-  {
-    key: "systemErrors",
-    label: "Системные ошибки",
-    detail: "интеграции и сервисы",
-    tone: "bg-slate-50 border-slate-200 text-slate-900",
-  },
 ] as const;
 
 const kpiTone: Record<string, string> = {
@@ -141,9 +129,21 @@ export function AdminOverview() {
         tone: "default",
       },
       {
-        label: "В работе сейчас",
-        value: formatNumber(data?.metrics?.inProgressDialogs),
-        hint: "активные диалоги",
+        label: "Ждут ответа менеджера",
+        value: formatNumber(data?.metrics?.waitingManagerDialogs),
+        hint: "последним написал клиент",
+        tone: "warn",
+      },
+      {
+        label: "Ждут ответа поставщика",
+        value: formatNumber(data?.metrics?.waitingSupplierDialogs),
+        hint: "есть активный запрос поставщику",
+        tone: "warn",
+      },
+      {
+        label: "Ждут ответа клиента",
+        value: formatNumber(data?.metrics?.waitingClientDialogs),
+        hint: "последним ответил менеджер",
         tone: "default",
       },
       {
@@ -277,7 +277,7 @@ export function AdminOverview() {
       </section>
 
       <AdminPanel title="Требует внимания">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2">
           {attentionCards.map((item) => (
             <div key={item.key} className={`rounded-[22px] border px-4 py-4 ${item.tone}`}>
               <p className="text-sm font-medium">{item.label}</p>

@@ -2,6 +2,7 @@ import {
   isExcludedAnalyticsSupplier,
   isExcludedAnalyticsTicket,
   isIncludedAnalyticsManager,
+  resolveAnalyticsWaitingParty,
 } from './admin-analytics-exclusions';
 
 describe('admin analytics exclusions', () => {
@@ -53,5 +54,50 @@ describe('admin analytics exclusions', () => {
     expect(isExcludedAnalyticsSupplier({ companyName: 'Карелия/Лесно' })).toBe(
       false,
     );
+  });
+
+  it('never marks a resolved or closed dialog as waiting', () => {
+    const lastClientMessageAt = new Date('2026-07-30T08:00:00.000Z');
+
+    expect(
+      resolveAnalyticsWaitingParty(
+        { status: 'resolved', lastClientMessageAt },
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      resolveAnalyticsWaitingParty(
+        { status: 'closed', lastClientMessageAt },
+        true,
+      ),
+    ).toBeNull();
+  });
+
+  it('uses the participant who must reply next', () => {
+    const clientAt = new Date('2026-07-30T08:00:00.000Z');
+    const managerAt = new Date('2026-07-30T08:01:00.000Z');
+
+    expect(
+      resolveAnalyticsWaitingParty(
+        { status: 'in_progress', lastClientMessageAt: clientAt },
+        false,
+      ),
+    ).toBe('manager');
+    expect(
+      resolveAnalyticsWaitingParty(
+        {
+          status: 'waiting_client',
+          lastClientMessageAt: clientAt,
+          lastManagerReplyAt: managerAt,
+        },
+        false,
+      ),
+    ).toBe('client');
+    expect(
+      resolveAnalyticsWaitingParty(
+        { status: 'in_progress', lastClientMessageAt: clientAt },
+        true,
+      ),
+    ).toBe('supplier');
   });
 });

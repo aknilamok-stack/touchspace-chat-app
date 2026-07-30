@@ -68,3 +68,33 @@ export const isExcludedAnalyticsSupplier = (supplier: {
     names.some((name) => excludedSupplierNames.has(name))
   );
 };
+
+export const resolveAnalyticsWaitingParty = (
+  ticket: {
+    status: string;
+    lastClientMessageAt?: Date | null;
+    lastManagerReplyAt?: Date | null;
+  },
+  hasActiveSupplierRequest: boolean,
+): 'manager' | 'supplier' | 'client' | null => {
+  if (ticket.status === 'resolved' || ticket.status === 'closed') {
+    return null;
+  }
+
+  if (hasActiveSupplierRequest) {
+    return 'supplier';
+  }
+
+  if (!ticket.lastClientMessageAt) {
+    return null;
+  }
+
+  if (
+    !ticket.lastManagerReplyAt ||
+    ticket.lastClientMessageAt > ticket.lastManagerReplyAt
+  ) {
+    return 'manager';
+  }
+
+  return 'client';
+};

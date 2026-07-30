@@ -14,6 +14,7 @@ import {
   isExcludedAnalyticsSupplier,
   isExcludedAnalyticsTicket,
   isIncludedAnalyticsManager,
+  resolveAnalyticsWaitingParty,
 } from './admin-analytics-exclusions';
 
 type DateRangeInput = {
@@ -740,6 +741,8 @@ export class AdminService {
           status: true,
           firstResponseTime: true,
           firstResponseBreached: true,
+          lastClientMessageAt: true,
+          lastManagerReplyAt: true,
           lastMessageAt: true,
           createdAt: true,
           assignedManagerId: true,
@@ -946,11 +949,30 @@ export class AdminService {
     const newDialogs = tickets.filter(
       (ticket) => ticket.status === 'new',
     ).length;
-    const inProgressDialogs = tickets.filter(
-      (ticket) =>
-        ticket.status === 'in_progress' ||
-        ticket.status === 'waiting_supplier' ||
-        ticket.status === 'waiting_client',
+    const activeSupplierRequestTicketIds = new Set(
+      supplierRequests
+        .filter(
+          (request) =>
+            request.status !== 'closed' &&
+            request.status !== 'cancelled' &&
+            request.status !== 'resolved',
+        )
+        .map((request) => request.ticketId),
+    );
+    const waitingParties = tickets.map((ticket) =>
+      resolveAnalyticsWaitingParty(
+        ticket,
+        activeSupplierRequestTicketIds.has(ticket.id),
+      ),
+    );
+    const waitingSupplierDialogs = waitingParties.filter(
+      (party) => party === 'supplier',
+    ).length;
+    const waitingManagerDialogs = waitingParties.filter(
+      (party) => party === 'manager',
+    ).length;
+    const waitingClientDialogs = waitingParties.filter(
+      (party) => party === 'client',
     ).length;
     const resolvedDialogs = tickets.filter(
       (ticket) => ticket.status === 'resolved' || ticket.status === 'closed',
@@ -1380,7 +1402,9 @@ export class AdminService {
       metrics: {
         totalDialogs: ticketsInRange.length,
         newDialogs,
-        inProgressDialogs,
+        waitingManagerDialogs,
+        waitingSupplierDialogs,
+        waitingClientDialogs,
         resolvedDialogs,
         dialogsToday: tickets.filter((ticket) => ticket.createdAt >= todayStart).length,
         resolvedToday: tickets.filter(

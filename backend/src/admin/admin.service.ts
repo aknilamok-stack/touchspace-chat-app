@@ -19,7 +19,6 @@ import {
 import {
   formatMoscowDayKey,
   normalizeAdminDateRange,
-  startOfMoscowDay,
 } from './admin-date-range';
 
 type DateRangeInput = {
@@ -895,7 +894,6 @@ export class AdminService {
     const now = new Date();
     const range = this.normalizeDateRange(input);
     const from = range.from;
-    const todayStart = startOfMoscowDay(now);
     const ticketsInRange = tickets.filter(
       (ticket) => ticket.createdAt >= range.from && ticket.createdAt <= range.to,
     );
@@ -916,12 +914,16 @@ export class AdminService {
         )
         .map((request) => request.ticketId),
     );
-    const waitingParties = tickets.map((ticket) =>
-      resolveAnalyticsWaitingParty(
-        ticket,
-        activeSupplierRequestTicketIds.has(ticket.id),
-      ),
+    const waitingPartyByTicketId = new Map(
+      tickets.map((ticket) => [
+        ticket.id,
+        resolveAnalyticsWaitingParty(
+          ticket,
+          activeSupplierRequestTicketIds.has(ticket.id),
+        ),
+      ]),
     );
+    const waitingParties = [...waitingPartyByTicketId.values()];
     const waitingSupplierDialogs = waitingParties.filter(
       (party) => party === 'supplier',
     ).length;
@@ -934,6 +936,13 @@ export class AdminService {
     const resolvedDialogs = tickets.filter(
       (ticket) => ticket.status === 'resolved' || ticket.status === 'closed',
     ).length;
+    const resolvedTicketsInRange = tickets.filter(
+      (ticket) =>
+        (ticket.status === 'resolved' || ticket.status === 'closed') &&
+        Boolean(ticket.resolvedAt) &&
+        ticket.resolvedAt! >= range.from &&
+        ticket.resolvedAt! <= range.to,
+    );
     const slaBreaches =
       tickets.filter(
         (ticket) => ticket.slaBreached || ticket.firstResponseBreached,
@@ -941,6 +950,7 @@ export class AdminService {
       supplierRequests.filter((request) => request.responseBreached).length;
 
     const managerLoadMap = new Map<string, number>();
+    const managerResolvedMap = new Map<string, number>();
     const supplierLoadMap = new Map<string, number>();
     const managerRiskMap = new Map<string, number>();
     const activeTradePointKeys = new Set<string>();
@@ -957,8 +967,10 @@ export class AdminService {
       }
     }
 
-    for (const ticket of ticketsInRange) {
-      if (ticket.assignedManagerId) {
+    for (const ticket of tickets) {
+      const waitingParty = waitingPartyByTicketId.get(ticket.id);
+
+      if (ticket.assignedManagerId && waitingParty) {
         managerLoadMap.set(
           ticket.assignedManagerId,
           (managerLoadMap.get(ticket.assignedManagerId) ?? 0) + 1,
@@ -972,7 +984,11 @@ export class AdminService {
         }
       }
 
-      if (ticket.supplierId) {
+      if (
+        ticket.supplierId &&
+        ticket.createdAt >= range.from &&
+        ticket.createdAt <= range.to
+      ) {
         supplierLoadMap.set(
           ticket.supplierId,
           (supplierLoadMap.get(ticket.supplierId) ?? 0) + 1,
@@ -980,16 +996,28 @@ export class AdminService {
       }
     }
 
-    const dialogsWithoutAnswer = tickets.filter((ticket) => {
-      const baseline = ticket.lastMessageAt ?? ticket.createdAt;
+    for (const ticket of resolvedTicketsInRange) {
+      if (ticket.lastResolvedByManagerId) {
+        managerResolvedMap.set(
+          ticket.lastResolvedByManagerId,
+          (managerResolvedMap.get(ticket.lastResolvedByManagerId) ?? 0) + 1,
+        );
+      }
+    }
 
-      return (
-        (ticket.status === 'new' || ticket.status === 'waiting_client') &&
-        now.getTime() - baseline.getTime() > 2 * 60 * 1000
-      );
-    });
+    const dialogsWithoutAnswer = tickets.filter(
+      (ticket) =>
+        waitingPartyByTicketId.get(ticket.id) === 'manager' &&
+        Boolean(ticket.lastClientMessageAt) &&
+        now.getTime() - ticket.lastClientMessageAt!.getTime() >
+          2 * 60 * 1000,
+    );
     const overdueSupplierRequests = supplierRequests.filter(
-      (request) => request.responseBreached,
+      (request) =>
+        request.responseBreached &&
+        request.status !== 'closed' &&
+        request.status !== 'cancelled' &&
+        request.status !== 'resolved',
     );
     const systemErrorsCount = 0;
     const complaintDialogsCount = tickets.filter(
@@ -1000,6 +1028,7 @@ export class AdminService {
       .map((ticket) => {
         const baseline = ticket.lastMessageAt ?? ticket.createdAt;
         const waitMs = Math.max(now.getTime() - baseline.getTime(), 0);
+        const waitingParty = waitingPartyByTicketId.get(ticket.id);
         let priority = 0;
         let issue = 'Требует проверки';
         const supplierCompanyName =
@@ -1033,15 +1062,21 @@ export class AdminService {
           };
         }
 
-        if (ticket.slaBreached) {
+        if (waitingParty === 'manager' && ticket.slaBreached) {
           priority += 100;
           issue = `SLA менеджера просрочен на ${Math.round(waitMs / 60000)} мин`;
-        } else if (ticket.firstResponseBreached) {
+        } else if (waitingParty === 'manager' && ticket.firstResponseBreached) {
           priority += 90;
           issue = `Клиент ждёт первый ответ ${Math.round(waitMs / 60000)} мин`;
-        } else if (ticket.status === 'waiting_supplier') {
+        } else if (waitingParty === 'supplier') {
           const request = supplierRequests
-            .filter((item) => item.ticketId === ticket.id)
+            .filter(
+              (item) =>
+                item.ticketId === ticket.id &&
+                item.status !== 'closed' &&
+                item.status !== 'cancelled' &&
+                item.status !== 'resolved',
+            )
             .sort(
               (left, right) =>
                 (right.updatedAt?.getTime() ?? 0) - (left.updatedAt?.getTime() ?? 0),
@@ -1054,12 +1089,9 @@ export class AdminService {
             priority += 60;
             issue = 'Диалог завис у поставщика';
           }
-        } else if (ticket.status === 'new' || ticket.status === 'waiting_client') {
+        } else if (waitingParty === 'manager') {
           priority += Math.min(Math.round(waitMs / 60000), 59);
-          issue = `Без ответа ${Math.round(waitMs / 60000)} мин`;
-        } else if (waitMs > 60 * 60 * 1000) {
-          priority += 35;
-          issue = 'Долгий диалог без решения';
+          issue = `Клиент ждёт ответа ${Math.round(waitMs / 60000)} мин`;
         }
 
         return {
@@ -1094,7 +1126,8 @@ export class AdminService {
           id: profile.id,
           fullName: profile.fullName,
           status: presenceStatus,
-          dialogs: managerLoadMap.get(profile.id) ?? 0,
+          dialogsInProgress: managerLoadMap.get(profile.id) ?? 0,
+          resolvedInRange: managerResolvedMap.get(profile.id) ?? 0,
           slaRisk: managerRiskMap.get(profile.id) ?? 0,
           overloaded: (managerLoadMap.get(profile.id) ?? 0) >= 8,
           lastSeenAt:
@@ -1106,7 +1139,8 @@ export class AdminService {
         return (
           statusRank[left.status as keyof typeof statusRank] -
             statusRank[right.status as keyof typeof statusRank] ||
-          right.dialogs - left.dialogs ||
+          right.dialogsInProgress - left.dialogsInProgress ||
+          right.resolvedInRange - left.resolvedInRange ||
           left.fullName.localeCompare(right.fullName, 'ru')
         );
       });
@@ -1363,12 +1397,8 @@ export class AdminService {
         waitingSupplierDialogs,
         waitingClientDialogs,
         resolvedDialogs,
-        dialogsToday: tickets.filter((ticket) => ticket.createdAt >= todayStart).length,
-        resolvedToday: tickets.filter(
-          (ticket) =>
-            (ticket.status === 'resolved' || ticket.status === 'closed') &&
-            (ticket.lastMessageAt ?? ticket.createdAt) >= todayStart,
-        ).length,
+        dialogsInPeriod: ticketsInRange.length,
+        resolvedInPeriod: resolvedTicketsInRange.length,
         avgFirstResponseMs: this.average(
           ticketsInRange.map((ticket) => ticket.firstResponseTime),
         ),

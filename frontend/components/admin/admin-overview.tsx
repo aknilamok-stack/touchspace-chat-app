@@ -16,14 +16,14 @@ import {
 const attentionCards = [
   {
     key: "dialogsWithoutAnswer",
-    label: "Диалоги без ответа",
-    detail: "дольше 2 минут",
+    label: "Ждут менеджера больше 2 минут",
+    detail: "активные диалоги сейчас",
     tone: "bg-rose-50 border-rose-200 text-rose-900",
   },
   {
     key: "supplierOverdue",
-    label: "Просрочки поставщика",
-    detail: "превышен SLA",
+    label: "Активные просрочки поставщика",
+    detail: "незакрытые запросы сейчас",
     tone: "bg-amber-50 border-amber-200 text-amber-900",
   },
 ] as const;
@@ -120,14 +120,8 @@ export function AdminOverview() {
     return () => window.clearInterval(intervalId);
   }, [period, dateFrom, dateTo]);
 
-  const kpis = useMemo(
+  const currentKpis = useMemo(
     () => [
-      {
-        label: "Новые сегодня",
-        value: formatNumber(data?.metrics?.dialogsToday),
-        hint: "созданы за день",
-        tone: "default",
-      },
       {
         label: "Ждут ответа менеджера",
         value: formatNumber(data?.metrics?.waitingManagerDialogs),
@@ -147,28 +141,40 @@ export function AdminOverview() {
         tone: "default",
       },
       {
-        label: "Решено сегодня",
-        value: formatNumber(data?.metrics?.resolvedToday),
-        hint: "решённые и закрытые",
+        label: "Менеджеров онлайн",
+        value: formatNumber(data?.metrics?.onlineManagers),
+        hint: "доступны сейчас",
+        tone: "good",
+      },
+    ],
+    [data],
+  );
+
+  const periodKpis = useMemo(
+    () => [
+      {
+        label: "Диалогов создано",
+        value: formatNumber(data?.metrics?.dialogsInPeriod),
+        hint: "за выбранный период",
+        tone: "default",
+      },
+      {
+        label: "Диалогов решено",
+        value: formatNumber(data?.metrics?.resolvedInPeriod),
+        hint: "по дате решения за период",
         tone: "good",
       },
       {
         label: "1-й ответ менеджера",
         value: formatDuration(data?.metrics?.avgFirstResponseMs),
-        hint: "среднее по системе",
+        hint: "среднее за выбранный период",
         tone: "default",
       },
       {
         label: "Ответ поставщика",
         value: formatDuration(data?.metrics?.avgSupplierResponseMs),
-        hint: "среднее время ответа",
+        hint: "среднее за выбранный период",
         tone: "default",
-      },
-      {
-        label: "Менеджеров онлайн",
-        value: formatNumber(data?.metrics?.onlineManagers),
-        hint: "доступны сейчас",
-        tone: "good",
       },
     ],
     [data],
@@ -185,7 +191,7 @@ export function AdminOverview() {
     {
       label: "Обращений в чат",
       value: formatNumber(data?.metrics?.totalChatRequests),
-      hint: "от нового письма до статуса «решён»",
+      hint: "в диалогах, созданных за период",
     },
     {
       label: "Диалогов создано",
@@ -195,7 +201,7 @@ export function AdminOverview() {
     {
       label: "Запросов поставщикам создано",
       value: formatNumber(data?.metrics?.totalSupplierRequests),
-      hint: "за выбранный период",
+      hint: "включая запросы из старых диалогов",
     },
   ];
   const ratings = data?.ratings ?? {};
@@ -271,7 +277,7 @@ export function AdminOverview() {
         </div>
       </section>
 
-      <AdminPanel title="Требует внимания">
+      <AdminPanel title="Требует внимания сейчас">
         <div className="grid gap-3 md:grid-cols-2">
           {attentionCards.map((item) => (
             <div key={item.key} className={`rounded-[22px] border px-4 py-4 ${item.tone}`}>
@@ -285,20 +291,37 @@ export function AdminOverview() {
         </div>
       </AdminPanel>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {kpis.map((item) => (
-          <article
-            key={item.label}
-            className={`rounded-[22px] border px-5 py-5 shadow-[0_10px_28px_rgba(148,163,184,0.08)] ${kpiTone[item.tone]}`}
-          >
-            <p className="text-sm font-medium text-slate-600">{item.label}</p>
-            <p className="mt-4 text-[34px] font-semibold tracking-tight text-slate-950">{item.value}</p>
-            <p className="mt-2 text-xs text-slate-500">{item.hint}</p>
-          </article>
-        ))}
-      </section>
+      <AdminPanel title="Текущая очередь">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {currentKpis.map((item) => (
+            <article
+              key={item.label}
+              className={`rounded-[22px] border px-5 py-5 shadow-[0_10px_28px_rgba(148,163,184,0.08)] ${kpiTone[item.tone]}`}
+            >
+              <p className="text-sm font-medium text-slate-600">{item.label}</p>
+              <p className="mt-4 text-[34px] font-semibold tracking-tight text-slate-950">{item.value}</p>
+              <p className="mt-2 text-xs text-slate-500">{item.hint}</p>
+            </article>
+          ))}
+        </section>
+      </AdminPanel>
 
-      <AdminPanel title="Охват и активность">
+      <AdminPanel title="За выбранный период">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {periodKpis.map((item) => (
+            <article
+              key={item.label}
+              className={`rounded-[22px] border px-5 py-5 shadow-[0_10px_28px_rgba(148,163,184,0.08)] ${kpiTone[item.tone]}`}
+            >
+              <p className="text-sm font-medium text-slate-600">{item.label}</p>
+              <p className="mt-4 text-[34px] font-semibold tracking-tight text-slate-950">{item.value}</p>
+              <p className="mt-2 text-xs text-slate-500">{item.hint}</p>
+            </article>
+          ))}
+        </section>
+      </AdminPanel>
+
+      <AdminPanel title="Охват за выбранный период">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {activityMetrics.map((item) => (
             <div key={item.label} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
@@ -447,7 +470,7 @@ export function AdminOverview() {
       </AdminPanel>
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
-        <AdminPanel title="Проблемные диалоги">
+        <AdminPanel title="Проблемные диалоги сейчас">
           {(data?.lists?.problematicDialogs ?? []).length > 0 ? (
             <div className="grid gap-3">
               {data.lists.problematicDialogs.map((item: any) => (
@@ -481,13 +504,14 @@ export function AdminOverview() {
           )}
         </AdminPanel>
 
-        <AdminPanel title="Живая команда">
+        <AdminPanel title="Команда: сейчас и за период">
           {(data?.lists?.team ?? []).length > 0 ? (
-            <div className="overflow-hidden rounded-[20px] border border-slate-200">
-              <div className="grid grid-cols-[minmax(0,1.3fr)_110px_90px_90px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
+            <div className="overflow-x-auto rounded-[20px] border border-slate-200">
+              <div className="grid min-w-[680px] grid-cols-[minmax(0,1.3fr)_100px_100px_110px_80px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
                 <span>Менеджер</span>
                 <span>Статус</span>
-                <span>Диалогов</span>
+                <span>В работе</span>
+                <span>Решено за период</span>
                 <span>SLA-риск</span>
               </div>
               <div className="grid">
@@ -497,7 +521,7 @@ export function AdminOverview() {
                   return (
                     <div
                       key={item.id}
-                      className="grid grid-cols-[minmax(0,1.3fr)_110px_90px_90px] gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
+                      className="grid min-w-[680px] grid-cols-[minmax(0,1.3fr)_100px_100px_110px_80px] gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
                     >
                       <div className="min-w-0">
                         <p className="truncate font-medium text-slate-900">{item.fullName}</p>
@@ -511,7 +535,12 @@ export function AdminOverview() {
                           {meta.label}
                         </span>
                       </div>
-                      <div className="flex items-center font-medium text-slate-900">{item.dialogs}</div>
+                      <div className="flex items-center font-medium text-slate-900">
+                        {item.dialogsInProgress}
+                      </div>
+                      <div className="flex items-center font-medium text-slate-900">
+                        {item.resolvedInRange}
+                      </div>
                       <div className="flex items-center font-medium text-slate-900">
                         {item.slaRisk > 0 ? item.slaRisk : "—"}
                       </div>
@@ -526,7 +555,7 @@ export function AdminOverview() {
         </AdminPanel>
       </section>
 
-      <AdminPanel title="Динамика за 7 дней">
+      <AdminPanel title="Динамика обращений за выбранный период">
         {chartPoints.length > 0 ? (
           <div className="grid gap-5">
             <div className="grid h-[210px] grid-cols-7 items-end gap-3">

@@ -222,6 +222,7 @@ export class AdminController {
 
   @Get('dialogs')
   getDialogs(
+    @Query('scope') scope?: string,
     @Query('status') status?: string,
     @Query('managerId') managerId?: string,
     @Query('supplierId') supplierId?: string,
@@ -230,8 +231,11 @@ export class AdminController {
     @Query('dateTo') dateTo?: string,
     @Query('supplierEscalated') supplierEscalated?: string,
     @Query('slaBreached') slaBreached?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     return this.adminService.getDialogs({
+      scope,
       status,
       managerId,
       supplierId,
@@ -240,6 +244,8 @@ export class AdminController {
       dateTo,
       supplierEscalated,
       slaBreached,
+      page,
+      pageSize,
     });
   }
 
@@ -249,8 +255,16 @@ export class AdminController {
     @Query('preset') preset?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('messagePage') messagePage?: string,
+    @Query('messagePageSize') messagePageSize?: string,
   ) {
-    return this.adminService.getDialog(id, { preset, dateFrom, dateTo });
+    return this.adminService.getDialog(id, {
+      preset,
+      dateFrom,
+      dateTo,
+      messagePage,
+      messagePageSize,
+    });
   }
 
   @Post('dialogs/:id/ai-analyze')

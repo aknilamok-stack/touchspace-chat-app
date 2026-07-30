@@ -42,6 +42,7 @@ type UsersFilter = {
 };
 
 type DialogsFilter = {
+  scope?: string;
   status?: string;
   managerId?: string;
   supplierId?: string;
@@ -50,6 +51,13 @@ type DialogsFilter = {
   dateTo?: string;
   supplierEscalated?: string;
   slaBreached?: string;
+  page?: string;
+  pageSize?: string;
+};
+
+type DialogDetailInput = DateRangeInput & {
+  messagePage?: string;
+  messagePageSize?: string;
 };
 
 type InsightBucket = {
@@ -606,50 +614,52 @@ export class AdminService {
     };
   }
 
-  private buildDialogsWhere(filters: DialogsFilter) {
+  private buildDialogsWhere(filters: DialogsFilter): Prisma.TicketWhereInput {
+    const scope = filters.scope === 'history' ? 'history' : 'active';
     const supplierEscalated = this.toBooleanFlag(filters.supplierEscalated);
     const slaBreached = this.toBooleanFlag(filters.slaBreached);
-    const range =
-      filters.preset || filters.dateFrom || filters.dateTo
-        ? this.normalizeDateRange(filters)
-        : null;
-
-    return {
-      conversationMode: {
-        not: 'direct_supplier',
+    const range = scope === 'history' ? this.normalizeDateRange(filters) : null;
+    const activeSupplierRequestWhere: Prisma.SupplierRequestWhereInput = {
+      status: {
+        in: ['pending', 'in_progress'],
       },
-      ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.managerId ? { assignedManagerId: filters.managerId } : {}),
-      ...(filters.supplierId
-        ? {
-            OR: [
-              { supplierId: filters.supplierId },
-              {
-                supplierRequests: {
-                  some: {
-                    supplierId: filters.supplierId,
-                  },
-                },
+    };
+    const and: Prisma.TicketWhereInput[] = [];
+
+    if (filters.supplierId) {
+      and.push({
+        OR: [
+          { supplierId: filters.supplierId },
+          {
+            supplierRequests: {
+              some: {
+                supplierId: filters.supplierId,
               },
-            ],
-          }
-        : {}),
-      ...(range
-        ? {
-            createdAt: {
-              gte: range.from,
-              lte: range.to,
             },
-          }
-        : {}),
-      ...(supplierEscalated === undefined
-        ? {}
-        : supplierEscalated
-          ? { supplierEscalatedAt: { not: null } }
-          : { supplierEscalatedAt: null }),
-      ...(slaBreached === undefined
-        ? {}
-        : slaBreached
+          },
+        ],
+      });
+    }
+
+    if (supplierEscalated !== undefined) {
+      and.push(
+        supplierEscalated
+          ? {
+              OR: [
+                { supplierEscalatedAt: { not: null } },
+                { supplierRequests: { some: {} } },
+              ],
+            }
+          : {
+              supplierEscalatedAt: null,
+              supplierRequests: { none: {} },
+            },
+      );
+    }
+
+    if (slaBreached !== undefined) {
+      and.push(
+        slaBreached
           ? {
               OR: [
                 { slaBreached: true },
@@ -658,6 +668,9 @@ export class AdminService {
                   supplierRequests: {
                     some: {
                       responseBreached: true,
+                      ...(scope === 'active'
+                        ? activeSupplierRequestWhere
+                        : {}),
                     },
                   },
                 },
@@ -669,9 +682,42 @@ export class AdminService {
               supplierRequests: {
                 none: {
                   responseBreached: true,
+                  ...(scope === 'active'
+                    ? activeSupplierRequestWhere
+                    : {}),
                 },
               },
-            }),
+            },
+      );
+    }
+
+    return {
+      conversationMode: {
+        not: 'direct_supplier',
+      },
+      ...(filters.status
+        ? { status: filters.status }
+        : scope === 'active'
+          ? {
+              status: {
+                notIn: ['resolved', 'closed'],
+              },
+            }
+          : {}),
+      ...(filters.managerId ? { assignedManagerId: filters.managerId } : {}),
+      ...(range
+        ? {
+            requestEvents: {
+              some: {
+                createdAt: {
+                  gte: range.from,
+                  lte: range.to,
+                },
+              },
+            },
+          }
+        : {}),
+      ...(and.length > 0 ? { AND: and } : {}),
     };
   }
 
@@ -685,37 +731,32 @@ export class AdminService {
     tradePointName?: string | null;
     clientName?: string | null;
   }): Prisma.TicketWhereInput {
-    const or: Prisma.TicketWhereInput[] = [{ id: dialog.id }];
     const clientId = dialog.clientId?.trim();
     const email =
       dialog.canonicalEmail?.trim()?.toLowerCase() ||
       dialog.clientEmail?.trim()?.toLowerCase() ||
       dialog.currentUserEmail?.trim()?.toLowerCase();
     const tradePointExternalId = dialog.tradePointExternalId?.trim();
-    const tradePointName = dialog.tradePointName?.trim();
-    const clientName = dialog.clientName?.trim();
 
     if (clientId) {
-      or.push({ clientId });
+      return { clientId };
     }
 
     if (email) {
-      or.push({ canonicalEmail: email }, { clientEmail: email }, { currentUserEmail: email });
+      return {
+        OR: [
+          { canonicalEmail: email },
+          { clientEmail: email },
+          { currentUserEmail: email },
+        ],
+      };
     }
 
     if (tradePointExternalId) {
-      or.push({ tradePointExternalId });
+      return { tradePointExternalId };
     }
 
-    if (tradePointName) {
-      or.push({ tradePointName });
-    }
-
-    if (clientName) {
-      or.push({ clientName });
-    }
-
-    return { OR: or };
+    return { id: dialog.id };
   }
 
   async getOverview(input?: DateRangeInput) {
@@ -2333,88 +2374,149 @@ export class AdminService {
   }
 
   async getDialogs(filters: DialogsFilter) {
-    const dialogs = await this.prisma.ticket.findMany({
-      where: this.buildDialogsWhere(filters),
-      include: {
-        supplierRequests: {
-          select: {
-            id: true,
-            supplierId: true,
-            status: true,
-            responseBreached: true,
+    const page = Math.max(Number.parseInt(filters.page ?? '1', 10) || 1, 1);
+    const pageSize = Math.min(
+      Math.max(Number.parseInt(filters.pageSize ?? '30', 10) || 30, 10),
+      100,
+    );
+    const where = this.buildDialogsWhere(filters);
+    const [dialogs, total] = await Promise.all([
+      this.prisma.ticket.findMany({
+        where,
+        include: {
+          supplierRequests: {
+            select: {
+              id: true,
+              supplierId: true,
+              supplierName: true,
+              status: true,
+              responseBreached: true,
+              claimRequiredAt: true,
+              firstResponseAt: true,
+            },
+          },
+          messages: {
+            select: {
+              id: true,
+              content: true,
+              senderType: true,
+              senderRole: true,
+              createdAt: true,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 1,
           },
         },
-        messages: {
-          select: {
-            id: true,
-            content: true,
-            senderType: true,
-            senderRole: true,
-            createdAt: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 1,
-        },
-      },
-      orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
-    });
+        orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.ticket.count({ where }),
+    ]);
 
     return {
-      items: dialogs.map((dialog) => ({
-        id: dialog.id,
-        title: dialog.title,
-        clientName:
-          dialog.clientName ||
-          dialog.tradePointName ||
-          dialog.clientEmail ||
-          dialog.currentUserEmail ||
-          'Клиент не указан',
-        managerName: dialog.assignedManagerName,
-        managerId: dialog.assignedManagerId,
-        supplierName: dialog.supplierName,
-        supplierId: dialog.supplierId,
-        status: dialog.status,
-        createdAt: dialog.createdAt,
-        lastMessageAt: dialog.lastMessageAt,
-        firstResponseAt: dialog.firstResponseAt,
-        firstResponseTime: dialog.firstResponseTime,
-        supplierEscalated: Boolean(
-          dialog.supplierEscalatedAt || dialog.supplierRequests.length,
-        ),
-        slaBreached:
-          dialog.slaBreached ||
-          dialog.firstResponseBreached ||
-          dialog.supplierRequests.some((request) => request.responseBreached),
-        messagesCount: dialog.messages.length,
-        lastMessagePreview: dialog.messages[0]?.content ?? null,
-      })),
-      total: dialogs.length,
+      items: dialogs.map((dialog) => {
+        const activeSupplierRequests = dialog.supplierRequests.filter(
+          (request) =>
+            request.status === 'pending' || request.status === 'in_progress',
+        );
+        const managerSlaBreached =
+          dialog.slaBreached || dialog.firstResponseBreached;
+        const supplierSlaBreached = dialog.supplierRequests.some(
+          (request) => request.responseBreached,
+        );
+        const activeSupplierSlaBreached = activeSupplierRequests.some(
+          (request) => request.responseBreached,
+        );
+
+        return {
+          id: dialog.id,
+          title: dialog.title,
+          clientName:
+            dialog.clientName ||
+            dialog.tradePointName ||
+            dialog.clientEmail ||
+            dialog.currentUserEmail ||
+            'Клиент не указан',
+          managerName: dialog.assignedManagerName,
+          managerId: dialog.assignedManagerId,
+          supplierName:
+            activeSupplierRequests[0]?.supplierName ??
+            dialog.supplierName ??
+            dialog.supplierRequests[0]?.supplierName ??
+            null,
+          supplierId: dialog.supplierId,
+          status: dialog.status,
+          createdAt: dialog.createdAt,
+          lastMessageAt: dialog.lastMessageAt,
+          firstResponseAt: dialog.firstResponseAt,
+          firstResponseTime: dialog.firstResponseTime,
+          supplierEscalated: Boolean(
+            dialog.supplierEscalatedAt || dialog.supplierRequests.length,
+          ),
+          activeSupplierRequestsCount: activeSupplierRequests.length,
+          managerSlaBreached,
+          supplierSlaBreached,
+          activeSlaBreached:
+            managerSlaBreached || activeSupplierSlaBreached,
+          slaBreached: managerSlaBreached || supplierSlaBreached,
+          lastMessageSenderType: dialog.messages[0]?.senderType ?? null,
+          lastMessageSenderRole: dialog.messages[0]?.senderRole ?? null,
+          lastMessagePreview: dialog.messages[0]?.content ?? null,
+        };
+      }),
+      total,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(Math.ceil(total / pageSize), 1),
+      },
+      scope: filters.scope === 'history' ? 'history' : 'active',
     };
   }
 
-  async getDialog(id: string, input?: DateRangeInput) {
-    const dialog = await this.prisma.ticket.findUnique({
-      where: { id },
-      include: {
-        messages: {
-          orderBy: {
-            createdAt: 'asc',
+  async getDialog(id: string, input?: DialogDetailInput) {
+    const messagePage = Math.max(
+      Number.parseInt(input?.messagePage ?? '1', 10) || 1,
+      1,
+    );
+    const messagePageSize = Math.min(
+      Math.max(
+        Number.parseInt(input?.messagePageSize ?? '50', 10) || 50,
+        20,
+      ),
+      100,
+    );
+    const [dialog, messages, messagesTotal] = await Promise.all([
+      this.prisma.ticket.findUnique({
+        where: { id },
+        include: {
+          supplierRequests: {
+            orderBy: {
+              createdAt: 'asc',
+            },
           },
         },
-        supplierRequests: {
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-      },
-    });
+      }),
+      this.prisma.message.findMany({
+        where: { ticketId: id },
+        orderBy: { createdAt: 'desc' },
+        skip: (messagePage - 1) * messagePageSize,
+        take: messagePageSize,
+      }),
+      this.prisma.message.count({
+        where: { ticketId: id },
+      }),
+    ]);
 
     if (!dialog) {
       throw new NotFoundException(`Dialog with id "${id}" not found`);
     }
 
+    const chronologicalMessages = messages.reverse();
     const range = this.normalizeDateRange(input);
     const clientWhere = this.buildClientDialogWhere(dialog);
     const clientDialogs = await this.prisma.ticket.findMany({
@@ -2427,15 +2529,37 @@ export class AdminService {
             },
           },
           {
-            createdAt: {
-              gte: range.from,
-              lte: range.to,
+            requestEvents: {
+              some: {
+                createdAt: {
+                  gte: range.from,
+                  lte: range.to,
+                },
+              },
             },
           },
         ],
       },
       include: {
+        requestEvents: {
+          where: {
+            createdAt: {
+              gte: range.from,
+              lte: range.to,
+            },
+          },
+          select: {
+            id: true,
+            resolvedAt: true,
+          },
+        },
         supplierRequests: {
+          where: {
+            createdAt: {
+              gte: range.from,
+              lte: range.to,
+            },
+          },
           select: {
             id: true,
             responseBreached: true,
@@ -2447,9 +2571,26 @@ export class AdminService {
       (total, ticket) => total + ticket.supplierRequests.length,
       0,
     );
+    const requestsTotal = clientDialogs.reduce(
+      (total, ticket) => total + ticket.requestEvents.length,
+      0,
+    );
+    const resolvedRequests = clientDialogs.reduce(
+      (total, ticket) =>
+        total +
+        ticket.requestEvents.filter((event) => Boolean(event.resolvedAt)).length,
+      0,
+    );
 
     return {
       ...dialog,
+      messages: chronologicalMessages,
+      messagesPagination: {
+        page: messagePage,
+        pageSize: messagePageSize,
+        total: messagesTotal,
+        totalPages: Math.max(Math.ceil(messagesTotal / messagePageSize), 1),
+      },
       displayClientName:
         dialog.clientName ||
         dialog.tradePointName ||
@@ -2459,13 +2600,9 @@ export class AdminService {
       period: range,
       clientStats: {
         dialogsTotal: clientDialogs.length,
-        completedDialogs: clientDialogs.filter(
-          (ticket) =>
-            ticket.status === 'resolved' ||
-            ticket.status === 'closed' ||
-            Boolean(ticket.resolvedAt) ||
-            Boolean(ticket.closedAt),
-        ).length,
+        requestsTotal,
+        resolvedRequests,
+        unresolvedRequests: Math.max(requestsTotal - resolvedRequests, 0),
         supplierRequestsCount,
         managerSlaBreaches: clientDialogs.filter(
           (ticket) => ticket.slaBreached || ticket.firstResponseBreached,

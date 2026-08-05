@@ -1,6 +1,7 @@
 import {
   buildSupplierDialogWorkbook,
   calculateSupplierDialogExportMetrics,
+  getSupplierDialogLabel,
   isInsideSupplierRequestWindow,
   type SupplierDialogExportRequest,
 } from './admin-supplier-dialog-export';
@@ -72,6 +73,21 @@ describe('supplier dialog export', () => {
     expect(workbookXml).toContain('name="Переписка"');
     expect(requestsXml).toContain('Проверьте заказ');
     expect(messagesXml).toContain('Проверьте заказ');
+    expect(requestsXml).not.toContain('ID запроса');
+    expect(messagesXml).toContain('Диалог 1 из 1');
+    expect(messagesXml).toContain('Время');
+    expect(messagesXml).toContain('Участник');
+    expect(messagesXml).not.toContain('ID запроса');
+  });
+
+  it('replaces local file links with a useful dialog label', () => {
+    expect(
+      getSupplierDialogLabel(
+        'file:///C:/Users/%D0%A2%D0%B8%D0%BC%D1%83%D1%80/',
+        'Торговая точка «Львовская»',
+      ),
+    ).toBe('Торговая точка «Львовская»');
+    expect(getSupplierDialogLabel('Заказ 13605', 'Клиент')).toBe('Заказ 13605');
   });
 
   it('cuts correspondence at supplier close or report generation time', () => {

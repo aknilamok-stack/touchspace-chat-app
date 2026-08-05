@@ -119,6 +119,25 @@ const roleLabel = (role: string) => {
   return labels[role] ?? role;
 };
 
+const isTechnicalDialogTitle = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized.startsWith('file://') ||
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    /^[a-z]:[\\/]/i.test(normalized)
+  );
+};
+
+export const getSupplierDialogLabel = (
+  dialogTitle: string,
+  clientName: string,
+) =>
+  isTechnicalDialogTitle(dialogTitle)
+    ? clientName.trim() || 'Диалог без названия'
+    : dialogTitle.trim();
+
 const xmlEscape = (value: unknown) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -155,13 +174,17 @@ const sheetXml = ({
   rows,
   widths,
   headerRow,
-  merge,
+  merges,
+  rowStyles,
+  rowHeights,
   hideGridLines = false,
 }: {
   rows: Array<Array<string | number>>;
   widths: number[];
   headerRow?: number;
-  merge?: string;
+  merges?: string[];
+  rowStyles?: Record<number, number>;
+  rowHeights?: Record<number, number>;
   hideGridLines?: boolean;
 }) => {
   const maxColumn = Math.max(widths.length, ...rows.map((row) => row.length));
@@ -169,14 +192,10 @@ const sheetXml = ({
     .map((values, rowIndex) => {
       const rowNumber = rowIndex + 1;
       const style =
-        rowNumber === headerRow
-          ? 1
-          : rowNumber === 1 && merge
-            ? 2
-            : rowNumber % 2 === 0
-              ? 3
-              : 0;
-      return `<row r="${rowNumber}">${values
+        rowStyles?.[rowNumber] ??
+        (rowNumber === headerRow ? 1 : rowNumber % 2 === 0 ? 3 : 0);
+      const height = rowHeights?.[rowNumber];
+      return `<row r="${rowNumber}"${height ? ` ht="${height}" customHeight="1"` : ''}>${values
         .map((value, columnIndex) =>
           cellXml(value, rowNumber, columnIndex + 1, style),
         )
@@ -195,8 +214,10 @@ const sheetXml = ({
   const autoFilter = headerRow
     ? `<autoFilter ref="A${headerRow}:${columnName(maxColumn)}${rows.length}"/>`
     : '';
-  const merges = merge
-    ? `<mergeCells count="1"><mergeCell ref="${merge}"/></mergeCells>`
+  const mergeXml = merges?.length
+    ? `<mergeCells count="${merges.length}">${merges
+        .map((merge) => `<mergeCell ref="${merge}"/>`)
+        .join('')}</mergeCells>`
     : '';
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -204,7 +225,7 @@ const sheetXml = ({
   <sheetViews><sheetView workbookViewId="0" showGridLines="${hideGridLines ? 0 : 1}">${pane}</sheetView></sheetViews>
   <cols>${columns}</cols>
   <sheetData>${rowXml}</sheetData>
-  ${autoFilter}${merges}
+  ${autoFilter}${mergeXml}
 </worksheet>`;
 };
 
@@ -258,11 +279,11 @@ const workbookFiles = (
     'xl/styles.xml':
       strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="3"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><b/><sz val="18"/><color rgb="FF0F172A"/><name val="Arial"/></font></fonts>
-  <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F172A"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill></fills>
+  <fonts count="4"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><b/><sz val="18"/><color rgb="FF0F172A"/><name val="Arial"/></font><font><b/><sz val="12"/><color rgb="FF0F172A"/><name val="Arial"/></font></fonts>
+  <fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F172A"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCEBFA"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFF6FF"/></patternFill></fill></fills>
   <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>
+  <cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="3" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="5" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`),
     'docProps/core.xml':
@@ -352,7 +373,6 @@ export const buildSupplierDialogWorkbook = async (
   ];
   const requestRows: Array<Array<string | number>> = [
     [
-      'ID запроса',
       'Диалог',
       'Клиент',
       'Поставщик',
@@ -372,23 +392,21 @@ export const buildSupplierDialogWorkbook = async (
     ],
   ];
   const messageRows: Array<Array<string | number>> = [
-    [
-      'ID запроса',
-      'Поставщик',
-      'Диалог',
-      'Клиент',
-      'Дата и время',
-      'Автор',
-      'Роль',
-      'Тип',
-      'Сообщение',
-    ],
+    ['Переписка по запросам поставщикам'],
+    ['Каждый блок ниже — один отдельный запрос и вся его хронология.'],
+    [],
   ];
+  const messageRowStyles: Record<number, number> = { 1: 2, 2: 5 };
+  const messageRowHeights: Record<number, number> = { 1: 28, 2: 24 };
+  const messageMerges = ['A1:C1', 'A2:C2'];
 
-  for (const request of data.requests) {
-    requestRows.push([
-      request.id,
+  for (const [requestIndex, request] of data.requests.entries()) {
+    const dialogLabel = getSupplierDialogLabel(
       request.dialogTitle,
+      request.clientName,
+    );
+    requestRows.push([
+      dialogLabel,
       request.clientName,
       request.supplierName,
       request.supplierEmployeeName,
@@ -407,6 +425,22 @@ export const buildSupplierDialogWorkbook = async (
       formatDuration(duration(request.createdAt, request.closedAt)),
       request.responseBreached ? 'Да' : 'Нет',
     ]);
+    const blockStartRow = messageRows.length + 1;
+    messageRows.push([
+      `Диалог ${requestIndex + 1} из ${data.requests.length} · ${dialogLabel}`,
+    ]);
+    messageRows.push([
+      `Поставщик: ${request.supplierName}`,
+      `Менеджер: ${request.managerName}`,
+      `Статус: ${statusLabel(request)}`,
+    ]);
+    messageRows.push(['Время', 'Участник', 'Сообщение']);
+    messageRowStyles[blockStartRow] = 4;
+    messageRowStyles[blockStartRow + 1] = 5;
+    messageRowStyles[blockStartRow + 2] = 6;
+    messageRowHeights[blockStartRow] = 26;
+    messageRowHeights[blockStartRow + 1] = 24;
+    messageMerges.push(`A${blockStartRow}:C${blockStartRow}`);
     const timeline: SupplierDialogExportMessage[] = [
       {
         createdAt: request.createdAt,
@@ -446,19 +480,12 @@ export const buildSupplierDialogWorkbook = async (
     );
     for (const message of timeline) {
       messageRows.push([
-        request.id,
-        request.supplierName,
-        request.dialogTitle,
-        request.clientName,
         formatDate(message.createdAt),
-        message.author,
-        roleLabel(message.role),
-        message.isInternal
-          ? `${message.messageType} · внутреннее`
-          : message.messageType,
+        `${roleLabel(message.role)} · ${message.author}`,
         message.text,
       ]);
     }
+    messageRows.push([]);
   }
 
   const sheets = [
@@ -468,7 +495,8 @@ export const buildSupplierDialogWorkbook = async (
         rows: summaryRows,
         widths: [32, 24, 42, 42],
         headerRow: 6,
-        merge: 'A1:D1',
+        merges: ['A1:D1'],
+        rowStyles: { 1: 2 },
         hideGridLines: true,
       }),
     },
@@ -477,7 +505,7 @@ export const buildSupplierDialogWorkbook = async (
       xml: sheetXml({
         rows: requestRows,
         widths: [
-          28, 34, 24, 28, 26, 24, 60, 22, 20, 20, 20, 20, 20, 22, 20, 20, 17,
+          34, 24, 28, 26, 24, 60, 22, 20, 20, 20, 20, 20, 22, 20, 20, 17,
         ],
         headerRow: 1,
       }),
@@ -486,8 +514,11 @@ export const buildSupplierDialogWorkbook = async (
       name: 'Переписка',
       xml: sheetXml({
         rows: messageRows,
-        widths: [28, 28, 34, 24, 20, 26, 20, 20, 80],
-        headerRow: 1,
+        widths: [20, 28, 64],
+        merges: messageMerges,
+        rowStyles: messageRowStyles,
+        rowHeights: messageRowHeights,
+        hideGridLines: true,
       }),
     },
   ];

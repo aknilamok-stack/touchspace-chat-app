@@ -8,14 +8,16 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AppUpdatesService } from '../app-updates/app-updates.service';
 import { SupplierApiService } from '../supplier-api/supplier-api.service';
 import { AdminGuard } from './admin.guard';
 import { AdminAiService } from './admin-ai.service';
 import { AdminService } from './admin.service';
+import { buildSupplierDialogWorkbook } from './admin-supplier-dialog-export';
 
 type AdminRequest = Request & {
   adminContext?: {
@@ -352,6 +354,39 @@ export class AdminController {
       dateFrom,
       dateTo,
     });
+  }
+
+  @Get('analytics/supplier-dialog-export/options')
+  getSupplierDialogExportOptions() {
+    return this.adminService.getSupplierDialogExportOptions();
+  }
+
+  @Get('analytics/supplier-dialog-export')
+  async exportSupplierDialogs(
+    @Res() response: Response,
+    @Query('preset') preset?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('supplierName') supplierName?: string,
+  ) {
+    const data = await this.adminService.getSupplierDialogExportData({
+      preset,
+      dateFrom,
+      dateTo,
+      supplierName,
+    });
+    const workbook = await buildSupplierDialogWorkbook(data);
+    const date = new Date().toISOString().slice(0, 10);
+
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="touchspace-supplier-dialogs-${date}.xlsx"`,
+    );
+    response.send(Buffer.from(workbook));
   }
 
   @Get('analytics/insights')

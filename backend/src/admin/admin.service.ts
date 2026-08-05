@@ -17,6 +17,11 @@ import {
   resolveAnalyticsWaitingParty,
 } from './admin-analytics-exclusions';
 import { calculateAnalyticsOverview } from './admin-analytics-overview';
+import type {
+  SupplierDialogExportData,
+  SupplierDialogExportMessage,
+} from './admin-supplier-dialog-export';
+import { isInsideSupplierRequestWindow } from './admin-supplier-dialog-export';
 import {
   formatMoscowDayKey,
   normalizeAdminDateRange,
@@ -3178,6 +3183,170 @@ export class AdminService {
         })),
       ),
       requests: requests.slice(0, 20),
+    };
+  }
+
+  async getSupplierDialogExportOptions() {
+    const requests = await this.prisma.supplierRequest.findMany({
+      select: {
+        id: true,
+        supplierId: true,
+        supplierName: true,
+        assignedSupplierProfileId: true,
+        assignedSupplierProfileName: true,
+      },
+      orderBy: {
+        supplierName: 'asc',
+      },
+    });
+    const names = requests
+      .filter((request) => !isExcludedAnalyticsSupplier(request))
+      .map((request) => request.supplierName.trim())
+      .filter(Boolean);
+
+    return [...new Set(names)].sort((left, right) =>
+      left.localeCompare(right, 'ru'),
+    );
+  }
+
+  async getSupplierDialogExportData(
+    input?: DateRangeInput & { supplierName?: string },
+  ): Promise<SupplierDialogExportData> {
+    const range = this.normalizeDateRange(input);
+    const maxRangeMs = 366 * 24 * 60 * 60_000;
+
+    if (range.to.getTime() - range.from.getTime() > maxRangeMs) {
+      throw new BadRequestException(
+        'За один раз можно выгрузить период не более 366 дней',
+      );
+    }
+
+    const selectedSupplierName = input?.supplierName?.trim() || null;
+    const now = new Date();
+    const candidates = await this.prisma.supplierRequest.findMany({
+      where: {
+        createdAt: {
+          gte: range.from,
+          lte: range.to,
+        },
+        ...(selectedSupplierName
+          ? { supplierName: selectedSupplierName }
+          : {}),
+      },
+      include: {
+        createdByManager: {
+          select: {
+            fullName: true,
+          },
+        },
+        ticket: {
+          select: {
+            id: true,
+            title: true,
+            clientId: true,
+            clientName: true,
+            tradePointName: true,
+            assignedManagerId: true,
+            lastResolvedByManagerId: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    const requests = candidates.filter(
+      (request) =>
+        !isExcludedAnalyticsSupplier(request) &&
+        !isExcludedAnalyticsTicket(request.ticket),
+    );
+    const ticketIds = [...new Set(requests.map((request) => request.ticketId))];
+    const allMessages = ticketIds.length
+      ? await this.prisma.message.findMany({
+          where: {
+            ticketId: {
+              in: ticketIds,
+            },
+            senderType: {
+              in: ['manager', 'supplier', 'client'],
+            },
+            createdAt: {
+              gte: range.from,
+              lte: now,
+            },
+          },
+          include: {
+            senderProfile: {
+              select: {
+                fullName: true,
+                supplierId: true,
+                companyName: true,
+              },
+            },
+          },
+          orderBy: [{ createdAt: 'asc' }],
+        })
+      : [];
+    const messagesByTicketId = new Map<string, typeof allMessages>();
+
+    for (const message of allMessages) {
+      const ticketMessages = messagesByTicketId.get(message.ticketId) ?? [];
+      ticketMessages.push(message);
+      messagesByTicketId.set(message.ticketId, ticketMessages);
+    }
+
+    return {
+      period: range,
+      generatedAt: now,
+      supplierName: selectedSupplierName,
+      requests: requests.map((request) => {
+        const messages = (messagesByTicketId.get(request.ticketId) ?? [])
+          .filter(
+            (message) =>
+              isInsideSupplierRequestWindow(
+                message.createdAt,
+                request.createdAt,
+                request.closedAt,
+                now,
+              ),
+          )
+          .map<SupplierDialogExportMessage>((message) => ({
+            createdAt: message.createdAt,
+            author:
+              message.senderProfile?.fullName?.trim() ||
+              (message.senderType === 'client'
+                ? request.ticket.clientName?.trim() || 'Клиент'
+                : message.senderType === 'supplier'
+                  ? request.assignedSupplierProfileName?.trim() ||
+                    request.supplierName
+                  : request.createdByManager?.fullName?.trim() || 'Менеджер'),
+            role: message.senderType,
+            text: message.content,
+            messageType: message.messageType,
+            isInternal: message.isInternal,
+          }));
+
+        return {
+          id: request.id,
+          ticketId: request.ticketId,
+          dialogTitle: request.ticket.title,
+          clientName:
+            request.ticket.tradePointName?.trim() ||
+            request.ticket.clientName?.trim() ||
+            'Клиент не указан',
+          supplierName: request.supplierName,
+          supplierEmployeeName:
+            request.assignedSupplierProfileName?.trim() || 'Не назначен',
+          managerName:
+            request.createdByManager?.fullName?.trim() || 'Не указан',
+          requestText: request.requestText,
+          status: request.status,
+          createdAt: request.createdAt,
+          claimedAt: request.claimedAt,
+          firstResponseAt: request.firstResponseAt,
+          closedAt: request.closedAt,
+          responseBreached: request.responseBreached,
+          messages,
+        };
+      }),
     };
   }
 

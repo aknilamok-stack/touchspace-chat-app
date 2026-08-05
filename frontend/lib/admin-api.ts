@@ -74,6 +74,39 @@ export async function adminRequest<T>(
   return response.json() as Promise<T>;
 }
 
+async function adminDownload(
+  path: string,
+  query?: Record<string, QueryValue>,
+) {
+  let response: Response;
+
+  try {
+    response = await fetch(buildUrl(path, query), {
+      headers: getAdminHeaders(),
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Failed to fetch") {
+      throw new Error("Не удалось подключиться к backend");
+    }
+
+    throw error;
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filenameMatch = /filename="?([^";]+)"?/i.exec(disposition);
+
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] ?? "touchspace-supplier-dialogs.xlsx",
+  };
+}
+
 export const adminApi = {
   getOverview: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/overview", undefined, query),
@@ -174,6 +207,10 @@ export const adminApi = {
     adminRequest<any>("/admin/analytics/suppliers", undefined, query),
   getSupplierAnalyticsDetail: (id: string, query?: Record<string, QueryValue>) =>
     adminRequest<any>(`/admin/analytics/suppliers/${id}`, undefined, query),
+  getSupplierDialogExportOptions: () =>
+    adminRequest<string[]>("/admin/analytics/supplier-dialog-export/options"),
+  downloadSupplierDialogExport: (query?: Record<string, QueryValue>) =>
+    adminDownload("/admin/analytics/supplier-dialog-export", query),
   getSlaSummary: (query?: Record<string, QueryValue>) =>
     adminRequest<any>("/admin/sla", undefined, query),
 };

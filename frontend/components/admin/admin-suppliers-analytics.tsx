@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatDuration, formatDateTime } from "@/lib/admin-format";
-import { buildPeriodLabel, buildPeriodQuery, downloadExcelReport } from "@/lib/excel-report";
+import { buildPeriodQuery } from "@/lib/excel-report";
 import {
   AdminButton,
   AdminCards,
@@ -16,7 +16,6 @@ import {
   AdminStatusBadge,
   AdminTable,
   AdminToolbar,
-  getStatusLabel,
 } from "@/components/admin/admin-ui";
 
 export function AdminSuppliersAnalytics() {
@@ -28,6 +27,9 @@ export function AdminSuppliersAnalytics() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportSupplierName, setExportSupplierName] = useState("");
+  const [exportSupplierOptions, setExportSupplierOptions] = useState<string[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
 
   const load = async () => {
     try {
@@ -52,6 +54,19 @@ export function AdminSuppliersAnalytics() {
   }, [preset, dateFrom, dateTo, companyName]);
 
   useEffect(() => {
+    void adminApi
+      .getSupplierDialogExportOptions()
+      .then(setExportSupplierOptions)
+      .catch((requestError) =>
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Не удалось загрузить список поставщиков",
+        ),
+      );
+  }, []);
+
+  useEffect(() => {
     if (!selectedId) {
       setDetail(null);
       return;
@@ -65,47 +80,32 @@ export function AdminSuppliersAnalytics() {
       );
   }, [selectedId, preset, dateFrom, dateTo]);
 
-  const downloadReport = () => {
-    const periodLabel = buildPeriodLabel({ preset, dateFrom, dateTo });
-    const companyLabel = companyName || "все компании";
-    const items = payload?.items ?? [];
+  const downloadDialogExport = async () => {
+    try {
+      setIsExporting(true);
+      setError(null);
+      const { blob, filename } = await adminApi.downloadSupplierDialogExport({
+        ...buildPeriodQuery({ preset, dateFrom, dateTo }),
+        supplierName: exportSupplierName,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
 
-    downloadExcelReport(`touchspace-suppliers-report-${periodLabel}-${companyLabel}`, [
-      {
-        title: `Отчет по поставщикам за период: ${periodLabel}. Компания: ${companyLabel}`,
-        columns: [
-          "Поставщик",
-          "Компания",
-          "Статус",
-          "Получено запросов",
-          "Ответили",
-          "Среднее время ответа",
-          "SLA просрочки",
-          "Связанные диалоги",
-        ],
-        rows: items.map((item: any) => [
-          item.fullName,
-          item.companyName || "",
-          getStatusLabel(item.status),
-          item.receivedRequests ?? 0,
-          item.answeredRequests ?? 0,
-          formatDuration(item.avgResponseMs),
-          item.slaBreaches ?? 0,
-          item.relatedDialogs ?? 0,
-        ]),
-      },
-      {
-        title: "Итоги",
-        columns: ["Показатель", "Значение"],
-        rows: [
-          ["Поставщиков в отчете", items.length],
-          ["Всего запросов", items.reduce((sum: number, item: any) => sum + (item.receivedRequests ?? 0), 0)],
-          ["Ответили", items.reduce((sum: number, item: any) => sum + (item.answeredRequests ?? 0), 0)],
-          ["SLA просрочки", items.reduce((sum: number, item: any) => sum + (item.slaBreaches ?? 0), 0)],
-          ["Связанные диалоги", items.reduce((sum: number, item: any) => sum + (item.relatedDialogs ?? 0), 0)],
-        ],
-      },
-    ]);
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Не удалось сформировать Excel-отчёт",
+      );
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -132,13 +132,41 @@ export function AdminSuppliersAnalytics() {
           <AdminButton tone="secondary" onClick={() => void load()}>
             Обновить
           </AdminButton>
-          <AdminButton onClick={downloadReport} disabled={!payload}>
-            Скачать Excel
-          </AdminButton>
         </AdminToolbar>
       }
     >
       {error ? <AdminMessage tone="error">{error}</AdminMessage> : null}
+
+      <AdminPanel title="Выгрузка диалогов поставщиков">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="grid gap-2">
+            <label htmlFor="supplier-dialog-export" className="text-sm font-medium text-slate-900">
+              Поставщик для отчёта
+            </label>
+            <AdminSelect
+              id="supplier-dialog-export"
+              value={exportSupplierName}
+              onChange={(event) => setExportSupplierName(event.target.value)}
+            >
+              <option value="">Все поставщики</option>
+              {exportSupplierOptions.map((supplierName) => (
+                <option key={supplierName} value={supplierName}>
+                  {supplierName}
+                </option>
+              ))}
+            </AdminSelect>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">
+              Период берётся из фильтра страницы. Excel содержит сводку, список запросов и переписку от запроса менеджера до решения поставщиком. Для открытых запросов — до момента формирования.
+            </p>
+          </div>
+          <AdminButton
+            onClick={() => void downloadDialogExport()}
+            disabled={isExporting}
+          >
+            {isExporting ? "Формируем Excel…" : "Сформировать Excel"}
+          </AdminButton>
+        </div>
+      </AdminPanel>
 
       <AdminCards
         items={[

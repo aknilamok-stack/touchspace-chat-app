@@ -1624,10 +1624,21 @@ export class TicketsService {
         });
 
         if (isReopened || !existingTicket.lastClientMessageAt) {
-          await tx.ticketRequestEvent.create({
-            data: {
+          const requestSequence = isReopened
+            ? existingTicket.requestCount + 1
+            : 1;
+
+          await tx.ticketRequestEvent.upsert({
+            where: {
+              ticketId_sequence: {
+                ticketId: existingTicket.id,
+                sequence: requestSequence,
+              },
+            },
+            update: {},
+            create: {
               ticketId: existingTicket.id,
-              sequence: isReopened ? existingTicket.requestCount + 1 : 1,
+              sequence: requestSequence,
               eventType: isReopened ? 'reopened' : 'initial',
               createdAt: message.createdAt,
             },
@@ -1758,8 +1769,15 @@ export class TicketsService {
       });
 
       if (isClientStart) {
-        await tx.ticketRequestEvent.create({
-          data: {
+        await tx.ticketRequestEvent.upsert({
+          where: {
+            ticketId_sequence: {
+              ticketId: ticket.id,
+              sequence: 1,
+            },
+          },
+          update: {},
+          create: {
             ticketId: ticket.id,
             sequence: 1,
             eventType: 'initial',

@@ -107,12 +107,32 @@ export class MessagesService {
   ) {}
 
   private isWriteConflictError(error: unknown) {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'P2034'
-    );
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return false;
+    }
+
+    const prismaError = error as {
+      code?: unknown;
+      meta?: unknown;
+    };
+
+    if (prismaError.code === 'P2034') {
+      return true;
+    }
+
+    if (prismaError.code !== 'P2002') {
+      return false;
+    }
+
+    try {
+      const metadata = JSON.stringify(prismaError.meta ?? {});
+      return (
+        metadata.includes('TicketRequestEvent') &&
+        metadata.includes('ticketId_sequence')
+      );
+    } catch {
+      return false;
+    }
   }
 
   private async runWithWriteConflictRetry<T>(operation: () => Promise<T>) {
@@ -797,12 +817,21 @@ export class MessagesService {
           senderType === 'client' &&
           (isClientReopeningResolvedDialog || !ticket.lastClientMessageAt)
         ) {
-          await tx.ticketRequestEvent.create({
-            data: {
+          const requestSequence = isClientReopeningResolvedDialog
+            ? ticket.requestCount + 1
+            : 1;
+
+          await tx.ticketRequestEvent.upsert({
+            where: {
+              ticketId_sequence: {
+                ticketId,
+                sequence: requestSequence,
+              },
+            },
+            update: {},
+            create: {
               ticketId,
-              sequence: isClientReopeningResolvedDialog
-                ? ticket.requestCount + 1
-                : 1,
+              sequence: requestSequence,
               eventType: isClientReopeningResolvedDialog
                 ? 'reopened'
                 : 'initial',

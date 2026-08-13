@@ -4548,11 +4548,17 @@ export default function SupplierPage() {
           status: "in_progress",
           assignedSupplierProfileId: supplierProfileId,
           assignedSupplierProfileName: resolvedSupplierEmployeeName,
+          claimOnly: true,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось взять диалог в работу");
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          typeof payload?.message === "string"
+            ? payload.message
+            : "Не удалось взять диалог в работу",
+        );
       }
 
       const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([

@@ -705,6 +705,70 @@ export class SupplierRequestsService {
       const assignedSupplierProfileId =
         input.assignedSupplierProfileId?.trim() || null;
       const assignedSupplierProfileName = resolvedAssignedSupplierProfileName;
+
+      if (input.claimOnly) {
+        if (nextStatus !== 'in_progress' || !assignedSupplierProfileId) {
+          throw new BadRequestException(
+            'Для взятия запроса нужен сотрудник поставщика',
+          );
+        }
+
+        const claimResult = await tx.supplierRequest.updateMany({
+          where: {
+            id,
+            assignedSupplierProfileId: null,
+            status: 'pending',
+          },
+          data: {
+            status: 'in_progress',
+            assignedSupplierProfileId,
+            assignedSupplierProfileName,
+            claimedAt: now,
+            claimRequiredAt: null,
+            claimMissedAt: null,
+          },
+        });
+
+        if (claimResult.count === 0) {
+          const latestRequest = await tx.supplierRequest.findUnique({
+            where: { id },
+          });
+
+          if (
+            latestRequest?.assignedSupplierProfileId ===
+            assignedSupplierProfileId
+          ) {
+            return latestRequest;
+          }
+
+          throw new ConflictException(
+            `Запрос уже взят в работу: ${latestRequest?.assignedSupplierProfileName?.trim() || 'другой сотрудник'}`,
+          );
+        }
+
+        await tx.message.create({
+          data: {
+            ticketId: supplierRequest.ticketId,
+            content: this.buildClaimedMessage(
+              supplierRequest.supplierName,
+              assignedSupplierProfileName,
+            ),
+            senderType: 'system',
+            senderRole: 'system',
+            status: 'sent',
+            deliveryStatus: 'sent',
+            messageType: 'system',
+          },
+        });
+
+        await tx.ticket.update({
+          where: { id: supplierRequest.ticketId },
+          data: { lastMessageAt: now },
+        });
+
+        return tx.supplierRequest.findUniqueOrThrow({ where: { id } });
+      }
+
       const nextAssignedSupplierProfileId =
         clearAssignedSupplier && nextStatus === 'pending'
           ? null

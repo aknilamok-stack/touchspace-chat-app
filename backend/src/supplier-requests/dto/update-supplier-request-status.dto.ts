@@ -24,4 +24,8 @@ export class UpdateSupplierRequestStatusDto {
   @IsOptional()
   @IsBoolean()
   clearAssignedSupplier?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  claimOnly?: boolean;
 }

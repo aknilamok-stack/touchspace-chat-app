@@ -126,3 +126,24 @@ describe('SupplierRequestsService atomic claim', () => {
     expect(messageCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('SupplierRequestsService status events', () => {
+  it('does not create a system event for an unchanged in-progress status', async () => {
+    const { service, messageCreate, ticketUpdate, supplierRequest } =
+      createHarness({
+        ...baseRequest(),
+        status: 'in_progress',
+        assignedSupplierProfileId: 'supplier-maria',
+        assignedSupplierProfileName: 'Мария',
+      });
+
+    const result = await service.updateStatus('request-1', {
+      status: 'in_progress',
+    });
+
+    expect(result.status).toBe('in_progress');
+    expect(supplierRequest.updateMany).not.toHaveBeenCalled();
+    expect(messageCreate).not.toHaveBeenCalled();
+    expect(ticketUpdate).not.toHaveBeenCalled();
+  });
+});

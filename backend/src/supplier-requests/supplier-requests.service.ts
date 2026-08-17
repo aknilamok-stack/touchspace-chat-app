@@ -779,6 +779,16 @@ export class SupplierRequestsService {
           ? null
           : (assignedSupplierProfileName ??
             supplierRequest.assignedSupplierProfileName);
+      const isStatusUpdateNoop =
+        nextStatus === supplierRequest.status &&
+        nextAssignedSupplierProfileId ===
+          supplierRequest.assignedSupplierProfileId &&
+        !clearAssignedSupplier;
+
+      if (isStatusUpdateNoop) {
+        return supplierRequest;
+      }
+
       const shouldStartNewWorkCycle =
         nextStatus === 'in_progress' &&
         (supplierRequest.status !== 'in_progress' ||

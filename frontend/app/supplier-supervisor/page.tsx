@@ -1268,6 +1268,7 @@ export default function SupplierPage() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierIsNearBottomRef = useRef(true);
+  const initialAutoScrollDialogIdRef = useRef("");
   const previousSelectedRequestIdRef = useRef("");
   const previousSupplierTimelineItemCountRef = useRef(0);
   const previousVisibleMessageCountRef = useRef(0);
@@ -2041,6 +2042,10 @@ export default function SupplierPage() {
     }
 
     setShowScrollToLatest(true);
+  };
+
+  const cancelInitialSupplierAutoScroll = () => {
+    initialAutoScrollDialogIdRef.current = "";
   };
 
   const readSupplierStatus = (): ManagerPresence => {
@@ -3222,16 +3227,9 @@ export default function SupplierPage() {
       previousSupplierTimelineItemCountRef.current = currentMessageCount;
       previousVisibleMessageCountRef.current = currentVisibleMessageCount;
       supplierIsNearBottomRef.current = true;
+      initialAutoScrollDialogIdRef.current = currentRequestId;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
-
-      if (currentRequestId) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollSupplierChatToBottom("auto");
-          });
-        });
-      }
 
       return;
     }
@@ -3269,6 +3267,47 @@ export default function SupplierPage() {
       setShowScrollToLatest(true);
     }
   }, [selectedRequestId, supplierTimelineItems.length, visibleSupplierMessages.length]);
+
+  useEffect(() => {
+    const currentRequestId = selectedRequestId;
+
+    if (
+      !currentRequestId ||
+      initialAutoScrollDialogIdRef.current !== currentRequestId ||
+      supplierTimelineItems.length === 0 ||
+      isLoadingMessages
+    ) {
+      return;
+    }
+
+    const viewport = messagesViewportRef.current;
+    const content = viewport?.firstElementChild;
+
+    if (!viewport || !content) {
+      return;
+    }
+
+    const keepAtLatest = () => {
+      if (initialAutoScrollDialogIdRef.current === currentRequestId) {
+        scrollSupplierChatToBottom("auto");
+      }
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(keepAtLatest));
+    const resizeObserver = new ResizeObserver(keepAtLatest);
+    resizeObserver.observe(content);
+    const settleTimeout = window.setTimeout(() => {
+      if (initialAutoScrollDialogIdRef.current === currentRequestId) {
+        initialAutoScrollDialogIdRef.current = "";
+      }
+      resizeObserver.disconnect();
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(settleTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [isLoadingMessages, selectedRequestId, supplierTimelineItems.length]);
 
   useEffect(() => {
     if (!authReady) {
@@ -4746,6 +4785,9 @@ export default function SupplierPage() {
               <div
                 ref={messagesViewportRef}
                 onScroll={updateSupplierScrollState}
+                onPointerDown={cancelInitialSupplierAutoScroll}
+                onTouchStart={cancelInitialSupplierAutoScroll}
+                onWheel={cancelInitialSupplierAutoScroll}
                 className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
               >
                 <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
@@ -5110,10 +5152,13 @@ export default function SupplierPage() {
                 <div
                   ref={messagesViewportRef}
                   onScroll={updateSupplierScrollState}
+                  onPointerDown={cancelInitialSupplierAutoScroll}
+                  onTouchStart={cancelInitialSupplierAutoScroll}
+                  onWheel={cancelInitialSupplierAutoScroll}
                   className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
                 >
                   <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
-                    {isLoadingMessages && (
+                    {isLoadingMessages && supplierTimelineItems.length === 0 && (
                       <p className="text-sm text-gray-500">Загружаем сообщения...</p>
                     )}
 
@@ -5121,8 +5166,7 @@ export default function SupplierPage() {
                       <p className="text-sm text-red-500">{messagesError}</p>
                     )}
 
-                    {!isLoadingMessages &&
-                      !messagesError &&
+                    {!messagesError &&
                       supplierTimelineItems.map((item, index) => {
                         const previousItem = supplierTimelineItems[index - 1];
                         const shouldShowDateSeparator =

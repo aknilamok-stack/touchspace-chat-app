@@ -209,19 +209,10 @@ export class MessagesService {
     } | null;
   }) {
     if (message.senderType === 'supplier') {
-      if (message.ticket?.conversationMode === 'direct_supplier') {
-        return (
-          message.senderProfile?.fullName?.trim() ||
-          message.ticket?.supplierName?.trim() ||
-          message.senderProfile?.companyName?.trim() ||
-          null
-        );
-      }
-
       return (
-        message.senderProfile?.companyName?.trim() ||
-        message.ticket?.supplierName?.trim() ||
         message.senderProfile?.fullName?.trim() ||
+        message.ticket?.supplierName?.trim() ||
+        message.senderProfile?.companyName?.trim() ||
         null
       );
     }

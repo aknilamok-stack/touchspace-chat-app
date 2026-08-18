@@ -418,10 +418,12 @@ const getSupplierMessageAuthorLabel = (
       (messageSenderId && currentProfileId && messageSenderId === currentProfileId) ||
       (!messageSenderId && messageSenderName && currentName && messageSenderName === currentName)
     ) {
-      return "Вы";
+      return currentName ? `Вы · ${currentName}` : "Вы";
     }
 
-    return messageSenderName || "Поставщик";
+    return messageSenderId && messageSenderName
+      ? `Поставщик · ${messageSenderName}`
+      : "Поставщик";
   }
 
   if (message.senderType === "manager") {

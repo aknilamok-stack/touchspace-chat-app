@@ -1352,6 +1352,7 @@ export default function SupplierPage() {
   const directManagerTicketsRef = useRef<Ticket[]>([]);
   const selectedRequestIdRef = useRef("");
   const selectedRequestTicketIdRef = useRef("");
+  const deepLinkHandledRef = useRef(false);
   const pinnedRequestIdsRef = useRef<string[]>([]);
   const ticketMessagesByTicketIdRef = useRef<Record<string, TicketMessage[]>>({});
   const lastMarkedIncomingMessageIdRef = useRef<Record<string, string>>({});
@@ -2824,7 +2825,10 @@ export default function SupplierPage() {
 
       try {
         const data = await fetchTicketMessages(selectedTicketId);
-        if (cancelled) {
+        if (
+          cancelled ||
+          selectedRequestTicketIdRef.current !== selectedTicketId
+        ) {
           return;
         }
         setTicketMessages((currentMessages) =>
@@ -3117,7 +3121,10 @@ export default function SupplierPage() {
           const selectedMessages = changedMessageEntries.find(
             ([ticketId]) => ticketId === freshSelectedRequest?.ticketId
           )?.[1];
-          if (selectedMessages) {
+          if (
+            selectedMessages &&
+            selectedRequestTicketIdRef.current === freshSelectedRequest?.ticketId
+          ) {
             setTicketMessages((currentMessages) =>
               areMessagesEqual(currentMessages, selectedMessages)
                 ? currentMessages
@@ -3269,6 +3276,12 @@ export default function SupplierPage() {
 
           if (!freshSelectedRequest) {
             setTicketMessages([]);
+            return;
+          }
+
+          if (
+            selectedRequestTicketIdRef.current !== freshSelectedRequest.ticketId
+          ) {
             return;
           }
 
@@ -3752,9 +3765,29 @@ export default function SupplierPage() {
   }, [supplierRequestCards, isChatPaneDismissed]);
 
   useEffect(() => {
+    if (deepLinkHandledRef.current) {
+      return;
+    }
+
+    const consumeDeepLink = () => {
+      deepLinkHandledRef.current = true;
+      setDeepLinkRequestId("");
+      setDeepLinkTicketId("");
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("request");
+      nextUrl.searchParams.delete("ticket");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+    };
+
     if (deepLinkRequestId && supplierRequestCards.some((card) => card.request.id === deepLinkRequestId)) {
       setIsChatPaneDismissed(false);
       setSelectedRequestId(deepLinkRequestId);
+      consumeDeepLink();
       return;
     }
 
@@ -3763,6 +3796,7 @@ export default function SupplierPage() {
       if (linkedRequest) {
         setIsChatPaneDismissed(false);
         setSelectedRequestId(linkedRequest.request.id);
+        consumeDeepLink();
         return;
       }
 
@@ -3770,6 +3804,7 @@ export default function SupplierPage() {
         setIsChatPaneDismissed(false);
         setSelectedRequestId("");
         setSelectedManagerTicketId(deepLinkTicketId);
+        consumeDeepLink();
       }
     }
   }, [deepLinkRequestId, deepLinkTicketId, directManagerTickets, supplierRequestCards]);

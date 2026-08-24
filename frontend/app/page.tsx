@@ -2732,7 +2732,7 @@ export default function Home() {
             (): Record<string, ManagerPresence> => ({})
           ),
           fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
-          fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
+          fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] | null => null),
           fetchSupplierCompanies().catch((): SupplierCompanyOption[] => []),
         ]);
         const notificationManagerId = resolveManagerProfileId(
@@ -2746,7 +2746,9 @@ export default function Home() {
 
         setManagerStatuses(remoteStatuses);
         setManagerPresenceRecords(remoteManagerRecords);
-        setSupplierPresenceRecords(supplierStatuses);
+        if (supplierStatuses) {
+          setSupplierPresenceRecords(supplierStatuses);
+        }
         const remoteCurrentManagerStatus = remoteStatuses[currentManagerId];
         if (remoteCurrentManagerStatus && remoteCurrentManagerStatus !== "offline") {
           setCurrentManagerStatus(remoteCurrentManagerStatus);
@@ -2808,12 +2810,16 @@ export default function Home() {
                   (): Record<string, ManagerPresence> => ({})
                 ),
                 fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
-                fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
+                fetchSupplierStatusRecords().catch(
+                  (): SupplierPresenceRecord[] | null => null
+                ),
               ]);
 
             setManagerStatuses(remoteStatuses);
             setManagerPresenceRecords(remoteManagerRecords);
-            setSupplierPresenceRecords(supplierStatuses);
+            if (supplierStatuses) {
+              setSupplierPresenceRecords(supplierStatuses);
+            }
             return;
           }
 
@@ -2824,7 +2830,9 @@ export default function Home() {
               (): Record<string, ManagerPresence> => ({})
             ),
             fetchManagerStatusRecords().catch((): ManagerPresenceRecord[] => []),
-            fetchSupplierStatusRecords().catch((): SupplierPresenceRecord[] => []),
+            fetchSupplierStatusRecords().catch(
+              (): SupplierPresenceRecord[] | null => null
+            ),
           ]);
           const notificationManagerId = resolveManagerProfileId(
             currentManagerId,
@@ -2837,7 +2845,9 @@ export default function Home() {
 
           setManagerStatuses(remoteStatuses);
           setManagerPresenceRecords(remoteManagerRecords);
-          setSupplierPresenceRecords(supplierStatuses);
+          if (supplierStatuses) {
+            setSupplierPresenceRecords(supplierStatuses);
+          }
           setNotificationCandidates(candidates);
           if (currentManagerId) {
             const remoteCurrentManagerStatus = remoteStatuses[currentManagerId];

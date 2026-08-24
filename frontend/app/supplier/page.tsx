@@ -1939,7 +1939,6 @@ export default function SupplierPage() {
         setSupplierPresenceRecords(records);
       } catch (error) {
         console.error("Ошибка загрузки сотрудников поставщика:", error);
-        setSupplierPresenceRecords([]);
       }
     };
 

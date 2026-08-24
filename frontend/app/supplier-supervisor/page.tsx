@@ -1671,8 +1671,6 @@ export default function SupplierPage() {
         setSupplierStatus(nextStatus);
       } catch (error) {
         console.error("Ошибка загрузки статусов поставщиков:", error);
-        setSupplierStatuses({});
-        setSupplierStatus("online");
       }
     };
 

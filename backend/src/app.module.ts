@@ -16,7 +16,7 @@ import { MessagesService } from './messages/messages.service';
 import { LiveEventsModule } from './live-events/live-events.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
-import { PrismaService } from './prisma.service';
+import { PrismaModule } from './prisma.module';
 import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
 import { PushController } from './push.controller';
@@ -35,6 +35,7 @@ import { TypingService } from './typing.service';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    PrismaModule,
     LiveEventsModule,
     AdminModule,
     SupplierRequestsModule,
@@ -58,7 +59,6 @@ import { TypingService } from './typing.service';
     EmailPollingService,
     EmailService,
     NotificationsService,
-    PrismaService,
     ProfilesService,
     PushService,
     SupervisorsService,

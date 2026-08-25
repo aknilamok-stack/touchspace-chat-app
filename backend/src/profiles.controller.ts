@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch } from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 
 @Controller('profiles')
@@ -6,11 +6,13 @@ export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
 
   @Get('manager-statuses')
+  @Header('Cache-Control', 'no-store')
   getManagerStatuses() {
     return this.profilesService.getManagerStatuses();
   }
 
   @Get('supplier-statuses')
+  @Header('Cache-Control', 'no-store')
   getSupplierStatuses() {
     return this.profilesService.getSupplierStatuses();
   }

@@ -75,8 +75,12 @@ export function resolveManagerProfileId(
   );
 }
 
+const presenceFetchOptions = {
+  cache: "no-store",
+} satisfies RequestInit;
+
 export async function fetchManagerStatuses() {
-  const response = await fetch(apiUrl("/profiles/manager-statuses"));
+  const response = await fetch(apiUrl("/profiles/manager-statuses"), presenceFetchOptions);
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить статусы менеджеров");
@@ -96,7 +100,7 @@ export async function fetchManagerStatuses() {
 }
 
 export async function fetchManagerStatusRecords() {
-  const response = await fetch(apiUrl("/profiles/manager-statuses"));
+  const response = await fetch(apiUrl("/profiles/manager-statuses"), presenceFetchOptions);
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить статусы менеджеров");
@@ -141,7 +145,7 @@ export async function updateManagerPresence(
 }
 
 export async function fetchSupplierStatuses() {
-  const response = await fetch(apiUrl("/profiles/supplier-statuses"));
+  const response = await fetch(apiUrl("/profiles/supplier-statuses"), presenceFetchOptions);
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить статусы поставщиков");
@@ -161,7 +165,7 @@ export async function fetchSupplierStatuses() {
 }
 
 export async function fetchSupplierStatusRecords(): Promise<SupplierPresenceRecord[]> {
-  const response = await fetch(apiUrl("/profiles/supplier-statuses"));
+  const response = await fetch(apiUrl("/profiles/supplier-statuses"), presenceFetchOptions);
 
   if (!response.ok) {
     throw new Error("Не удалось загрузить статусы поставщиков");

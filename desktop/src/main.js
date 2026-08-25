@@ -12,6 +12,7 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const packageInfo = require("../package.json");
+const { autoUpdater } = require("electron-updater");
 
 process.env.ELECTRON_IS_PACKAGED = app.isPackaged ? "true" : "false";
 
@@ -41,9 +42,102 @@ let lastDesktopAttentionAt = 0;
 let isAppQuitting = false;
 let desktopNotificationPollInterval = null;
 let isDesktopNotificationPollInFlight = false;
+let desktopUpdateCheckInterval = null;
+let desktopUpdaterState = {
+  supported: process.platform === "win32",
+  status: "idle",
+  version: "",
+  progress: 0,
+  error: "",
+};
 const lastBackgroundNotificationMessageByKey = new Map();
 let managerProfileResolveCache = null;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+function publishDesktopUpdaterState(patch = {}) {
+  desktopUpdaterState = { ...desktopUpdaterState, ...patch };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("desktop:updater-state", desktopUpdaterState);
+  }
+
+  return desktopUpdaterState;
+}
+
+async function checkForNativeDesktopUpdate() {
+  if (process.platform !== "win32" || !app.isPackaged) {
+    return publishDesktopUpdaterState({ supported: false, status: "unsupported" });
+  }
+
+  if (desktopUpdaterState.status === "checking" || desktopUpdaterState.status === "downloading") {
+    return desktopUpdaterState;
+  }
+
+  publishDesktopUpdaterState({ supported: true, status: "checking", error: "" });
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    publishDesktopUpdaterState({
+      status: "error",
+      error: error instanceof Error ? error.message : "Не удалось проверить обновление",
+    });
+  }
+
+  return desktopUpdaterState;
+}
+
+function setupNativeDesktopUpdater() {
+  if (process.platform !== "win32" || !app.isPackaged) {
+    publishDesktopUpdaterState({ supported: false, status: "unsupported" });
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoRunAppAfterInstall = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    publishDesktopUpdaterState({ status: "checking", error: "" });
+  });
+  autoUpdater.on("update-available", (info) => {
+    publishDesktopUpdaterState({
+      status: "downloading",
+      version: info?.version || "",
+      progress: 0,
+      error: "",
+    });
+  });
+  autoUpdater.on("update-not-available", () => {
+    publishDesktopUpdaterState({ status: "up-to-date", progress: 0, error: "" });
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    publishDesktopUpdaterState({
+      status: "downloading",
+      progress: Math.max(0, Math.min(100, Math.round(Number(progress?.percent) || 0))),
+    });
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    publishDesktopUpdaterState({
+      status: "ready",
+      version: info?.version || desktopUpdaterState.version,
+      progress: 100,
+      error: "",
+    });
+  });
+  autoUpdater.on("error", (error) => {
+    publishDesktopUpdaterState({
+      status: "error",
+      error: error instanceof Error ? error.message : "Ошибка автоматического обновления",
+    });
+  });
+
+  setTimeout(() => void checkForNativeDesktopUpdate(), 15_000);
+  desktopUpdateCheckInterval = setInterval(
+    () => void checkForNativeDesktopUpdate(),
+    6 * 60 * 60 * 1000,
+  );
+}
 
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -689,7 +783,11 @@ function createMenu() {
         {
           label: "Проверить обновление",
           click: () => {
-            mainWindow?.webContents.send("desktop:check-update");
+            if (process.platform === "win32" && app.isPackaged) {
+              void checkForNativeDesktopUpdate();
+            } else {
+              mainWindow?.webContents.send("desktop:check-update");
+            }
           },
         },
       ],
@@ -1217,6 +1315,18 @@ app.whenReady().then(() => {
     version: app.getVersion() || packageInfo.version || "0.1.0",
   }));
 
+  ipcMain.handle("desktop:updater:get-state", () => desktopUpdaterState);
+  ipcMain.handle("desktop:updater:check", () => checkForNativeDesktopUpdate());
+  ipcMain.handle("desktop:updater:install", () => {
+    if (desktopUpdaterState.status !== "ready") {
+      return false;
+    }
+
+    isAppQuitting = true;
+    autoUpdater.quitAndInstall(false, true);
+    return true;
+  });
+
   ipcMain.handle("desktop:show-notification", async (_, payload) => {
     if (!payload?.title) {
       return false;
@@ -1427,6 +1537,7 @@ app.whenReady().then(() => {
 
   createWindow();
   startDesktopNotificationPolling();
+  setupNativeDesktopUpdater();
 
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1451,6 +1562,10 @@ app.whenReady().then(() => {
 app.on("before-quit", () => {
   isAppQuitting = true;
   stopDesktopNotificationPolling();
+  if (desktopUpdateCheckInterval) {
+    clearInterval(desktopUpdateCheckInterval);
+    desktopUpdateCheckInterval = null;
+  }
 });
 
 app.on("window-all-closed", () => {

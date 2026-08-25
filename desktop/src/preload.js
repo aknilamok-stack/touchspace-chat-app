@@ -153,6 +153,16 @@ contextBridge.exposeInMainWorld("touchspaceDesktop", {
   onCheckForUpdate: (callback) => {
     ipcRenderer.on("desktop:check-update", () => callback());
   },
+  updater: {
+    getState: () => ipcRenderer.invoke("desktop:updater:get-state"),
+    check: () => ipcRenderer.invoke("desktop:updater:check"),
+    install: () => ipcRenderer.invoke("desktop:updater:install"),
+    onState: (callback) => {
+      const listener = (_, state) => callback(state);
+      ipcRenderer.on("desktop:updater-state", listener);
+      return () => ipcRenderer.removeListener("desktop:updater-state", listener);
+    },
+  },
   clipboard: {
     readText: () => ipcRenderer.sendSync("desktop:clipboard:read-text"),
     writeText: (value) => ipcRenderer.sendSync("desktop:clipboard:write-text", value),

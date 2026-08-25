@@ -27,6 +27,21 @@ export type DesktopShellNotificationPayload = {
   tone?: "green" | "amber" | "blue";
 };
 
+export type DesktopUpdaterState = {
+  supported: boolean;
+  status:
+    | "idle"
+    | "unsupported"
+    | "checking"
+    | "downloading"
+    | "up-to-date"
+    | "ready"
+    | "error";
+  version?: string;
+  progress?: number;
+  error?: string;
+};
+
 declare global {
   interface Window {
     touchspaceDesktop?: {
@@ -37,6 +52,12 @@ declare global {
       openExternal: (url: string) => Promise<boolean>;
       showNotification?: (payload: DesktopShellNotificationPayload) => Promise<boolean>;
       onCheckForUpdate?: (callback: () => void) => void;
+      updater?: {
+        getState: () => Promise<DesktopUpdaterState>;
+        check: () => Promise<DesktopUpdaterState>;
+        install: () => Promise<boolean>;
+        onState: (callback: (state: DesktopUpdaterState) => void) => () => void;
+      };
       clipboard?: {
         readText: () => string;
         writeText: (value: string) => boolean;

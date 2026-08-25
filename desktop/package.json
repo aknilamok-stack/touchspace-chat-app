@@ -1,6 +1,6 @@
 {
   "name": "touchspace-desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "TouchSpace desktop application shell",
   "author": "TouchSpace",
@@ -35,13 +35,27 @@
     },
     "win": {
       "icon": "assets/icon.ico",
+      "verifyUpdateCodeSignature": true,
+      "artifactName": "touchspace-windows-${version}.${ext}",
+      "signtoolOptions": {
+        "publisherName": "Business Innovations LLC"
+      },
       "target": [
         "nsis"
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://chat.touchspace.biz/downloads/"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^37.2.0",
     "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   }
 }

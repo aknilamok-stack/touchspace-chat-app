@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
-import { readDesktopRuntimeMeta } from "@/lib/runtime";
+import { readDesktopRuntimeMeta, type DesktopUpdaterState } from "@/lib/runtime";
 
 type DesktopUpdatePayload = {
   updateAvailable: boolean;
@@ -21,11 +21,29 @@ const dismissedStorageKey = "touchspace-desktop-update-dismissed-token";
 
 export function DesktopUpdatePrompt() {
   const [update, setUpdate] = useState<DesktopUpdatePayload | null>(null);
+  const [nativeUpdater, setNativeUpdater] = useState<DesktopUpdaterState | null>(null);
   const checkingRef = useRef(false);
 
   const openDownload = useCallback(async () => {
     if (!update?.downloadUrl) {
       return;
+    }
+
+    const updater = typeof window !== "undefined" ? window.touchspaceDesktop?.updater : undefined;
+
+    if (updater) {
+      const state = await updater.getState();
+      setNativeUpdater(state);
+
+      if (state.supported && state.status === "ready") {
+        await updater.install();
+        return;
+      }
+
+      if (state.supported && state.status !== "error") {
+        setNativeUpdater(await updater.check());
+        return;
+      }
     }
 
     if (typeof window !== "undefined" && window.touchspaceDesktop?.openExternal) {
@@ -74,6 +92,9 @@ export function DesktopUpdatePrompt() {
         (force || payload.required || dismissedToken !== payload.notificationToken)
       ) {
         setUpdate(payload);
+        if (meta.platform === "win32" && window.touchspaceDesktop?.updater) {
+          void window.touchspaceDesktop.updater.check();
+        }
       }
     } catch {
       return;
@@ -88,6 +109,17 @@ export function DesktopUpdatePrompt() {
 
     return () => window.clearInterval(interval);
   }, [checkUpdate]);
+
+  useEffect(() => {
+    const updater = window.touchspaceDesktop?.updater;
+
+    if (!updater) {
+      return;
+    }
+
+    void updater.getState().then(setNativeUpdater);
+    return updater.onState(setNativeUpdater);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.touchspaceDesktop?.onCheckForUpdate) {
@@ -161,9 +193,19 @@ export function DesktopUpdatePrompt() {
           <button
             type="button"
             onClick={() => void openDownload()}
+            disabled={
+              nativeUpdater?.supported &&
+              (nativeUpdater.status === "checking" || nativeUpdater.status === "downloading")
+            }
             className="rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
           >
-            Обновить приложение
+            {nativeUpdater?.supported && nativeUpdater.status === "ready"
+              ? "Перезапустить и обновить"
+              : nativeUpdater?.supported && nativeUpdater.status === "downloading"
+                ? `Загрузка ${nativeUpdater.progress ?? 0}%`
+                : nativeUpdater?.supported && nativeUpdater.status === "checking"
+                  ? "Проверяем обновление…"
+                  : "Обновить приложение"}
           </button>
         </div>
       </div>

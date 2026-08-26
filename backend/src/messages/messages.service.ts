@@ -33,6 +33,7 @@ type ManagerMessageSuggestionItem = {
 
 type CreateMessageInput = {
   ticketId: string;
+  supplierRequestId?: string;
   content: string;
   senderType: string;
   transport?: 'chat' | 'email';
@@ -582,9 +583,81 @@ export class MessagesService {
     };
   }
 
+  private async assertSupplierCanSendToTicket(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    ticketId: string,
+    actorId?: string,
+    supplierRequestId?: string,
+  ) {
+    const ticket = await tx.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        conversationMode: true,
+        status: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+    }
+
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      throw new ForbiddenException(
+        'Диалог уже завершён. Отправка сообщений недоступна.',
+      );
+    }
+
+    if (ticket.conversationMode === 'direct_supplier') {
+      return null;
+    }
+
+    const normalizedRequestId = supplierRequestId?.trim();
+    const supplierRequest = await tx.supplierRequest.findFirst({
+      where: {
+        ticketId,
+        ...(normalizedRequestId ? { id: normalizedRequestId } : {}),
+      },
+      select: {
+        id: true,
+        status: true,
+        assignedSupplierProfileId: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (!supplierRequest) {
+      throw new ForbiddenException(
+        'Запрос поставщику не найден. Обновите список диалогов.',
+      );
+    }
+
+    if (['closed', 'resolved', 'cancelled'].includes(supplierRequest.status)) {
+      throw new ForbiddenException(
+        'Запрос поставщика уже завершён. Отправка сообщений недоступна.',
+      );
+    }
+
+    if (!actorId || !supplierRequest.assignedSupplierProfileId) {
+      throw new ForbiddenException(
+        'Сначала возьмите запрос в работу.',
+      );
+    }
+
+    if (supplierRequest.assignedSupplierProfileId !== actorId) {
+      throw new ForbiddenException(
+        'Запрос закреплён за другим сотрудником поставщика.',
+      );
+    }
+
+    return supplierRequest;
+  }
+
   async create(input: CreateMessageInput) {
     const {
       ticketId,
+      supplierRequestId,
       content,
       senderType,
       managerId,
@@ -709,6 +782,15 @@ export class MessagesService {
 
         if (!ticket) {
           throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+        }
+
+        if (senderType === 'supplier') {
+          await this.assertSupplierCanSendToTicket(
+            tx,
+            ticketId,
+            actorId,
+            supplierRequestId,
+          );
         }
 
         const supplierActorProfile =
@@ -1490,6 +1572,7 @@ export class MessagesService {
     replyToMessageId?: string,
     replyToContent?: string,
     isInternal?: boolean | string,
+    supplierRequestId?: string,
   ) {
     if (!files?.length) {
       throw new NotFoundException('Attachment file is required');
@@ -1571,6 +1654,15 @@ export class MessagesService {
 
       if (!ticket) {
         throw new NotFoundException(`Ticket with id "${ticketId}" not found`);
+      }
+
+      if (senderType === 'supplier') {
+        await this.assertSupplierCanSendToTicket(
+          tx,
+          ticketId,
+          actorId,
+          supplierRequestId,
+        );
       }
 
       const message = await tx.message.create({

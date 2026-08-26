@@ -4127,6 +4127,7 @@ export default function SupplierPage() {
 
     if (
       !selectedRequest ||
+      !selectedActiveRequest ||
       (!hasTextToSend && !hasAttachmentToSend) ||
       !canSupplierReply
     ) {
@@ -4191,6 +4192,7 @@ export default function SupplierPage() {
           },
           body: JSON.stringify({
             ticketId: selectedRequest.ticketId,
+            supplierRequestId: selectedActiveRequest.id,
             content: replyText,
             senderType: "supplier",
             transport: isEmailMode ? "email" : "chat",
@@ -4203,7 +4205,13 @@ export default function SupplierPage() {
         });
 
         if (!response.ok) {
-          throw new Error("Не удалось отправить ответ поставщика");
+          const payload = (await response.json().catch(() => null)) as
+            | { message?: string | string[] }
+            | null;
+          const message = Array.isArray(payload?.message)
+            ? payload.message[0]
+            : payload?.message;
+          throw new Error(message || "Не удалось отправить ответ поставщика");
         }
 
         const createdMessage = (await response.json()) as TicketMessageApi;
@@ -4216,6 +4224,7 @@ export default function SupplierPage() {
           formData.append("files", file);
         });
         formData.append("ticketId", selectedRequest.ticketId);
+        formData.append("supplierRequestId", selectedActiveRequest.id);
         formData.append("senderType", "supplier");
         formData.append("senderId", supplierProfileId);
         formData.append("senderName", resolvedSupplierEmployeeName);
@@ -4230,7 +4239,13 @@ export default function SupplierPage() {
         });
 
         if (!attachmentResponse.ok) {
-          throw new Error("Не удалось отправить вложение");
+          const payload = (await attachmentResponse.json().catch(() => null)) as
+            | { message?: string | string[] }
+            | null;
+          const message = Array.isArray(payload?.message)
+            ? payload.message[0]
+            : payload?.message;
+          throw new Error(message || "Не удалось отправить вложение");
         }
 
         const createdAttachmentMessage = (await attachmentResponse.json()) as TicketMessageApi;

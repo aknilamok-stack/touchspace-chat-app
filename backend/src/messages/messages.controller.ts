@@ -39,6 +39,7 @@ export class MessagesController {
     @Body()
     body: {
       ticketId: string;
+      supplierRequestId?: string;
       content: string;
       senderType: string;
       transport?: 'chat' | 'email';
@@ -163,6 +164,7 @@ export class MessagesController {
       replyToMessageId?: string;
       replyToContent?: string;
       isInternal?: boolean | string;
+      supplierRequestId?: string;
     },
   ) {
     if (!files?.length) {
@@ -196,6 +198,7 @@ export class MessagesController {
       body.replyToMessageId,
       body.replyToContent,
       body.isInternal,
+      body.supplierRequestId,
     );
   }
 

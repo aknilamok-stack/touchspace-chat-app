@@ -44,6 +44,16 @@
         "nsis"
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TouchSpace Workspace",
+      "runAfterFinish": true,
+      "perMachine": false,
+      "allowElevation": true
+    },
     "publish": [
       {
         "provider": "generic",

@@ -14,6 +14,8 @@ import { ProfilesService } from '../profiles.service';
 import { ChatAiService } from '../chat-ai.service';
 import { readJsonStringArray } from '../prisma-json.util';
 import { resolveTicketClientContext } from './client-context.util';
+import { LiveEventsService } from '../live-events/live-events.service';
+import { NotificationsService } from '../notifications.service';
 
 type TicketViewer = {
   viewerType?: string;
@@ -186,6 +188,8 @@ export class TicketsService {
     private readonly typingService: TypingService,
     private readonly profilesService: ProfilesService,
     private readonly chatAiService: ChatAiService,
+    private readonly liveEventsService: LiveEventsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async createSystemMessage(
@@ -3534,9 +3538,18 @@ export class TicketsService {
       },
     });
 
-    return this.prisma.ticket.findUnique({
+    const claimedTicket = await this.prisma.ticket.findUnique({
       where: { id },
     });
+
+    this.notificationsService.invalidateCandidateCache();
+    this.liveEventsService.emitTicketChanged({
+      ticketId: id,
+      actorType: 'manager',
+      actorId: assignManagerDto.managerId,
+    });
+
+    return claimedTicket;
   }
 
   async enableAiMode(id: string) {

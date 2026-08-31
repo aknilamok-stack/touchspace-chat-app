@@ -1950,7 +1950,22 @@ export default function Home() {
 
     const handleTicketChanged = (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data) as { ticketId?: string };
+        const payload = JSON.parse(event.data) as {
+          ticketId?: string;
+          actorType?: string;
+          actorId?: string | null;
+        };
+
+        if (
+          payload.ticketId &&
+          payload.actorType === "manager" &&
+          payload.actorId !== currentManagerId
+        ) {
+          setNotificationCandidates((currentCandidates) =>
+            currentCandidates.filter((candidate) => candidate.ticketId !== payload.ticketId)
+          );
+        }
+
         scheduleLiveRefresh(payload.ticketId);
       } catch {
         scheduleLiveRefresh();

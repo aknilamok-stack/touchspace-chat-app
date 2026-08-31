@@ -149,6 +149,10 @@ export class NotificationsService {
     });
   }
 
+  invalidateCandidateCache() {
+    this.notificationCandidatesCache.clear();
+  }
+
   private async resolveScopedRole(profileId: string, fallbackRole: string) {
     const existingProfile = await this.prisma.profile.findUnique({
       where: { id: profileId },

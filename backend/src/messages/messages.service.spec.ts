@@ -105,6 +105,44 @@ describe('MessagesService write conflict retry', () => {
   });
 });
 
+describe('MessagesService message idempotency', () => {
+  it('returns the existing message for a repeated client message id', async () => {
+    const existingMessage = {
+      id: 'message-1',
+      ticketId: 'ticket-1',
+      messageId: 'client-message-1',
+      content: 'Одинаковый ответ',
+    };
+    const prisma = {
+      message: {
+        findUnique: jest.fn().mockResolvedValue(existingMessage),
+      },
+    };
+    const service = new MessagesService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.create({
+        ticketId: 'ticket-1',
+        content: 'Одинаковый ответ',
+        senderType: 'supplier',
+        senderId: 'supplier-1',
+        messageId: 'client-message-1',
+      }),
+    ).resolves.toBe(existingMessage);
+    expect(prisma.message.findUnique).toHaveBeenCalledWith({
+      where: { messageId: 'client-message-1' },
+    });
+  });
+});
+
 describe('MessagesService supplier request write guard', () => {
   const createTransaction = (request: {
     id: string;

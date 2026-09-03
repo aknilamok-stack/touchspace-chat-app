@@ -655,6 +655,18 @@ export class MessagesService {
   }
 
   async create(input: CreateMessageInput) {
+    const clientMessageId = input.messageId?.trim() || null;
+
+    if (clientMessageId) {
+      const existingMessage = await this.prisma.message.findUnique({
+        where: { messageId: clientMessageId },
+      });
+
+      if (existingMessage) {
+        return existingMessage;
+      }
+    }
+
     const {
       ticketId,
       supplierRequestId,
@@ -879,7 +891,7 @@ export class MessagesService {
             toEmail: emailMetadata.toEmail,
             fromEmail: emailMetadata.fromEmail,
             subject: emailMetadata.subject,
-            messageId: emailMetadata.messageId,
+            messageId: clientMessageId ?? emailMetadata.messageId,
             inReplyTo: emailMetadata.inReplyTo,
             references: emailMetadata.references,
             isInternal,

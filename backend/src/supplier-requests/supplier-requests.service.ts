@@ -226,6 +226,7 @@ export class SupplierRequestsService {
       where: { id: createSupplierRequestDto.ticketId },
       select: {
         id: true,
+        status: true,
         assignedManagerId: true,
         assignedManagerName: true,
       },
@@ -279,7 +280,7 @@ export class SupplierRequestsService {
             assignedManagerId: null,
             aiEnabled: false,
             status: {
-              notIn: ['resolved', 'closed'],
+              not: 'closed',
             },
           },
           data: {
@@ -294,6 +295,11 @@ export class SupplierRequestsService {
             rescueQueuedAt: null,
             returnedToQueueAt: null,
             handedToManagerAt: now,
+            resolvedAt: null,
+            closedAt: null,
+            lastResolvedByManagerId: null,
+            lastResolvedByManagerName: null,
+            lastResolvedByRole: null,
           },
         });
 
@@ -315,7 +321,10 @@ export class SupplierRequestsService {
           await tx.message.create({
             data: {
               ticketId: createSupplierRequestDto.ticketId,
-              content: `Диалог взят в работу менеджером ${managerName}`,
+              content:
+                ticket.status === 'resolved'
+                  ? `Диалог повторно открыт менеджером ${managerName}`
+                  : `Диалог взят в работу менеджером ${managerName}`,
               senderType: 'system',
               senderRole: 'system',
               status: 'sent',

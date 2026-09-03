@@ -4401,7 +4401,9 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось создать запрос поставщику");
+        throw new Error(
+          await extractApiErrorMessage(response, "Не удалось создать запрос поставщику")
+        );
       }
 
       if (supplierRequestFiles.length > 0) {

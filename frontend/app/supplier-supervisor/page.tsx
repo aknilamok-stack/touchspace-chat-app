@@ -1224,6 +1224,7 @@ export default function SupplierPage() {
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingReply, setIsSendingReply] = useState(false);
+  const replySendLockRef = useRef(false);
   const [isResumingSupplierSync, setIsResumingSupplierSync] = useState(false);
   const [isTogglingPinned, setIsTogglingPinned] = useState(false);
   const [isInvitingManager, setIsInvitingManager] = useState(false);
@@ -3961,6 +3962,10 @@ export default function SupplierPage() {
         return;
       }
 
+      if (replySendLockRef.current) return;
+      replySendLockRef.current = true;
+      const clientMessageId = crypto.randomUUID();
+
       if (!supplierSupervisorPowerEnabled) {
         setReplyError(
           "Молния выключена. Вы можете читать диалоги, но отправка сообщений и уведомления отключены."
@@ -4018,6 +4023,7 @@ export default function SupplierPage() {
               senderName: resolvedSupplierEmployeeName,
               replyToMessageId: replyTarget?.id,
               replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
+              messageId: clientMessageId,
             }),
           });
 
@@ -4108,6 +4114,7 @@ export default function SupplierPage() {
           error instanceof Error ? error.message : "Не удалось отправить сообщение менеджеру"
         );
       } finally {
+        replySendLockRef.current = false;
         setIsSendingReply(false);
       }
 
@@ -4133,6 +4140,10 @@ export default function SupplierPage() {
     ) {
       return;
     }
+
+    if (replySendLockRef.current) return;
+    replySendLockRef.current = true;
+    const clientMessageId = crypto.randomUUID();
 
     setIsSendingReply(true);
     setReplyError("");
@@ -4201,6 +4212,7 @@ export default function SupplierPage() {
             replyToMessageId: replyTarget?.id,
             replyToContent: replyTarget ? getReplyPreviewContent(replyTarget) : undefined,
             toEmail: isEmailMode ? emailRecipient.trim() : undefined,
+            messageId: clientMessageId,
           }),
         });
 
@@ -4297,6 +4309,7 @@ export default function SupplierPage() {
           : "Не удалось отправить ответ поставщика"
       );
     } finally {
+      replySendLockRef.current = false;
       setIsSendingReply(false);
     }
   };
@@ -4935,7 +4948,7 @@ export default function SupplierPage() {
                       value={replyText}
                       onChange={(event) => setReplyText(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
+                        if (event.key === "Enter" && !event.shiftKey && !event.repeat) {
                           event.preventDefault();
                           void handleSendReply();
                         }
@@ -5869,7 +5882,7 @@ export default function SupplierPage() {
                           disabled={!supplierSupervisorPowerEnabled}
                           onChange={(event) => setReplyText(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter" && !event.shiftKey) {
+                            if (event.key === "Enter" && !event.shiftKey && !event.repeat) {
                               event.preventDefault();
                               void handleSendReply();
                             }

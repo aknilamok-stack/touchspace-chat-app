@@ -1262,9 +1262,14 @@ export default function Home() {
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
   const liveRefreshTimeoutRef = useRef<number | null>(null);
   const pendingLiveTicketIdsRef = useRef<Set<string>>(new Set());
+  const managerPresenceRecordsRef = useRef<ManagerPresenceRecord[]>([]);
   const activeChatIdRef = useRef("");
   const activeMessagesRequestIdRef = useRef(0);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+
+  useEffect(() => {
+    managerPresenceRecordsRef.current = managerPresenceRecords;
+  }, [managerPresenceRecords]);
 
   const activeChat = chatData.find((chat) => chat.id === activeChatId);
   const normalizedChatSearchQuery = chatSearchQuery.trim().toLowerCase();
@@ -1725,14 +1730,14 @@ export default function Home() {
       const notificationManagerId = resolveManagerProfileId(
         currentManagerId,
         currentManagerName,
-        managerPresenceRecords
+        managerPresenceRecordsRef.current
       );
       const candidates = await fetchManagerNotificationCandidates(notificationManagerId);
       setNotificationCandidates(candidates);
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений:", error);
     }
-  }, [currentManagerId, currentManagerName, managerPresenceRecords, managerSupervisorPowerEnabled]);
+  }, [currentManagerId, currentManagerName, managerSupervisorPowerEnabled]);
 
   const syncTickets = (tickets: ApiTicket[]) => {
     const formattedChats = tickets.map(formatTicket);
@@ -1848,13 +1853,12 @@ export default function Home() {
     }
 
     const pendingLiveTicketIds = pendingLiveTicketIdsRef.current;
-    const source = new EventSource(
-      apiUrl(
-        `/live/events?viewerType=manager&viewerId=${encodeURIComponent(
-          currentManagerId
-        )}`
-      )
-    );
+    let source: EventSource | null = null;
+    let reconnectTimeoutId: number | null = null;
+    let watchdogIntervalId: number | null = null;
+    let disposed = false;
+    let hasConnected = false;
+    let lastLiveEventAt = Date.now();
 
     const scheduleLiveRefresh = (ticketId?: string) => {
       if (ticketId) {
@@ -1896,6 +1900,7 @@ export default function Home() {
     };
 
     const handleTicketChanged = (event: MessageEvent) => {
+      lastLiveEventAt = Date.now();
       try {
         const payload = JSON.parse(event.data) as { ticketId?: string };
         scheduleLiveRefresh(payload.ticketId);
@@ -1904,18 +1909,54 @@ export default function Home() {
       }
     };
 
-    source.addEventListener("ticket.changed", handleTicketChanged);
-    source.onopen = () => {
-      setIsLiveConnected(true);
-    };
-    source.onerror = () => {
-      setIsLiveConnected(false);
-      console.warn("Live-канал старшего менеджера временно недоступен, остаётся fallback polling");
+    const handleHeartbeat = () => {
+      lastLiveEventAt = Date.now();
     };
 
+    const connect = () => {
+      if (disposed) return;
+
+      source?.close();
+      lastLiveEventAt = Date.now();
+      source = new EventSource(
+        apiUrl(
+          `/live/events?viewerType=manager&viewerId=${encodeURIComponent(
+            currentManagerId
+          )}`
+        )
+      );
+      source.addEventListener("ticket.changed", handleTicketChanged);
+      source.addEventListener("heartbeat", handleHeartbeat);
+      source.onopen = () => {
+        const isReconnect = hasConnected;
+        hasConnected = true;
+        lastLiveEventAt = Date.now();
+        setIsLiveConnected(true);
+        if (isReconnect) scheduleLiveRefresh();
+      };
+      source.onerror = () => setIsLiveConnected(false);
+    };
+
+    connect();
+    watchdogIntervalId = window.setInterval(() => {
+      if (Date.now() - lastLiveEventAt <= 70_000 || reconnectTimeoutId !== null) return;
+
+      source?.close();
+      source = null;
+      setIsLiveConnected(false);
+      reconnectTimeoutId = window.setTimeout(() => {
+        reconnectTimeoutId = null;
+        connect();
+      }, 1_000);
+    }, 10_000);
+
     return () => {
-      source.removeEventListener("ticket.changed", handleTicketChanged);
-      source.close();
+      disposed = true;
+      source?.removeEventListener("ticket.changed", handleTicketChanged);
+      source?.removeEventListener("heartbeat", handleHeartbeat);
+      source?.close();
+      if (reconnectTimeoutId !== null) window.clearTimeout(reconnectTimeoutId);
+      if (watchdogIntervalId !== null) window.clearInterval(watchdogIntervalId);
       setIsLiveConnected(false);
       pendingLiveTicketIds.clear();
 
@@ -1928,7 +1969,6 @@ export default function Home() {
     authReady,
     currentManagerId,
     currentManagerName,
-    managerPresenceRecords,
     managerSupervisorPowerEnabled,
     refreshNotificationCandidates,
   ]);

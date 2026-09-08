@@ -846,6 +846,8 @@ export class MessagesService {
               },
               assignedManagerId: null,
               assignedManagerName: null,
+              invitedManagerIds: [],
+              invitedManagerNames: [],
               handedToManagerAt: null,
               conversationMode: 'manager',
               currentHandlerType: 'manager',

@@ -3100,6 +3100,21 @@ export class TicketsService {
         },
       });
 
+      await tx.message.create({
+        data: {
+          ticketId: id,
+          content:
+            `Диалог отмечен решённым менеджером ${resolveTicketDto.managerName}`,
+          senderType: 'system',
+          senderRole: 'system',
+          status: 'sent',
+          deliveryStatus: 'sent',
+          messageType: 'system',
+          isInternal: true,
+          createdAt: now,
+        },
+      });
+
       await tx.ticketRequestEvent.updateMany({
         where: {
           ticketId: id,

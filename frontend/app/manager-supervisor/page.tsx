@@ -1766,27 +1766,10 @@ export default function Home() {
       return existingActiveChat ? [existingActiveChat, ...nextChats] : nextChats;
     });
 
-    if (formattedChats.length === 0) {
-      if (!activeChatIdRef.current) {
-        setActiveChatId("");
-      }
-      return;
-    }
-
-    setActiveChatId((currentActiveChatId) => {
-      if (
-        currentActiveChatId &&
-        formattedChats.some((chat) => chat.id === currentActiveChatId)
-      ) {
-        return currentActiveChatId;
-      }
-
-      if (isChatPaneDismissed) {
-        return "";
-      }
-
-      return currentActiveChatId || formattedChats[0].id;
-    });
+    // Synchronizing live ticket data must not change the supervisor's selection.
+    // A dialog is opened only by an explicit user action, notification click,
+    // or deep link. Otherwise a refresh could unexpectedly open another
+    // manager's first ticket from the shared list.
   };
 
   const fetchSupplierRequests = async (

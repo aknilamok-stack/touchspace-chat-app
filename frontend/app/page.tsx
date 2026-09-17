@@ -1286,6 +1286,7 @@ export default function Home() {
   const managerIsNearBottomRef = useRef(true);
   const previousActiveChatIdRef = useRef("");
   const previousActiveChatMessageCountRef = useRef(0);
+  const initialManagerAutoScrollChatIdRef = useRef("");
   const appliedDeepLinkTicketIdRef = useRef("");
   const supplierAvailabilityByScopeRef = useRef<Record<string, boolean>>({});
   const liveRefreshTimeoutRef = useRef<number | null>(null);
@@ -2750,6 +2751,10 @@ export default function Home() {
     setShowScrollToLatest(true);
   }, []);
 
+  const cancelInitialManagerAutoScroll = () => {
+    initialManagerAutoScrollChatIdRef.current = "";
+  };
+
   useEffect(() => {
     if (!authReady || !currentManagerId) {
       return;
@@ -3333,14 +3338,10 @@ export default function Home() {
     if (chatChanged) {
       previousActiveChatIdRef.current = currentChatId;
       previousActiveChatMessageCountRef.current = currentMessageCount;
+      managerIsNearBottomRef.current = true;
+      initialManagerAutoScrollChatIdRef.current = currentChatId;
       setShowScrollToLatest(false);
       setPendingClientMessageCount(0);
-
-      if (currentChatId) {
-        requestAnimationFrame(() => {
-          scrollManagerChatToBottom("auto");
-        });
-      }
 
       return;
     }
@@ -3372,6 +3373,47 @@ export default function Home() {
       setPendingClientMessageCount((current) => current + newClientMessagesCount);
       setShowScrollToLatest(true);
     }
+  }, [activeChatId, activeChat?.messages.length]);
+
+  useEffect(() => {
+    const currentChatId = activeChatId;
+    const currentMessageCount = activeChat?.messages.length ?? 0;
+
+    if (
+      !currentChatId ||
+      initialManagerAutoScrollChatIdRef.current !== currentChatId ||
+      currentMessageCount === 0
+    ) {
+      return;
+    }
+
+    const viewport = messagesViewportRef.current;
+    const content = viewport?.firstElementChild;
+
+    if (!viewport || !content) {
+      return;
+    }
+
+    const keepAtLatest = () => {
+      if (initialManagerAutoScrollChatIdRef.current === currentChatId) {
+        scrollManagerChatToBottom("auto");
+      }
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(keepAtLatest));
+    const resizeObserver = new ResizeObserver(keepAtLatest);
+    resizeObserver.observe(content);
+    const settleTimeout = window.setTimeout(() => {
+      if (initialManagerAutoScrollChatIdRef.current === currentChatId) {
+        initialManagerAutoScrollChatIdRef.current = "";
+      }
+      resizeObserver.disconnect();
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(settleTimeout);
+      resizeObserver.disconnect();
+    };
   }, [activeChatId, activeChat?.messages.length]);
 
   useEffect(() => {
@@ -6080,6 +6122,9 @@ export default function Home() {
           <div
             ref={messagesViewportRef}
             onScroll={updateManagerScrollState}
+            onPointerDown={cancelInitialManagerAutoScroll}
+            onTouchStart={cancelInitialManagerAutoScroll}
+            onWheel={cancelInitialManagerAutoScroll}
             className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
           >
             <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">

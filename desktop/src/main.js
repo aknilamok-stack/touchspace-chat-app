@@ -281,6 +281,18 @@ function getDesktopSupplierScopeId() {
   );
 }
 
+function getDesktopSupplierName() {
+  const session = readDesktopAuthSessionJson();
+
+  return (
+    (typeof session?.supplierEmployeeName === "string" &&
+      session.supplierEmployeeName.trim()) ||
+    (typeof session?.fullName === "string" && session.fullName.trim()) ||
+    (typeof session?.supplierName === "string" && session.supplierName.trim()) ||
+    "Поставщик"
+  );
+}
+
 function normalizeProfileName(value) {
   return typeof value === "string"
     ? value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU")
@@ -1389,6 +1401,10 @@ app.whenReady().then(() => {
           typeof payload.ticketId === "string" && payload.ticketId.trim()
             ? payload.ticketId.trim()
             : "",
+        requestId:
+          typeof payload.requestId === "string" && payload.requestId.trim()
+            ? payload.requestId.trim()
+            : "",
         scopeStatus:
           typeof payload.scopeStatus === "string" && payload.scopeStatus.trim()
             ? payload.scopeStatus.trim()
@@ -1414,6 +1430,10 @@ app.whenReady().then(() => {
         typeof pendingNotificationPayload?.primaryLabel === "string"
           ? pendingNotificationPayload.primaryLabel.trim()
           : "";
+      const requestId =
+        typeof pendingNotificationPayload?.requestId === "string"
+          ? pendingNotificationPayload.requestId.trim()
+          : "";
       const scopeStatus =
         typeof pendingNotificationPayload?.scopeStatus === "string"
           ? pendingNotificationPayload.scopeStatus.trim()
@@ -1429,6 +1449,37 @@ app.whenReady().then(() => {
         (scopeStatus === "new_unclaimed" ||
           scopeStatus === "missed_unclaimed" ||
           scopeStatus === "rescue_queue");
+
+      const shouldClaimSupplierRequest =
+        requestId && primaryLabel === "Взять в работу";
+
+      if (shouldClaimSupplierRequest) {
+        const supplierProfileId = getDesktopSupplierProfileId();
+
+        if (supplierProfileId) {
+          try {
+            await fetch(
+              `${getDesktopApiBaseUrl()}/supplier-requests/${encodeURIComponent(
+                requestId,
+              )}/status`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  status: "in_progress",
+                  assignedSupplierProfileId: supplierProfileId,
+                  assignedSupplierProfileName: getDesktopSupplierName(),
+                  claimOnly: true,
+                }),
+              },
+            );
+          } catch {
+            // Диалог всё равно откроется и покажет актуальное состояние запроса.
+          }
+        }
+      }
 
       if (shouldClaimTicket) {
         const managerName = getDesktopManagerName();

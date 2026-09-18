@@ -3377,7 +3377,7 @@ export default function SupplierPage() {
     }));
   };
 
-  const handlePrimaryFloatingNotification = (notificationKey: string) => {
+  const handlePrimaryFloatingNotification = async (notificationKey: string) => {
     const candidate = notificationCandidates.find((item) => item.notificationKey === notificationKey);
 
     if (!candidate) {
@@ -3386,9 +3386,56 @@ export default function SupplierPage() {
 
     if (candidate.requestId) {
       setSelectedRequestId(candidate.requestId);
-      setActiveQueueTab(
-        candidate.scopeStatus === "owned_active" ? "in_progress" : "new"
-      );
+      const shouldClaimRequest =
+        candidate.scopeStatus === "new_unclaimed" ||
+        candidate.scopeStatus === "missed_unclaimed";
+
+      if (shouldClaimRequest && supplierProfileId) {
+        try {
+          const response = await fetch(
+            apiUrl(`/supplier-requests/${candidate.requestId}/status`),
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                status: "in_progress",
+                assignedSupplierProfileId: supplierProfileId,
+                assignedSupplierProfileName: resolvedSupplierEmployeeName,
+                claimOnly: true,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(
+              typeof payload?.message === "string"
+                ? payload.message
+                : "Не удалось взять запрос в работу"
+            );
+          }
+
+          const updatedRequest = (await response.json()) as SupplierRequest;
+          updateSupplierRequestLocally(updatedRequest);
+          setActiveQueueTab("in_progress");
+          setToast({ message: "Запрос взят в работу", tone: "success" });
+        } catch (error) {
+          setActiveQueueTab("new");
+          setToast({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Не удалось взять запрос в работу",
+            tone: "error",
+          });
+        }
+      } else {
+        setActiveQueueTab(
+          candidate.scopeStatus === "owned_active" ? "in_progress" : "new"
+        );
+      }
     }
 
     dismissFloatingNotification(notificationKey);

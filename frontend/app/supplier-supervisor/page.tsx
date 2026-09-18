@@ -2336,8 +2336,9 @@ export default function SupplierPage() {
   };
 
   const markDirectManagerMessagesRead = useCallback(
-    async (ticketId: string) => {
-      const directDialogSupplierId = supplierProfileId || supplierId;
+    async (ticketId: string, ticketSupplierId?: string | null) => {
+      const directDialogSupplierId =
+        ticketSupplierId?.trim() || supplierProfileId || supplierId;
       const response = await fetch(
         apiUrl(
           `/tickets/${ticketId}/messages?viewerType=supplier&viewerId=${encodeURIComponent(
@@ -2701,7 +2702,10 @@ export default function SupplierPage() {
 
     const loadDirectManagerMessages = async () => {
       try {
-        const messages = await markDirectManagerMessagesRead(selectedManagerTicket.id);
+        const messages = await markDirectManagerMessagesRead(
+          selectedManagerTicket.id,
+          selectedManagerTicket.supplierId
+        );
 
         if (cancelled) {
           return;

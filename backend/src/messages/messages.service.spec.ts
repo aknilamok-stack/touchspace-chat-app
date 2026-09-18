@@ -219,3 +219,104 @@ describe('MessagesService supplier request write guard', () => {
     );
   });
 });
+
+describe('MessagesService supplier message isolation', () => {
+  const isVisible = (
+    service: MessagesService,
+    message: {
+      createdAt: Date;
+      senderType: string;
+      messageType: string;
+      content: string;
+      senderProfile?: {
+        id?: string | null;
+        supplierId?: string | null;
+        companyName?: string | null;
+      } | null;
+    },
+  ) =>
+    (
+      service as unknown as {
+        isMessageVisibleToSupplier: (
+          message: unknown,
+          visibility: unknown,
+        ) => boolean;
+      }
+    ).isMessageVisibleToSupplier(message, {
+      directConversation: false,
+      viewerSupplierId: 'supplier-lesno',
+      viewerSupplierNames: ['Карелия/Лесно'],
+      ownWindows: [
+        {
+          supplierId: 'supplier-lesno',
+          supplierName: 'Карелия/Лесно',
+          createdAt: new Date('2026-09-18T05:06:54.056Z'),
+          closedAt: new Date('2026-09-18T05:55:14.889Z'),
+        },
+      ],
+      allWindows: [
+        {
+          supplierId: 'supplier-lesno',
+          supplierName: 'Карелия/Лесно',
+          createdAt: new Date('2026-09-18T05:06:54.056Z'),
+          closedAt: new Date('2026-09-18T05:55:14.889Z'),
+        },
+        {
+          supplierId: 'supplier-floor',
+          supplierName: 'Напольные решения',
+          createdAt: new Date('2026-09-18T05:57:14.536Z'),
+          closedAt: null,
+        },
+      ],
+    });
+
+  it('shows messages inside the supplier own request window', () => {
+    expect(
+      isVisible(createService(), {
+        createdAt: new Date('2026-09-18T05:29:57.622Z'),
+        senderType: 'supplier',
+        messageType: 'text',
+        content: 'подтверждаю',
+        senderProfile: {
+          id: 'operator-lesno',
+          supplierId: 'supplier-lesno',
+          companyName: 'Карелия/Лесно',
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('hides a later request sent to another supplier', () => {
+    expect(
+      isVisible(createService(), {
+        createdAt: new Date('2026-09-18T05:57:14.541Z'),
+        senderType: 'system',
+        messageType: 'system',
+        content: 'Запрошен поставщик: Напольные решения. Комментарий: доставка',
+      }),
+    ).toBe(false);
+  });
+
+  it('hides an attachment belonging to another supplier request', () => {
+    expect(
+      isVisible(createService(), {
+        createdAt: new Date('2026-09-18T05:57:14.605Z'),
+        senderType: 'manager',
+        messageType: 'attachment',
+        content: '{"attachments":[]}',
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps the supplier closing event visible', () => {
+    expect(
+      isVisible(createService(), {
+        createdAt: new Date('2026-09-18T05:55:14.893Z'),
+        senderType: 'system',
+        messageType: 'system',
+        content:
+          'Запрос поставщику Карелия/Лесно переведён в статус "Решён"',
+      }),
+    ).toBe(true);
+  });
+});

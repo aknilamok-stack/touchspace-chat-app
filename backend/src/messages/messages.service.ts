@@ -73,6 +73,21 @@ type ChatAccessActor = {
   role: string;
 };
 
+type SupplierMessageRequestWindow = {
+  supplierId: string | null;
+  supplierName: string;
+  createdAt: Date;
+  closedAt: Date | null;
+};
+
+type SupplierMessageVisibility = {
+  directConversation: boolean;
+  viewerSupplierId: string;
+  viewerSupplierNames: string[];
+  ownWindows: SupplierMessageRequestWindow[];
+  allWindows: SupplierMessageRequestWindow[];
+};
+
 const looksLikeMojibakeFileName = (value: string) => /[ÃÂÐÑ]/.test(value);
 
 const decodeUploadedFileName = (value: string) => {
@@ -219,6 +234,171 @@ export class MessagesService {
     }
 
     return message.senderProfile?.fullName?.trim() || null;
+  }
+
+  private normalizeSupplierScope(value?: string | null) {
+    return value?.trim().toLowerCase() || '';
+  }
+
+  private async getSupplierMessageVisibility(
+    ticketId: string,
+    viewerId: string,
+  ): Promise<SupplierMessageVisibility> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        conversationMode: true,
+        supplierId: true,
+        supplierRequests: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            supplierId: true,
+            supplierName: true,
+            createdAt: true,
+            closedAt: true,
+          },
+        },
+      },
+    });
+
+    const normalizedViewerId = this.normalizeSupplierScope(viewerId);
+    const allWindows = ticket?.supplierRequests ?? [];
+    const ownWindows = allWindows.filter(
+      (request) =>
+        this.normalizeSupplierScope(request.supplierId) === normalizedViewerId,
+    );
+
+    return {
+      directConversation:
+        ticket?.conversationMode === 'direct_supplier' &&
+        this.normalizeSupplierScope(ticket.supplierId) === normalizedViewerId,
+      viewerSupplierId: viewerId,
+      viewerSupplierNames: Array.from(
+        new Set(
+          ownWindows
+            .map((request) => request.supplierName.trim())
+            .filter(Boolean),
+        ),
+      ),
+      ownWindows,
+      allWindows,
+    };
+  }
+
+  private isMessageVisibleToSupplier(
+    message: {
+      createdAt: Date;
+      senderType: string;
+      messageType: string;
+      content: string;
+      senderProfile?: {
+        id?: string | null;
+        supplierId?: string | null;
+        companyName?: string | null;
+      } | null;
+    },
+    visibility: SupplierMessageVisibility,
+  ) {
+    if (visibility.directConversation) {
+      return true;
+    }
+
+    const createdAtMs = message.createdAt.getTime();
+    const closeEventGraceMs = 5_000;
+    const insideOwnWindow = visibility.ownWindows.some((request) => {
+      const endMs = request.closedAt
+        ? request.closedAt.getTime()
+        : Number.POSITIVE_INFINITY;
+      return createdAtMs >= request.createdAt.getTime() && createdAtMs <= endMs;
+    });
+    const isOwnClosingEvent =
+      message.senderType === 'system' &&
+      visibility.ownWindows.some((request) => {
+        if (!request.closedAt) return false;
+        const delta = createdAtMs - request.closedAt.getTime();
+        return (
+          delta >= 0 &&
+          delta <= closeEventGraceMs &&
+          message.content
+            .toLowerCase()
+            .includes(request.supplierName.trim().toLowerCase())
+        );
+      });
+
+    if (!insideOwnWindow && !isOwnClosingEvent) {
+      return false;
+    }
+
+    if (message.senderType === 'supplier' && message.senderProfile) {
+      const viewerId = this.normalizeSupplierScope(visibility.viewerSupplierId);
+      const senderSupplierId = this.normalizeSupplierScope(
+        message.senderProfile.supplierId,
+      );
+      const senderProfileId = this.normalizeSupplierScope(
+        message.senderProfile.id,
+      );
+      const senderCompany = this.normalizeSupplierScope(
+        message.senderProfile.companyName,
+      );
+      const ownNames = visibility.viewerSupplierNames.map((name) =>
+        this.normalizeSupplierScope(name),
+      );
+
+      if (
+        senderSupplierId !== viewerId &&
+        senderProfileId !== viewerId &&
+        !ownNames.includes(senderCompany)
+      ) {
+        return false;
+      }
+    }
+
+    if (message.senderType === 'system') {
+      const supplierSpecificPrefixes = [
+        'Запрошен поставщик:',
+        'Поставщик ',
+        'Запрос поставщику ',
+        'Пропущенный запрос поставщику',
+      ];
+      const isSupplierSpecific = supplierSpecificPrefixes.some((prefix) =>
+        message.content.startsWith(prefix),
+      );
+
+      if (
+        isSupplierSpecific &&
+        !visibility.viewerSupplierNames.some((supplierName) =>
+          message.content
+            .toLowerCase()
+            .includes(supplierName.trim().toLowerCase()),
+        )
+      ) {
+        return false;
+      }
+    }
+
+    // Вложение, отправленное сразу после создания запроса, относится именно
+    // к этому запросу и не должно попадать параллельным поставщикам.
+    if (
+      message.senderType === 'manager' &&
+      message.messageType === 'attachment'
+    ) {
+      const openingRequest = [...visibility.allWindows]
+        .reverse()
+        .find((request) => {
+          const delta = createdAtMs - request.createdAt.getTime();
+          return delta >= 0 && delta <= 5_000;
+        });
+
+      if (
+        openingRequest &&
+        this.normalizeSupplierScope(openingRequest.supplierId) !==
+          this.normalizeSupplierScope(visibility.viewerSupplierId)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private async resolveEmailReplyTarget(
@@ -1772,6 +1952,13 @@ export class MessagesService {
     await this.assertTicketAccess(ticketId, viewer);
 
     const viewerType = viewer?.viewerType?.trim();
+    const supplierVisibility =
+      viewerType === 'supplier' && viewer?.viewerId?.trim()
+        ? await this.getSupplierMessageVisibility(
+            ticketId,
+            viewer.viewerId.trim(),
+          )
+        : null;
 
     if (viewerType) {
       const readAt = markAsRead ? new Date() : null;
@@ -1809,6 +1996,7 @@ export class MessagesService {
       include: {
         senderProfile: {
           select: {
+            id: true,
             fullName: true,
             companyName: true,
             supplierId: true,
@@ -1823,10 +2011,16 @@ export class MessagesService {
       },
     });
 
-    return messages.map((message) => ({
-      ...message,
-      senderName: this.resolveMessageSenderName(message),
-    }));
+    return messages
+      .filter(
+        (message) =>
+          !supplierVisibility ||
+          this.isMessageVisibleToSupplier(message, supplierVisibility),
+      )
+      .map((message) => ({
+        ...message,
+        senderName: this.resolveMessageSenderName(message),
+      }));
   }
 
   async update(

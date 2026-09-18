@@ -10,6 +10,7 @@ export type LiveEventPayload = {
   presenceHeartbeatAt?: string | null;
   actorType?: string;
   actorId?: string | null;
+  actorName?: string | null;
   targetProfileIds?: string[];
   createdAt: string;
 };
@@ -56,6 +57,7 @@ export class LiveEventsService {
     ticketId: string;
     actorType?: string;
     actorId?: string | null;
+    actorName?: string | null;
     targetProfileIds?: string[];
   }) {
     this.emit({

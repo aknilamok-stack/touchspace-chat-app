@@ -1738,7 +1738,16 @@ export default function Home() {
         managerPresenceRecordsRef.current
       );
       const candidates = await fetchManagerNotificationCandidates(notificationManagerId);
-      setNotificationCandidates(candidates);
+      setNotificationCandidates((currentCandidates) => {
+        const now = Date.now();
+        const transientClaimedCandidates = currentCandidates.filter(
+          (candidate) =>
+            candidate.scopeStatus === "claimed_by_other_recently" &&
+            now - new Date(candidate.createdAt).getTime() < 3500 &&
+            !candidates.some((nextCandidate) => nextCandidate.ticketId === candidate.ticketId)
+        );
+        return [...candidates, ...transientClaimedCandidates];
+      });
     } catch (error) {
       console.error("Ошибка загрузки кандидатов для уведомлений:", error);
     }
@@ -1894,6 +1903,7 @@ export default function Home() {
           ticketId?: string;
           actorType?: string;
           actorId?: string | null;
+          actorName?: string | null;
         };
 
         if (
@@ -1901,21 +1911,60 @@ export default function Home() {
           payload.actorType === "manager" &&
           payload.actorId !== currentManagerId
         ) {
-          setNotificationCandidates((currentCandidates) =>
-            currentCandidates.filter((candidate) => candidate.ticketId !== payload.ticketId)
-          );
+          const claimedAt = new Date().toISOString();
+          const claimedMessageId = `claimed-live:${payload.ticketId}:${Date.now()}`;
+          setNotificationCandidates((currentCandidates) => {
+            const previousCandidate = currentCandidates.find(
+              (candidate) => candidate.ticketId === payload.ticketId
+            );
+            const remainingCandidates = currentCandidates.filter(
+              (candidate) => candidate.ticketId !== payload.ticketId
+            );
+            return [
+              ...remainingCandidates,
+              {
+                notificationKey: claimedMessageId,
+                ticketId: payload.ticketId as string,
+                title: previousCandidate?.title ?? "Диалог",
+                clientName: previousCandidate?.clientName ?? null,
+                tradePointName: previousCandidate?.tradePointName ?? null,
+                supplierCompanyName: previousCandidate?.supplierCompanyName ?? null,
+                supplierContactName: previousCandidate?.supplierContactName ?? null,
+                messageId: claimedMessageId,
+                messageText: payload.actorName
+                  ? `Чат уже взят в работу менеджером ${payload.actorName}`
+                  : "Чат уже взят в работу другим менеджером",
+                createdAt: claimedAt,
+                avatarColor: previousCandidate?.avatarColor ?? null,
+                avatarEmoji: previousCandidate?.avatarEmoji ?? null,
+                conversationMode: previousCandidate?.conversationMode ?? null,
+                scopeStatus: "claimed_by_other_recently",
+                waitSeconds: 0,
+                assignedManagerId: payload.actorId ?? null,
+                assignedManagerName: payload.actorName ?? null,
+              },
+            ];
+          });
+
+          window.setTimeout(() => {
+            setNotificationCandidates((currentCandidates) =>
+              currentCandidates.filter((candidate) => candidate.messageId !== claimedMessageId)
+            );
+          }, 3200);
 
           if (isDesktopShell()) {
             void showDesktopNotification(
               "Чат уже взят в работу",
-              "Диалог забрал другой менеджер",
+              payload.actorName
+                ? `Диалог забрал менеджер ${payload.actorName}`
+                : "Диалог забрал другой менеджер",
               {
                 ticketId: payload.ticketId,
-                messageId: `claimed-live:${payload.ticketId}:${Date.now()}`,
+                messageId: claimedMessageId,
                 scopeStatus: "claimed_by_other_recently",
                 primaryLabel: "Открыть",
                 informational: true,
-                autoCloseMs: 1200,
+                autoCloseMs: 3000,
                 tone: "amber",
               }
             );

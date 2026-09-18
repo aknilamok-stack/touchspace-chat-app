@@ -3566,6 +3566,7 @@ export class TicketsService {
       ticketId: id,
       actorType: 'manager',
       actorId: assignManagerDto.managerId,
+      actorName: assignManagerDto.managerName,
     });
 
     return claimedTicket;

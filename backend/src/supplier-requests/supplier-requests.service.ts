@@ -11,6 +11,7 @@ import { ProfilesService } from '../profiles.service';
 import { PushService } from '../push.service';
 import { ToggleSupplierRequestSyncDto } from './dto/toggle-supplier-request-sync.dto';
 import { isSupplierRole } from '../role.utils';
+import { LiveEventsService } from '../live-events/live-events.service';
 import {
   buildSupplierRequestSyncPayload,
   getSupplierRequestSyncState,
@@ -24,7 +25,23 @@ export class SupplierRequestsService {
     private readonly prisma: PrismaService,
     private readonly profilesService: ProfilesService,
     private readonly pushService: PushService,
+    private readonly liveEventsService: LiveEventsService,
   ) {}
+
+  private emitSupplierRequestChanged(request: {
+    ticketId: string;
+    supplierId?: string | null;
+    createdByManagerId?: string | null;
+  }) {
+    const supplierId = request.supplierId?.trim();
+
+    this.liveEventsService.emitTicketChanged({
+      ticketId: request.ticketId,
+      actorType: 'manager',
+      actorId: request.createdByManagerId ?? null,
+      targetProfileIds: supplierId ? [supplierId] : [],
+    });
+  }
 
   private buildStatusChangedMessage(
     supplierName: string,
@@ -424,6 +441,8 @@ export class SupplierRequestsService {
         );
     }
 
+    this.emitSupplierRequestChanged(supplierRequest);
+
     return supplierRequest;
   }
 
@@ -646,6 +665,7 @@ export class SupplierRequestsService {
     });
 
     const [updatedRequest] = await this.attachSyncState([supplierRequest]);
+    this.emitSupplierRequestChanged(updatedRequest);
     return updatedRequest;
   }
 
@@ -685,7 +705,7 @@ export class SupplierRequestsService {
       }
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedRequest = await this.prisma.$transaction(async (tx) => {
       const supplierRequest = await tx.supplierRequest.findUnique({
         where: { id },
       });
@@ -888,5 +908,8 @@ export class SupplierRequestsService {
 
       return updatedSupplierRequest;
     });
+
+    this.emitSupplierRequestChanged(updatedRequest);
+    return updatedRequest;
   }
 }

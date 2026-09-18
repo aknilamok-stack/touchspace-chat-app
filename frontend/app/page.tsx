@@ -1252,6 +1252,7 @@ export default function Home() {
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
   const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
+  const [ticketContactsTicketId, setTicketContactsTicketId] = useState("");
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isSavingContacts, setIsSavingContacts] = useState(false);
   const [contactsError, setContactsError] = useState("");
@@ -1377,7 +1378,9 @@ export default function Home() {
       new Date(activeSupplierRequest.supplierSyncManagerPromptAvailableAt).getTime() <=
         (currentTimeMs ?? Date.now()));
   const resolvedTicketEmail =
-    ticketContacts.find((contact) => contact.type === "email")?.value?.trim() ||
+    (ticketContactsTicketId === activeChatId
+      ? ticketContacts.find((contact) => contact.type === "email")?.value?.trim()
+      : "") ||
     activeChat?.canonicalEmail?.trim() ||
     activeChat?.clientEmail?.trim() ||
     activeChat?.currentUserEmail?.trim() ||
@@ -3132,26 +3135,45 @@ export default function Home() {
   useEffect(() => {
     if (!authReady || !activeChatId || !currentManagerId) {
       setTicketContacts([]);
+      setTicketContactsTicketId("");
       setContactsError("");
       return;
     }
+
+    const selectedTicketId = activeChatId;
+    let cancelled = false;
+    setTicketContacts([]);
+    setTicketContactsTicketId("");
 
     const loadContacts = async () => {
       setIsLoadingContacts(true);
       setContactsError("");
 
       try {
-        const contacts = await fetchTicketContacts(activeChatId);
+        const contacts = await fetchTicketContacts(selectedTicketId);
+        if (cancelled || activeChatIdRef.current !== selectedTicketId) {
+          return;
+        }
         setTicketContacts(contacts);
+        setTicketContactsTicketId(selectedTicketId);
       } catch (error) {
+        if (cancelled) {
+          return;
+        }
         console.error("Ошибка загрузки контактов:", error);
         setContactsError("Не удалось загрузить контакты");
       } finally {
-        setIsLoadingContacts(false);
+        if (!cancelled) {
+          setIsLoadingContacts(false);
+        }
       }
     };
 
     void loadContacts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authReady, activeChatId, currentManagerId]);
 
   useEffect(() => {
@@ -3244,12 +3266,13 @@ export default function Home() {
     if (!activeChatId || !currentManagerId || !currentManagerName) {
       return;
     }
+    const selectedTicketId = activeChatId;
 
     setIsSavingContacts(true);
     setContactsError("");
 
     try {
-      const response = await fetch(apiUrl(`/tickets/${activeChatId}/contacts`), {
+      const response = await fetch(apiUrl(`/tickets/${selectedTicketId}/contacts`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -3267,7 +3290,10 @@ export default function Home() {
       }
 
       const payload = (await response.json()) as ApiTicketContactsResponse;
-      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+      if (activeChatIdRef.current === selectedTicketId) {
+        setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+        setTicketContactsTicketId(selectedTicketId);
+      }
     } catch (error) {
       console.error("Ошибка добавления контакта:", error);
       setContactsError(
@@ -3289,12 +3315,13 @@ export default function Home() {
     if (!activeChatId || !currentManagerId || !currentManagerName) {
       return;
     }
+    const selectedTicketId = activeChatId;
 
     setIsSavingContacts(true);
     setContactsError("");
 
     try {
-      const response = await fetch(apiUrl(`/tickets/${activeChatId}/contacts/${contactId}`), {
+      const response = await fetch(apiUrl(`/tickets/${selectedTicketId}/contacts/${contactId}`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -3312,7 +3339,10 @@ export default function Home() {
       }
 
       const payload = (await response.json()) as ApiTicketContactsResponse;
-      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+      if (activeChatIdRef.current === selectedTicketId) {
+        setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+        setTicketContactsTicketId(selectedTicketId);
+      }
     } catch (error) {
       console.error("Ошибка обновления контакта:", error);
       setContactsError(
@@ -3328,13 +3358,14 @@ export default function Home() {
     if (!activeChatId || !currentManagerId || !currentManagerName) {
       return;
     }
+    const selectedTicketId = activeChatId;
 
     setIsSavingContacts(true);
     setContactsError("");
 
     try {
       const response = await fetch(
-        apiUrl(`/tickets/${activeChatId}/contacts/${contactId}/delete`),
+        apiUrl(`/tickets/${selectedTicketId}/contacts/${contactId}/delete`),
         {
           method: "POST",
           headers: {
@@ -3352,7 +3383,10 @@ export default function Home() {
       }
 
       const payload = (await response.json()) as ApiTicketContactsResponse;
-      setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+      if (activeChatIdRef.current === selectedTicketId) {
+        setTicketContacts(Array.isArray(payload.items) ? payload.items : []);
+        setTicketContactsTicketId(selectedTicketId);
+      }
     } catch (error) {
       console.error("Ошибка удаления контакта:", error);
       setContactsError(

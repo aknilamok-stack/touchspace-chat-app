@@ -2297,6 +2297,33 @@ export default function SupplierPage() {
     }
   }, [supplierProfileId, supplierSupervisorPowerEnabled]);
 
+  const clearResolvedRequestNotifications = useCallback((requestId: string) => {
+    const keepOtherRequests = (candidate: SupplierNotificationCandidate) =>
+      candidate.requestId !== requestId;
+
+    setNotificationCandidates((current) => current.filter(keepOtherRequests));
+    Object.keys(lastNotificationAtRef.current).forEach((notificationKey) => {
+      if (notificationKey.includes(requestId)) {
+        delete lastNotificationAtRef.current[notificationKey];
+        delete lastNotificationMessageIdRef.current[notificationKey];
+      }
+    });
+
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      void navigator.serviceWorker.ready
+        .then((registration) => registration.getNotifications())
+        .then((notifications) => {
+          notifications.forEach((notification) => {
+            const targetUrl = String(notification.data?.url ?? "");
+            if (notification.tag.includes(requestId) || targetUrl.includes(requestId)) {
+              notification.close();
+            }
+          });
+        })
+        .catch(() => undefined);
+    }
+  }, []);
+
   const fetchTicketMessages = async (ticketId: string): Promise<TicketMessage[]> => {
     const response = await fetch(
       apiUrl(
@@ -3852,6 +3879,10 @@ export default function SupplierPage() {
         throw new Error("Не удалось отметить диалог как решённый");
       }
 
+      const closedRequest = (await response.json()) as SupplierRequest;
+      updateSupplierRequestLocally(closedRequest);
+      clearResolvedRequestNotifications(selectedActiveRequest.id);
+
       const [updatedRequests, updatedTicketsMap, refreshedMessages] = await Promise.all([
         fetchSupplierRequests(),
         fetchTicketsMap(supplierId),
@@ -3879,6 +3910,7 @@ export default function SupplierPage() {
       setSelectedFiles([]);
       setShowQuickReplies(false);
       setShowEmojiPicker(false);
+      void refreshNotificationCandidates();
     } catch (error) {
       console.error("Ошибка завершения диалога:", error);
       setToast({

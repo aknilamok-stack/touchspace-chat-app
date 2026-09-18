@@ -1772,7 +1772,11 @@ export default function Home() {
     }
 
     const payload = (await response.json()) as { items?: NotificationCandidate[] };
-    return Array.isArray(payload.items) ? payload.items : [];
+    return Array.isArray(payload.items)
+      ? payload.items.filter(
+          (candidate) => candidate.scopeStatus !== "claimed_by_other_recently"
+        )
+      : [];
   };
 
   const refreshNotificationCandidates = useCallback(async () => {
@@ -1953,6 +1957,35 @@ export default function Home() {
           setNotificationCandidates((currentCandidates) =>
             currentCandidates.filter((candidate) => candidate.ticketId !== payload.ticketId)
           );
+
+          if (isDesktopShell()) {
+            void showDesktopNotification(
+              "Чат уже взят в работу",
+              "Диалог забрал другой менеджер",
+              {
+                ticketId: payload.ticketId,
+                messageId: `claimed-live:${payload.ticketId}:${Date.now()}`,
+                scopeStatus: "claimed_by_other_recently",
+                primaryLabel: "Открыть",
+                informational: true,
+                autoCloseMs: 1200,
+                tone: "amber",
+              }
+            );
+          }
+
+          if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+            void navigator.serviceWorker.ready
+              .then((registration) => registration.getNotifications())
+              .then((notifications) => {
+                notifications.forEach((notification) => {
+                  if (String(notification.data?.url ?? "").includes(payload.ticketId as string)) {
+                    notification.close();
+                  }
+                });
+              })
+              .catch(() => undefined);
+          }
         }
 
         scheduleLiveRefresh(payload.ticketId);

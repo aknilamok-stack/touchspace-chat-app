@@ -1191,7 +1191,6 @@ export default function Home() {
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
   const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompanyOption[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState("");
-  const [supplierRequestText, setSupplierRequestText] = useState("");
   const [supplierRequestFiles, setSupplierRequestFiles] = useState<File[]>([]);
   const [supplierRequestAttachmentName, setSupplierRequestAttachmentName] = useState("");
   const [supplierFollowUpText, setSupplierFollowUpText] = useState("");
@@ -1271,6 +1270,7 @@ export default function Home() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierRequestFileInputRef = useRef<HTMLInputElement | null>(null);
+  const supplierRequestTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const supplierFollowUpFileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const highlightedReplyTimeoutRef = useRef<number | null>(null);
@@ -4432,6 +4432,8 @@ export default function Home() {
   };
 
   const handleCreateSupplierRequest = async () => {
+    const supplierRequestText = supplierRequestTextareaRef.current?.value ?? "";
+
     if (!supplierRequestText.trim() || !activeChatId) return;
     if (hasOpenSupplierRequest) {
       setCreateSupplierRequestError(
@@ -4519,7 +4521,9 @@ export default function Home() {
       applyMessagesToTicket(activeChatId, messages);
       applySupplierRequestsToTicket(activeChatId, supplierRequests);
 
-      setSupplierRequestText("");
+      if (supplierRequestTextareaRef.current) {
+        supplierRequestTextareaRef.current.value = "";
+      }
       setSupplierRequestFiles([]);
       setSupplierRequestAttachmentName("");
       setSupplierFollowUpText("");
@@ -7387,10 +7391,9 @@ export default function Home() {
                         Комментарий
                       </label>
                       <textarea
-                        value={supplierRequestText}
+                        ref={supplierRequestTextareaRef}
                         lang="ru"
                         spellCheck
-                        onChange={(e) => setSupplierRequestText(e.target.value)}
                         onPaste={(event) => handleSupplierPaste(event, "request")}
                         className="min-h-[100px] w-full resize-none rounded-2xl border border-[#D1D1D6] bg-white px-3 py-3 text-sm text-[#1E1E1E] outline-none placeholder:text-[#98A2B3]"
                         placeholder="Например: подтвердите наличие и срок поставки по заказу..."

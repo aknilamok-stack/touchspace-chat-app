@@ -11,6 +11,13 @@ export type LiveEventPayload = {
   actorType?: string;
   actorId?: string | null;
   actorName?: string | null;
+  changeKind?: string;
+  ticketTitle?: string | null;
+  clientName?: string | null;
+  tradePointName?: string | null;
+  conversationMode?: string | null;
+  avatarColor?: string | null;
+  avatarEmoji?: string | null;
   targetProfileIds?: string[];
   createdAt: string;
 };
@@ -58,6 +65,13 @@ export class LiveEventsService {
     actorType?: string;
     actorId?: string | null;
     actorName?: string | null;
+    changeKind?: string;
+    ticketTitle?: string | null;
+    clientName?: string | null;
+    tradePointName?: string | null;
+    conversationMode?: string | null;
+    avatarColor?: string | null;
+    avatarEmoji?: string | null;
     targetProfileIds?: string[];
   }) {
     this.emit({

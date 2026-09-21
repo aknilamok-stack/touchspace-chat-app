@@ -3567,6 +3567,13 @@ export class TicketsService {
       actorType: 'manager',
       actorId: assignManagerDto.managerId,
       actorName: assignManagerDto.managerName,
+      changeKind: 'manager_claimed',
+      ticketTitle: claimedTicket?.title ?? null,
+      clientName: claimedTicket?.clientName ?? null,
+      tradePointName: claimedTicket?.tradePointName ?? null,
+      conversationMode: claimedTicket?.conversationMode ?? null,
+      avatarColor: claimedTicket?.avatarColor ?? null,
+      avatarEmoji: claimedTicket?.avatarEmoji ?? null,
     });
 
     return claimedTicket;

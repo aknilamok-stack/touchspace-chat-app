@@ -1960,11 +1960,19 @@ export default function Home() {
           actorType?: string;
           actorId?: string | null;
           actorName?: string | null;
+          changeKind?: string;
+          ticketTitle?: string | null;
+          clientName?: string | null;
+          tradePointName?: string | null;
+          conversationMode?: string | null;
+          avatarColor?: string | null;
+          avatarEmoji?: string | null;
         };
 
         if (
           payload.ticketId &&
           payload.actorType === "manager" &&
+          payload.changeKind === "manager_claimed" &&
           payload.actorId !== currentManagerId
         ) {
           const claimedAt = new Date().toISOString();
@@ -1981,9 +1989,15 @@ export default function Home() {
               {
                 notificationKey: claimedMessageId,
                 ticketId: payload.ticketId as string,
-                title: previousCandidate?.title ?? "Диалог",
-                clientName: previousCandidate?.clientName ?? null,
-                tradePointName: previousCandidate?.tradePointName ?? null,
+                title:
+                  previousCandidate?.title ??
+                  payload.tradePointName ??
+                  payload.ticketTitle ??
+                  payload.clientName ??
+                  "Диалог",
+                clientName: previousCandidate?.clientName ?? payload.clientName ?? null,
+                tradePointName:
+                  previousCandidate?.tradePointName ?? payload.tradePointName ?? null,
                 supplierCompanyName: previousCandidate?.supplierCompanyName ?? null,
                 supplierContactName: previousCandidate?.supplierContactName ?? null,
                 messageId: claimedMessageId,
@@ -1991,9 +2005,10 @@ export default function Home() {
                   ? `Чат уже взят в работу менеджером ${payload.actorName}`
                   : "Чат уже взят в работу другим менеджером",
                 createdAt: claimedAt,
-                avatarColor: previousCandidate?.avatarColor ?? null,
-                avatarEmoji: previousCandidate?.avatarEmoji ?? null,
-                conversationMode: previousCandidate?.conversationMode ?? null,
+                avatarColor: previousCandidate?.avatarColor ?? payload.avatarColor ?? null,
+                avatarEmoji: previousCandidate?.avatarEmoji ?? payload.avatarEmoji ?? null,
+                conversationMode:
+                  previousCandidate?.conversationMode ?? payload.conversationMode ?? null,
                 scopeStatus: "claimed_by_other_recently",
                 waitSeconds: 0,
                 assignedManagerId: payload.actorId ?? null,
@@ -2007,24 +2022,6 @@ export default function Home() {
               currentCandidates.filter((candidate) => candidate.messageId !== claimedMessageId)
             );
           }, 3200);
-
-          if (isDesktopShell()) {
-            void showDesktopNotification(
-              "Чат уже взят в работу",
-              payload.actorName
-                ? `Диалог забрал менеджер ${payload.actorName}`
-                : "Диалог забрал другой менеджер",
-              {
-                ticketId: payload.ticketId,
-                messageId: claimedMessageId,
-                scopeStatus: "claimed_by_other_recently",
-                primaryLabel: "Открыть",
-                informational: true,
-                autoCloseMs: 3000,
-                tone: "amber",
-              }
-            );
-          }
 
           if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
             void navigator.serviceWorker.ready
@@ -3778,7 +3775,7 @@ export default function Home() {
         primaryLabel: notificationPrimaryLabel,
         secondaryLabel: "Позже",
         informational: isClaimedByOther,
-        autoCloseMs: isClaimedByOther ? 10000 : undefined,
+        autoCloseMs: isClaimedByOther ? 3000 : undefined,
         avatarEmoji: candidate.avatarEmoji,
         avatarColor: candidate.avatarColor,
         tone: isClaimedByOther ? "amber" : isDirectSupplierDialog ? "green" : "blue",

@@ -1225,6 +1225,7 @@ export default function Home() {
   const [dismissedNotificationUntil, setDismissedNotificationUntil] = useState<Record<string, number>>({});
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [pendingClientMessageCount, setPendingClientMessageCount] = useState(0);
+  const [managerAutoScrollRequest, setManagerAutoScrollRequest] = useState(0);
   const [ticketContacts, setTicketContacts] = useState<ChatContactItem[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isSavingContacts, setIsSavingContacts] = useState(false);
@@ -2636,6 +2637,14 @@ export default function Home() {
     initialManagerAutoScrollChatIdRef.current = "";
   };
 
+  const requestManagerScrollToLatest = (ticketId: string) => {
+    managerIsNearBottomRef.current = true;
+    initialManagerAutoScrollChatIdRef.current = ticketId;
+    setShowScrollToLatest(false);
+    setPendingClientMessageCount(0);
+    setManagerAutoScrollRequest((current) => current + 1);
+  };
+
   useEffect(() => {
     if (!authReady || !currentManagerId) {
       return;
@@ -3314,13 +3323,13 @@ export default function Home() {
         initialManagerAutoScrollChatIdRef.current = "";
       }
       resizeObserver.disconnect();
-    }, 1500);
+    }, 4000);
 
     return () => {
       window.clearTimeout(settleTimeout);
       resizeObserver.disconnect();
     };
-  }, [activeChatId, activeChat?.messages.length]);
+  }, [activeChatId, activeChat?.messages.length, managerAutoScrollRequest]);
 
   useEffect(() => {
     if (!authReady) {
@@ -4166,6 +4175,7 @@ export default function Home() {
         return;
       }
 
+      requestManagerScrollToLatest(ticketId);
       setActiveChatId(ticketId);
       setIsChatPaneDismissed(false);
       setChatData((prevChats) =>

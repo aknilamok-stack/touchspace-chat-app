@@ -5,23 +5,95 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      diagnose_only:
+        description: Check DNS and TCP only (do not deploy)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || 'chat.touchspace.biz' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '7551' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
 
     steps:
-      - name: Prepare SSH
+      - name: Check DNS and TCP connectivity
         shell: bash
         run: |
+          python3 - <<'PY'
+          import os
+          import socket
+          import sys
+
+          host = os.environ["DEPLOY_HOST"]
+          port = int(os.environ["DEPLOY_PORT"])
+          if not 1 <= port <= 65535:
+              sys.exit("DEPLOY_PORT must be between 1 and 65535")
+          try:
+              addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+          except socket.gaierror as error:
+              sys.exit(f"DNS lookup failed for {host}: {error}")
+          reachable = False
+          seen = set()
+          for family, kind, protocol, _, address in addresses:
+              if (family, address) in seen:
+                  continue
+              seen.add((family, address))
+              with socket.socket(family, kind, protocol) as connection:
+                  connection.settimeout(5)
+                  try:
+                      connection.connect(address)
+                      print(f"TCP reachable: {address}", flush=True)
+                      reachable = True
+                  except OSError as error:
+                      print(f"TCP failed: {address}: {error}", flush=True)
+          if not reachable:
+              sys.exit("No reachable SSH endpoint. Check DNS, sshd listener, firewall, NAT and runner network access.")
+          PY
+
+      - name: Prepare SSH
+        if: github.event_name != 'workflow_dispatch' || !inputs.diagnose_only
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          test -n "$DEPLOY_SSH_KEY_B64"
+          test -n "$DEPLOY_KNOWN_HOSTS"
           mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.DEPLOY_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
+          printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Run deploy on server
+        if: github.event_name != 'workflow_dispatch' || !inputs.diagnose_only
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p 7551 root@chat.touchspace.biz "touchspace-deploy"
+          ssh -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            -o ConnectionAttempts=1 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=3 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "touchspace-deploy"
+
+      - name: Remove SSH credentials
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
